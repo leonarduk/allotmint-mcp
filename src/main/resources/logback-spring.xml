@@ -5,7 +5,12 @@
         JSON-RPC on the process's own stdin/stdout. Any log line written to stdout would
         corrupt that stream, so logging goes to a file only - never to the console.
     -->
-    <property name="LOG_FILE" value="${LOG_FILE:-logs/allotmint-mcp.log}"/>
+    <!--
+        Must be absolute: an MCP client (e.g. Claude Desktop) launches this process with
+        its own working directory, not the project directory, so a relative path here
+        fails to create its parent folder and crashes startup before stdio ever opens.
+    -->
+    <property name="LOG_FILE" value="${LOG_FILE:-${user.home}/.allotmint-mcp/logs/allotmint-mcp.log}"/>
 
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
         <file>${LOG_FILE}</file>
