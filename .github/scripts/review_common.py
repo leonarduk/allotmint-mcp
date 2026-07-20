@@ -96,7 +96,7 @@ avoid regressions in the Spring Boot startup path.{verified_facts_section}
 ## PR title
 {pr_title}
 
-## Diff (Java, XML, YAML, properties, Markdown, shell scripts (.sh) — truncated at 120k chars)
+## Diff (Java, XML, YAML, properties, Markdown, shell/PowerShell scripts (.sh/.ps1), Python (.py) — truncated at 120k chars)
 {diff}
 
 If the diff is empty, this is likely a docs-only or config-only PR whose file types
