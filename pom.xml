@@ -138,6 +138,35 @@
 					</execution>
 				</executions>
 			</plugin>
+
+			<plugin>
+				<groupId>org.owasp</groupId>
+				<artifactId>dependency-check-maven</artifactId>
+				<version>12.2.2</version>
+				<configuration>
+					<!-- Conservative starting threshold: fail only on critical findings until
+					     the existing dependency tree's baseline has been triaged. -->
+					<failBuildOnCVSS>9</failBuildOnCVSS>
+					<!-- Without an NVD API key, the first-time data sync can take ~2 hours
+					     (NVD rate-limits anonymous requests); set NVD_API_KEY in CI (see
+					     https://nvd.nist.gov/developers/request-an-api-key) to speed this up.
+					     Reading via env var (not the nvdApiKey property) avoids leaking the
+					     key through Maven debug logging - see GHSA-qqhq-8r2c-c3f5. -->
+					<nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
+					<!-- Fixed, cache-friendly location so CI can persist the NVD database
+					     between runs instead of re-syncing it every time. -->
+					<dataDirectory>${project.basedir}/.dependency-check-data</dataDirectory>
+				</configuration>
+				<executions>
+					<execution>
+						<id>dependency-check</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
 	</build>
 
