@@ -8,11 +8,11 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class McpJsonConfigTest {
 
-    private final ApplicationContextRunner contextRunner =
-            new ApplicationContextRunner().withUserConfiguration(McpJsonConfig.class);
+  private final ApplicationContextRunner contextRunner =
+      new ApplicationContextRunner().withUserConfiguration(McpJsonConfig.class);
 
-    @Test
-    void registersASingleMcpJsonMapperBean() {
-        contextRunner.run(context -> assertThat(context).hasSingleBean(McpJsonMapper.class));
-    }
+  @Test
+  void registersASingleMcpJsonMapperBean() {
+    contextRunner.run(context -> assertThat(context).hasSingleBean(McpJsonMapper.class));
+  }
 }

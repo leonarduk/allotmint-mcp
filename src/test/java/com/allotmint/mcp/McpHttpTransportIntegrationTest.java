@@ -25,37 +25,38 @@ import org.springframework.test.context.TestPropertySource;
 @TestPropertySource(properties = "mcp.stdio.enabled=false")
 class McpHttpTransportIntegrationTest {
 
-    @LocalServerPort
-    private int port;
+  @LocalServerPort private int port;
 
-    private McpSyncClient client;
+  private McpSyncClient client;
 
-    @BeforeEach
-    void connect() {
-        McpClientTransport transport = HttpClientStreamableHttpTransport.builder("http://localhost:" + port)
-                .endpoint("/mcp")
-                .build();
-        client = McpClient.sync(transport).build();
-        client.initialize();
-    }
+  @BeforeEach
+  void connect() {
+    McpClientTransport transport =
+        HttpClientStreamableHttpTransport.builder("http://localhost:" + port)
+            .endpoint("/mcp")
+            .build();
+    client = McpClient.sync(transport).build();
+    client.initialize();
+  }
 
-    @AfterEach
-    void disconnect() {
-        client.closeGracefully();
-    }
+  @AfterEach
+  void disconnect() {
+    client.closeGracefully();
+  }
 
-    @Test
-    void echoToolIsRegisteredAndRespondsOverHttp() {
-        McpSchema.ListToolsResult tools = client.listTools();
-        assertThat(tools.tools()).extracting(McpSchema.Tool::name).containsExactly("echo");
+  @Test
+  void echoToolIsRegisteredAndRespondsOverHttp() {
+    McpSchema.ListToolsResult tools = client.listTools();
+    assertThat(tools.tools()).extracting(McpSchema.Tool::name).containsExactly("echo");
 
-        McpSchema.CallToolResult result = client.callTool(
-                new McpSchema.CallToolRequest("echo", Map.of(EchoTool.MESSAGE, "integration-test")));
+    McpSchema.CallToolResult result =
+        client.callTool(
+            new McpSchema.CallToolRequest("echo", Map.of(EchoTool.MESSAGE, "integration-test")));
 
-        assertThat(result.content())
-                .singleElement()
-                .isInstanceOfSatisfying(
-                        McpSchema.TextContent.class,
-                        text -> assertThat(text.text()).isEqualTo("You said: integration-test"));
-    }
+    assertThat(result.content())
+        .singleElement()
+        .isInstanceOfSatisfying(
+            McpSchema.TextContent.class,
+            text -> assertThat(text.text()).isEqualTo("You said: integration-test"));
+  }
 }

@@ -10,25 +10,29 @@ import org.springframework.web.servlet.function.RouterFunction;
 
 class McpServerConfigTest {
 
-    // @EnableWebMvc needs a real ServletContext (even if mocked), which the plain
-    // ApplicationContextRunner doesn't provide.
-    private final WebApplicationContextRunner contextRunner =
-            new WebApplicationContextRunner().withUserConfiguration(McpServerConfig.class, McpJsonConfig.class);
+  // @EnableWebMvc needs a real ServletContext (even if mocked), which the plain
+  // ApplicationContextRunner doesn't provide.
+  private final WebApplicationContextRunner contextRunner =
+      new WebApplicationContextRunner()
+          .withUserConfiguration(McpServerConfig.class, McpJsonConfig.class);
 
-    @Test
-    void isInactiveWithoutTheHttpProfile() {
-        contextRunner.run(context ->
-                assertThat(context.getBeanFactory().containsBeanDefinition("httpMcpSyncServer")).isFalse());
-    }
+  @Test
+  void isInactiveWithoutTheHttpProfile() {
+    contextRunner.run(
+        context ->
+            assertThat(context.getBeanFactory().containsBeanDefinition("httpMcpSyncServer"))
+                .isFalse());
+  }
 
-    @Test
-    void registersHttpTransportBeansWhenTheHttpProfileIsActive() {
-        contextRunner
-                .withPropertyValues("spring.profiles.active=http")
-                .run(context -> {
-                    assertThat(context).hasSingleBean(WebMvcStreamableServerTransportProvider.class);
-                    assertThat(context).hasSingleBean(RouterFunction.class);
-                    assertThat(context).hasSingleBean(McpSyncServer.class);
-                });
-    }
+  @Test
+  void registersHttpTransportBeansWhenTheHttpProfileIsActive() {
+    contextRunner
+        .withPropertyValues("spring.profiles.active=http")
+        .run(
+            context -> {
+              assertThat(context).hasSingleBean(WebMvcStreamableServerTransportProvider.class);
+              assertThat(context).hasSingleBean(RouterFunction.class);
+              assertThat(context).hasSingleBean(McpSyncServer.class);
+            });
+  }
 }
