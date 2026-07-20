@@ -39,6 +39,33 @@
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
+
+			<!-- Override transitive versions pulled in by spring-boot-starter-parent 4.1.0
+			     that OWASP dependency-check (see the plugin below) flagged with CVSS >= 9
+			     critical CVEs; both have patched releases available.
+			     tomcat-embed-el/-websocket weren't individually flagged but are bumped to
+			     match tomcat-embed-core: Tomcat's embed modules are a matched set and
+			     mixing versions across them isn't a supported/tested combination. -->
+			<dependency>
+				<groupId>org.apache.tomcat.embed</groupId>
+				<artifactId>tomcat-embed-core</artifactId>
+				<version>11.0.24</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.tomcat.embed</groupId>
+				<artifactId>tomcat-embed-el</artifactId>
+				<version>11.0.24</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.tomcat.embed</groupId>
+				<artifactId>tomcat-embed-websocket</artifactId>
+				<version>11.0.24</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.logging.log4j</groupId>
+				<artifactId>log4j-api</artifactId>
+				<version>2.26.1</version>
+			</dependency>
 		</dependencies>
 	</dependencyManagement>
 
