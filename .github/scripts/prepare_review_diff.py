@@ -8,7 +8,19 @@ import sys
 
 from review_common import MAX_DIFF_CHARS, format_truncation_log, prioritize_diff_blocks, truncate_diff
 
-DEFAULT_GLOBS = ["*.java", "*.xml", "*.yml", "*.yaml", "*.properties", "*.md", "*.sh", "Dockerfile", "*.txt"]
+DEFAULT_GLOBS = [
+    "*.java",
+    "*.xml",
+    "*.yml",
+    "*.yaml",
+    "*.properties",
+    "*.md",
+    "*.sh",
+    "*.ps1",
+    "*.py",
+    "Dockerfile",
+    "*.txt",
+]
 
 
 def parse_args() -> argparse.Namespace:
