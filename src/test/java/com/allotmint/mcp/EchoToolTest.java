@@ -10,27 +10,27 @@ import org.junit.jupiter.api.Test;
 
 class EchoToolTest {
 
-    @Test
-    void toolMetadataDescribesTheEchoTool() {
-        McpSchema.Tool tool = EchoTool.specification().tool();
+  @Test
+  void toolMetadataDescribesTheEchoTool() {
+    McpSchema.Tool tool = EchoTool.specification().tool();
 
-        assertThat(tool.name()).isEqualTo("echo");
-        assertThat(tool.description()).isEqualTo("Echoes back the provided message");
-        assertThat(tool.inputSchema()).containsEntry("required", List.of(EchoTool.MESSAGE));
-    }
+    assertThat(tool.name()).isEqualTo("echo");
+    assertThat(tool.description()).isEqualTo("Echoes back the provided message");
+    assertThat(tool.inputSchema()).containsEntry("required", List.of(EchoTool.MESSAGE));
+  }
 
-    @Test
-    void callHandlerEchoesBackTheProvidedMessage() {
-        McpServerFeatures.SyncToolSpecification spec = EchoTool.specification();
-        McpSchema.CallToolRequest request =
-                new McpSchema.CallToolRequest("echo", Map.of(EchoTool.MESSAGE, "hello"));
+  @Test
+  void callHandlerEchoesBackTheProvidedMessage() {
+    McpServerFeatures.SyncToolSpecification spec = EchoTool.specification();
+    McpSchema.CallToolRequest request =
+        new McpSchema.CallToolRequest("echo", Map.of(EchoTool.MESSAGE, "hello"));
 
-        McpSchema.CallToolResult result = spec.callHandler().apply(null, request);
+    McpSchema.CallToolResult result = spec.callHandler().apply(null, request);
 
-        assertThat(result.content())
-                .singleElement()
-                .isInstanceOfSatisfying(
-                        McpSchema.TextContent.class,
-                        text -> assertThat(text.text()).isEqualTo("You said: hello"));
-    }
+    assertThat(result.content())
+        .singleElement()
+        .isInstanceOfSatisfying(
+            McpSchema.TextContent.class,
+            text -> assertThat(text.text()).isEqualTo("You said: hello"));
+  }
 }
