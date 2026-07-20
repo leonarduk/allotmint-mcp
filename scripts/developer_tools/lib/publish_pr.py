@@ -13,6 +13,12 @@ from typing import Optional
 
 import requests
 
+# Windows consoles default to a legacy codepage (e.g. cp1252) that can't
+# encode the checkmark used in the success message below.
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 
 def get_repo_info() -> tuple[str, str]:
     """Extract owner and repo from git remote origin."""
