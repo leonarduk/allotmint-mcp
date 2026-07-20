@@ -39,6 +39,33 @@
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
+
+			<!-- Override transitive versions pulled in by spring-boot-starter-parent 4.1.0
+			     that OWASP dependency-check (see the plugin below) flagged with CVSS >= 9
+			     critical CVEs; both have patched releases available.
+			     tomcat-embed-el/-websocket weren't individually flagged but are bumped to
+			     match tomcat-embed-core: Tomcat's embed modules are a matched set and
+			     mixing versions across them isn't a supported/tested combination. -->
+			<dependency>
+				<groupId>org.apache.tomcat.embed</groupId>
+				<artifactId>tomcat-embed-core</artifactId>
+				<version>11.0.24</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.tomcat.embed</groupId>
+				<artifactId>tomcat-embed-el</artifactId>
+				<version>11.0.24</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.tomcat.embed</groupId>
+				<artifactId>tomcat-embed-websocket</artifactId>
+				<version>11.0.24</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.logging.log4j</groupId>
+				<artifactId>log4j-api</artifactId>
+				<version>2.26.1</version>
+			</dependency>
 		</dependencies>
 	</dependencyManagement>
 
@@ -134,6 +161,35 @@
 						<phase>verify</phase>
 						<goals>
 							<goal>report</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<plugin>
+				<groupId>org.owasp</groupId>
+				<artifactId>dependency-check-maven</artifactId>
+				<version>12.2.2</version>
+				<configuration>
+					<!-- Conservative starting threshold: fail only on critical findings until
+					     the existing dependency tree's baseline has been triaged. -->
+					<failBuildOnCVSS>9</failBuildOnCVSS>
+					<!-- Without an NVD API key, the first-time data sync can take ~2 hours
+					     (NVD rate-limits anonymous requests); set NVD_API_KEY in CI (see
+					     https://nvd.nist.gov/developers/request-an-api-key) to speed this up.
+					     Reading via env var (not the nvdApiKey property) avoids leaking the
+					     key through Maven debug logging - see GHSA-qqhq-8r2c-c3f5. -->
+					<nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
+					<!-- Fixed, cache-friendly location so CI can persist the NVD database
+					     between runs instead of re-syncing it every time. -->
+					<dataDirectory>${project.basedir}/.dependency-check-data</dataDirectory>
+				</configuration>
+				<executions>
+					<execution>
+						<id>dependency-check</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
 						</goals>
 					</execution>
 				</executions>

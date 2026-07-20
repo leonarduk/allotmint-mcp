@@ -19,5 +19,18 @@ jobs:
           java-version: '25'
           cache: maven
 
+      - name: Determine cache week
+        id: week
+        run: echo "value=$(date +%Y-%U)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache OWASP dependency-check NVD data
+        uses: actions/cache@v4
+        with:
+          path: .dependency-check-data
+          key: dependency-check-data-${{ steps.week.outputs.value }}
+          restore-keys: dependency-check-data-
+
       - name: Build and test
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: ./mvnw -B verify
