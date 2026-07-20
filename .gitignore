@@ -36,3 +36,8 @@ build/
 
 ### Packaging ###
 *.zip
+
+### Developer tools ###
+issues/
+__pycache__/
+*.pyc
