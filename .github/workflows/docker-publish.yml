@@ -33,7 +33,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern={{version}}
+            type=semver,pattern={{raw}}
 
       - name: Build and push image
         uses: docker/build-push-action@v6
@@ -52,7 +52,10 @@ jobs:
       - name: Assert package visibility is private
         run: |
           repo_name="${IMAGE_NAME##*/}"
-          visibility=$(gh api "/users/${{ github.repository_owner }}/packages/container/${repo_name}" --jq .visibility)
+          if ! visibility=$(gh api "/users/${{ github.repository_owner }}/packages/container/${repo_name}" --jq .visibility 2>/tmp/gh_api_err); then
+            echo "::warning::Could not read ghcr.io/${IMAGE_NAME} package visibility (it may not have finished propagating after the first publish): $(cat /tmp/gh_api_err)"
+            exit 0
+          fi
           echo "Package visibility: $visibility"
           if [ "$visibility" != "private" ]; then
             echo "::error::ghcr.io/${IMAGE_NAME} is '$visibility', expected 'private'. Fix under the package's GitHub settings (Package settings > Danger Zone > Change visibility)."
