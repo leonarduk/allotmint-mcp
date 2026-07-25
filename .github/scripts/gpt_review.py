@@ -10,7 +10,15 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from review_common import build_prompt, emit_empty_diff_notice, fetch_review, finalize_review, load_review_context
+from review_common import (
+    ProviderOutageError,
+    build_prompt,
+    emit_empty_diff_notice,
+    emit_outage_notice,
+    fetch_review,
+    finalize_review,
+    load_review_context,
+)
 
 DEFAULT_GPT_MODEL = "gpt-4o"
 
@@ -69,7 +77,10 @@ def main() -> int:
         return emit_empty_diff_notice("GPT")
 
     prompt = build_prompt(context.pr_title, context.diff, context.issue_body, context.discussion, context.verified_facts)
-    review = fetch_openai_review(context.api_key, prompt)
+    try:
+        review = fetch_openai_review(context.api_key, prompt)
+    except ProviderOutageError as exc:
+        return emit_outage_notice("GPT", str(exc))
     return finalize_review(review, "ERROR: OpenAI API returned an empty review")
 
 

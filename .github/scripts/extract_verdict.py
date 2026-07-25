@@ -6,6 +6,8 @@ import re
 import sys
 from pathlib import Path
 
+from review_common import PROVIDER_OUTAGE_MARKER
+
 # Primary format: bold verdict, optionally with backticks inside the bold markers, e.g.
 # `**APPROVE**` or `` **`APPROVE`** ``. Matched anywhere in the text (first occurrence wins),
 # since this is the format the prompt instructs models to use.
@@ -55,7 +57,11 @@ def main(review_file: str, provider_name: str) -> int:
         provider_name: Name of the provider (DeepSeek or GPT) for output messages.
 
     Returns:
-        0 if verdict is APPROVE, 1 if REQUEST CHANGES or no verdict found.
+        0 if verdict is APPROVE, 1 if REQUEST CHANGES or no verdict found,
+        2 if the review was skipped due to a provider outage (see
+        `review_common.PROVIDER_OUTAGE_MARKER`) — a soft-fail distinct from a
+        genuine review failure, so the calling workflow doesn't block the
+        merge gate over an infra incident.
     """
     try:
         review_text = Path(review_file).read_text()
@@ -66,6 +72,10 @@ def main(review_file: str, provider_name: str) -> int:
     if not review_text.strip():
         print(f"ERROR: {provider_name} review output was empty", file=sys.stderr)
         return 1
+
+    if PROVIDER_OUTAGE_MARKER in review_text:
+        print(f"⚠ {provider_name} review skipped: provider outage (see log for details)")
+        return 2
 
     verdict = extract_verdict(review_text)
 

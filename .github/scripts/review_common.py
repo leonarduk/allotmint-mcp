@@ -13,10 +13,19 @@ from typing import Any, Callable
 
 MAX_DIFF_CHARS = 120_000
 REQUEST_TIMEOUT_SECONDS = 60
-MAX_FETCH_ATTEMPTS = 3
+# 5 attempts with exponential backoff (2/4/8/16s between attempts, ~30s total)
+# rides out a short provider outage; 3 flat 2s retries (the old behaviour)
+# proved too short to survive the transient OpenAI 500s seen on PR #113.
+MAX_FETCH_ATTEMPTS = 5
 RETRY_BACKOFF_SECONDS = 2
 RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
 DEFAULT_ISSUE_BODY = "No linked issue found. Review code on its own merits."
+# Sentinel embedded in the review body when a genuine provider outage exhausts
+# all retries. extract_verdict.py looks for this marker so the workflow can
+# treat it as a skipped check rather than a blocking "REQUEST CHANGES"
+# verdict — an infra outage isn't a code-review finding and shouldn't hold up
+# a merge the way a real review failure does.
+PROVIDER_OUTAGE_MARKER = "**REVIEW SKIPPED - PROVIDER OUTAGE**"
 TRUNCATION_NOTICE_TEMPLATE = (
     "\n\n[diff truncated after {kept_files} file(s); skipped {skipped_files} additional file(s) "
     "to stay within the 120k-character review budget while preserving whole-file diff blocks]"
@@ -156,6 +165,31 @@ def emit_empty_diff_notice(provider_name: str) -> int:
     print(
         f"No {provider_name} review generated because the filtered diff was empty. "
         "The workflow can still post this advisory note without failing."
+    )
+    return 0
+
+
+class ProviderOutageError(RuntimeError):
+    """Raised when a retryable HTTP/network error exhausts all retry attempts.
+
+    Kept distinct from the `SystemExit(1)` raised for non-retryable errors
+    (bad model name, auth failures, malformed JSON) so callers can treat a
+    genuine transient outage as a soft-fail advisory instead of a hard
+    workflow failure, while config/auth bugs still fail loudly.
+    """
+
+
+def emit_outage_notice(provider_name: str, detail: str) -> int:
+    """Print an advisory notice for a genuine provider outage and return success.
+
+    Printing (rather than exiting non-zero) lets the workflow post this as the
+    review body without the merge-gate check treating it as "REQUEST CHANGES".
+    """
+    print(
+        f"{provider_name} review could not be completed after {MAX_FETCH_ATTEMPTS} "
+        f"attempts: {detail}\n\nThis looks like a transient provider outage rather "
+        "than a code issue; re-run the check once the provider recovers.\n\n"
+        f"{PROVIDER_OUTAGE_MARKER}"
     )
     return 0
 
@@ -371,11 +405,13 @@ def fetch_review(
     warning so each script only has to supply its endpoint, headers, payload, and an
     `extractor` that turns the parsed JSON response into `(review_text, extra)`.
 
-    Retries up to `MAX_FETCH_ATTEMPTS` times with a linear backoff (`attempt *
-    RETRY_BACKOFF_SECONDS`) on network errors (`URLError`, including timeouts) and
-    HTTP statuses in `RETRYABLE_HTTP_STATUSES` (429 rate limiting, 5xx server
-    errors). Non-retryable HTTP errors (e.g. 401/403 auth failures) and malformed
-    JSON responses fail immediately without retrying.
+    Retries up to `MAX_FETCH_ATTEMPTS` times with exponential backoff (`RETRY_BACKOFF_SECONDS
+    * 2 ** (attempt - 1)`) on network errors (`URLError`, including timeouts) and HTTP statuses
+    in `RETRYABLE_HTTP_STATUSES` (429 rate limiting, 5xx server errors). Raises
+    `ProviderOutageError` once those retries are exhausted, since that's an infra failure
+    rather than a code-review finding. Non-retryable HTTP errors (e.g. 401/403 auth failures)
+    and malformed JSON responses fail immediately via `SystemExit` without retrying, since
+    those indicate a config bug that needs a human, not a transient outage.
     """
     request = urllib.request.Request(
         url,
@@ -393,17 +429,23 @@ def fetch_review(
             # Keep the provider response in stderr so maintainers can distinguish auth, quota, and API failures.
             body = exc.read().decode()
             print(f"ERROR: {provider_label} API returned {exc.code}: {body}", file=sys.stderr)
-            if exc.code not in RETRYABLE_HTTP_STATUSES or attempt == MAX_FETCH_ATTEMPTS:
+            if exc.code not in RETRYABLE_HTTP_STATUSES:
                 raise SystemExit(1) from exc
+            if attempt == MAX_FETCH_ATTEMPTS:
+                raise ProviderOutageError(
+                    f"{provider_label} API returned {exc.code} after {MAX_FETCH_ATTEMPTS} attempts"
+                ) from exc
         except urllib.error.URLError as exc:
             print(f"ERROR: {provider_label} API request failed: {exc.reason}", file=sys.stderr)
             if attempt == MAX_FETCH_ATTEMPTS:
-                raise SystemExit(1) from exc
+                raise ProviderOutageError(
+                    f"{provider_label} API request failed after {MAX_FETCH_ATTEMPTS} attempts: {exc.reason}"
+                ) from exc
         except json.JSONDecodeError as exc:
             print(f"ERROR: {provider_label} API returned non-JSON response: {exc}", file=sys.stderr)
             raise SystemExit(1) from exc
 
-        delay = attempt * RETRY_BACKOFF_SECONDS
+        delay = RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))
         print(
             f"INFO: {provider_label} attempt {attempt}/{MAX_FETCH_ATTEMPTS} failed; "
             f"retrying in {delay}s",
