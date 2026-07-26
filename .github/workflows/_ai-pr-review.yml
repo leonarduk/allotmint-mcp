@@ -169,8 +169,18 @@ jobs:
         id: check_approval
         continue-on-error: true  # REQUEST CHANGES exits 1; allow later steps (post comment, create issues) to still run
         run: |
-          if python3 .github/scripts/extract_verdict.py /tmp/${{ inputs.provider_id }}_review_body.md "${{ inputs.provider_name }}"; then
+          set +e
+          python3 .github/scripts/extract_verdict.py /tmp/${{ inputs.provider_id }}_review_body.md "${{ inputs.provider_name }}"
+          verdict_exit=$?
+          set -e
+
+          # Exit codes from extract_verdict.py: 0 = APPROVE, 2 = provider outage
+          # (soft-fail, doesn't block merge), anything else = REQUEST CHANGES /
+          # missing verdict (hard fail).
+          if [ "$verdict_exit" -eq 0 ]; then
             echo "approved=true" >> "$GITHUB_OUTPUT"
+          elif [ "$verdict_exit" -eq 2 ]; then
+            echo "approved=skipped" >> "$GITHUB_OUTPUT"
           else
             echo "approved=false" >> "$GITHUB_OUTPUT"
             exit 1
