@@ -24,7 +24,7 @@ jobs:
         run: echo "value=$(date +%Y-%U)" >> "$GITHUB_OUTPUT"
 
       - name: Cache OWASP dependency-check NVD data
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .dependency-check-data
           key: dependency-check-data-${{ steps.week.outputs.value }}
