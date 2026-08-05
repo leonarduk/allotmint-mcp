@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.allotmint.mcp</groupId>
 	<artifactId>allotmint-mcp</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.0.2-SNAPSHOT</version>
 	<name>allotmint-mcp</name>
 	<description/>
 	<url/>
@@ -80,10 +80,6 @@
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webflux</artifactId>
-        </dependency>
 		<dependency>
 			<groupId>io.modelcontextprotocol.sdk</groupId>
 			<artifactId>mcp-spring-webmvc</artifactId>
