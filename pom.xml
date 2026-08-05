@@ -155,6 +155,27 @@
 			</plugin>
 
 			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-failsafe-plugin</artifactId>
+				<configuration>
+					<!-- Packaging smoke test (FatJarSmokeIT) depends on target/${project.build.finalName}.jar,
+					     which the spring-boot-maven-plugin repackage goal produces during the package
+					     phase - already complete by the time Failsafe's integration-test phase runs. -->
+					<systemPropertyVariables>
+						<allotmint.mcp.smokeTest.fatJar>${project.build.directory}/${project.build.finalName}.jar</allotmint.mcp.smokeTest.fatJar>
+					</systemPropertyVariables>
+				</configuration>
+				<executions>
+					<execution>
+						<goals>
+							<goal>integration-test</goal>
+							<goal>verify</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<plugin>
 				<groupId>com.diffplug.spotless</groupId>
 				<artifactId>spotless-maven-plugin</artifactId>
 				<version>3.9.0</version>
