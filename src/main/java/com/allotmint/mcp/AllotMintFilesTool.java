@@ -203,7 +203,7 @@ final class AllotMintFilesTool {
     // Validate that the pattern itself is not a traversal attempt. While
     // Files.walkFileTree is root-scoped, a confusing pattern like
     // ../../etc/* should be rejected early rather than silently matching nothing.
-    String decodedPattern = decodePercentSequences(pattern);
+    String decodedPattern = decodePercentSequences(pattern).replace('\\', '/');
     if (containsTraversal(decodedPattern)) {
       return error(
           "Search pattern rejected: '%s' contains path traversal sequences".formatted(pattern));
@@ -277,10 +277,19 @@ final class AllotMintFilesTool {
     //    paths are not form data.
     String decoded = decodePercentSequences(rawPath);
 
-    // 2. Create a Path from the decoded input
-    Path userPath = Path.of(decoded);
+    // 2. Treat backslash as a path separator on every host, not just
+    //    Windows. java.nio.file.Path only splits on '\' natively on a
+    //    Windows host, so on Linux a payload like ..\..\etc\passwd would
+    //    otherwise be parsed as one opaque filename component instead of
+    //    a traversal sequence, matching the existing isWindowsAbsolutePath
+    //    precedent below of not letting traversal detection depend on
+    //    which OS this process happens to run on.
+    String forwardSlashes = decoded.replace('\\', '/');
 
-    // 3. Reject absolute paths — Path.resolve() would return them verbatim,
+    // 3. Create a Path from the normalized input
+    Path userPath = Path.of(forwardSlashes);
+
+    // 4. Reject absolute paths — Path.resolve() would return them verbatim,
     //    bypassing the root entirely (e.g. /etc/passwd, C:\Windows\...).
     //    isAbsolute() only catches Unix-style and native Windows paths; we
     //    also detect Windows drive-letter paths on non-Windows hosts so the
@@ -289,26 +298,30 @@ final class AllotMintFilesTool {
       return null;
     }
 
-    // 4. Check for traversal sequences (..) in the user-supplied path
-    if (containsTraversal(decoded)) {
+    // 5. Check for traversal sequences (..) in the user-supplied path
+    if (containsTraversal(forwardSlashes)) {
       return null;
     }
 
-    // 5. Normalize the user path
+    // 6. Normalize the user path
     Path normalizedUser = userPath.normalize();
 
-    // 6. Resolve against root and normalize again
+    // 7. Resolve against root and normalize again
     Path resolved = resolvedRoot.resolve(normalizedUser).normalize();
 
-    // 7. Containment check on normalized paths (not string prefix — defeats
+    // 8. Containment check on normalized paths (not string prefix — defeats
     //    sibling-directory bypass like /root-eviltwin)
     if (!resolved.startsWith(resolvedRoot)) {
       return null;
     }
 
-    // 8. Resolve the closest existing ancestor to a real path to catch symlink
+    // 9. Resolve the closest existing ancestor to a real path to catch symlink
     //    escapes, even when the target itself does not exist (e.g.
-    //    sub/symlink/nonexistent where sub/symlink → /etc)
+    //    sub/symlink/nonexistent where sub/symlink → /etc). This also
+    //    catches a symlink at the final path component: Files.exists()
+    //    follows symlinks, so a symlink to an existing target is its own
+    //    "existing ancestor" here, and toRealPath() resolves it (and any
+    //    symlink earlier in the chain) to its true canonical location.
     Path existingAncestor = resolved;
     while (existingAncestor != null && !Files.exists(existingAncestor)) {
       existingAncestor = existingAncestor.getParent();

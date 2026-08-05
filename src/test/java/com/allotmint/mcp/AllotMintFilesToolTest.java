@@ -270,6 +270,18 @@ class AllotMintFilesToolTest {
     assertThat(text(result)).contains("Path traversal rejected");
   }
 
+  // -- path traversal: backslash-disguised sequences ----------------------
+
+  @Test
+  void rejectsBackslashDisguisedTraversal() {
+    // Backslash is only a path separator to java.nio.file.Path on a native
+    // Windows host; this must be rejected the same way on every OS.
+    McpSchema.CallToolResult result = call(Map.of("action", "read", "path", "..\\..\\etc\\passwd"));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(text(result)).contains("Path traversal rejected");
+  }
+
   // -- path traversal: URL-encoded sequences -----------------------------
 
   @Test
@@ -327,6 +339,27 @@ class AllotMintFilesToolTest {
     }
 
     McpSchema.CallToolResult result = call(Map.of("action", "read", "path", "escape.link"));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(text(result)).contains("Path traversal rejected");
+  }
+
+  @Test
+  void rejectsSymlinkEscapeInIntermediateComponent() throws IOException {
+    Path outsideDir = tempDir.resolve("outside-dir");
+    Files.createDirectories(outsideDir);
+    Files.writeString(outsideDir.resolve("secret.txt"), "secret outside root");
+
+    Path link = root.resolve("escape-dir.link");
+    try {
+      Files.createSymbolicLink(link, outsideDir);
+    } catch (UnsupportedOperationException | IOException e) {
+      assumeTrue(false, "Symlink creation not supported in this environment: " + e.getMessage());
+      return;
+    }
+
+    McpSchema.CallToolResult result =
+        call(Map.of("action", "read", "path", "escape-dir.link/secret.txt"));
 
     assertThat(result.isError()).isTrue();
     assertThat(text(result)).contains("Path traversal rejected");
