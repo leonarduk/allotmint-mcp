@@ -3,6 +3,8 @@ package com.allotmint.mcp;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -20,7 +22,25 @@ class AllotMintClientConfig {
 
   @Bean
   RestClient allotMintRestClient(
-      @Value("${allotmint.api.base-url:http://localhost:8000}") String baseUrl) {
-    return RestClient.builder().baseUrl(baseUrl).build();
+      @Value("${allotmint.api.base-url:http://localhost:8000}") String baseUrl,
+      @Value("${allotmint.mcp.auth-token:}") String authToken) {
+    return withAuthorization(RestClient.builder().baseUrl(baseUrl), authToken).build();
+  }
+
+  /**
+   * Attaches the configured backend-issued JWT as a default {@code Authorization} header, so every
+   * request the resulting {@link RestClient} makes carries it - callers such as {@link
+   * AllotMintClient} don't need to remember to add it themselves. Left blank (the default), no
+   * header is added and requests go out unauthenticated, as against a local {@code
+   * DISABLE_AUTH=true} backend.
+   *
+   * <p>Package-visible rather than private purely so tests can verify the header wiring against a
+   * {@code MockRestServiceServer}-bound builder without needing a full Spring context.
+   */
+  static RestClient.Builder withAuthorization(RestClient.Builder builder, String authToken) {
+    if (StringUtils.hasText(authToken)) {
+      builder.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + authToken.trim());
+    }
+    return builder;
   }
 }
