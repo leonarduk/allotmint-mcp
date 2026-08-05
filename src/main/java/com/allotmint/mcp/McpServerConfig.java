@@ -2,8 +2,13 @@ package com.allotmint.mcp;
 
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
+import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.WebMvcStreamableServerTransportProvider;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -39,15 +44,24 @@ class McpServerConfig {
 
   @Bean
   McpSyncServer httpMcpSyncServer(
-      WebMvcStreamableServerTransportProvider transportProvider, AllotMintClient allotMintClient) {
+      WebMvcStreamableServerTransportProvider transportProvider,
+      AllotMintClient allotMintClient,
+      @Value("${allotmint.mcp.files.enabled:false}") boolean filesEnabled,
+      @Value("${allotmint.mcp.files.root:}") String filesRoot) {
+    List<McpServerFeatures.SyncToolSpecification> tools = new ArrayList<>();
+    tools.add(EchoTool.specification());
+    tools.add(AllotMintHealthTool.specification(allotMintClient));
+    tools.add(AllotMintInstrumentTool.specification(allotMintClient));
+    tools.add(AllotMintMarketTool.specification(allotMintClient));
+    tools.add(AllotMintPortfolioTool.specification(allotMintClient));
+
+    if (filesEnabled) {
+      tools.add(AllotMintFilesTool.specification(Path.of(filesRoot)));
+    }
+
     return McpServer.sync(transportProvider)
         .serverInfo("allotmint-mcp", "0.0.1")
-        .tools(
-            EchoTool.specification(),
-            AllotMintHealthTool.specification(allotMintClient),
-            AllotMintInstrumentTool.specification(allotMintClient),
-            AllotMintMarketTool.specification(allotMintClient),
-            AllotMintPortfolioTool.specification(allotMintClient))
+        .tools(tools.toArray(McpServerFeatures.SyncToolSpecification[]::new))
         .build();
   }
 }
