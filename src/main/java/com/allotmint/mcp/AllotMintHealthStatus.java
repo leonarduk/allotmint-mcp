@@ -1,0 +1,10 @@
+package com.allotmint.mcp;
+
+/**
+ * Result of an {@link AllotMintClient#health()} call.
+ *
+ * @param reachable whether the backend responded successfully
+ * @param version backend version string, if the backend reports one
+ * @param baseUrl the base URL that was called
+ */
+record AllotMintHealthStatus(boolean reachable, String version, String baseUrl) {}
