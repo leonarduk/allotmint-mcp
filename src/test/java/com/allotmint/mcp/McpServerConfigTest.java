@@ -37,4 +37,30 @@ class McpServerConfigTest {
               assertThat(context).hasSingleBean(McpSyncServer.class);
             });
   }
+
+  @Test
+  void startsSuccessfullyWithFilesFeatureDisabledByDefault() {
+    // The default is allotmint.mcp.files.enabled=false — the server must
+    // start without the allotmint_files tool and without any config errors.
+    contextRunner
+        .withPropertyValues("spring.profiles.active=http")
+        .run(
+            context -> {
+              assertThat(context).hasSingleBean(McpSyncServer.class);
+              assertThat(context).hasNotFailed();
+            });
+  }
+
+  @Test
+  void failsToStartWhenFilesEnabledButRootIsEmpty() {
+    // Enabling the feature without configuring a root is a security risk —
+    // Path.of("") would resolve to the CWD, exposing the entire working
+    // directory.  The configuration must reject this explicitly.
+    contextRunner
+        .withPropertyValues(
+            "spring.profiles.active=http",
+            "allotmint.mcp.files.enabled=true",
+            "allotmint.mcp.files.root=")
+        .run(context -> assertThat(context).hasFailed());
+  }
 }
