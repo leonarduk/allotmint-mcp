@@ -4,7 +4,11 @@ Standalone MCP server for [AllotMint](https://github.com/leonarduk/allotmint) bu
 
 ## Status
 
-Proof of concept. The MCP plumbing (stdio + HTTP transports, JSON mapping, exception handling, Actuator health/metrics) is wired up and tested, but the only tool currently registered is `echo` — it exists to prove the transport works end to end. The planned AllotMint API and local file-access tools described in the repo summary are not implemented yet.
+Proof of concept. The MCP plumbing (stdio + HTTP transports, JSON mapping, exception handling, Actuator health/metrics) is wired up and tested. Both transports expose the same tools:
+
+- `echo` — verifies the transport end to end.
+- `allotmint_health` — checks connectivity to the configured AllotMint backend.
+- `allotmint_portfolio` — returns a per-owner summary, exposure breakdown, or flat holdings list. `owner` is required; valid slugs are available from the AllotMint backend's `GET /owners` endpoint. Optional `account_type` and `currency` arguments filter the result client-side.
 
 ## Running
 

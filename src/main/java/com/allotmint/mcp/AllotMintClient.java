@@ -2,9 +2,12 @@ package com.allotmint.mcp;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.ClientHttpResponse;
@@ -20,6 +23,11 @@ import org.springframework.web.client.RestClientException;
  */
 @Component
 class AllotMintClient {
+
+  private static final ParameterizedTypeReference<Map<String, Object>> OBJECT_RESPONSE =
+      new ParameterizedTypeReference<>() {};
+  private static final ParameterizedTypeReference<List<Map<String, Object>>> LIST_RESPONSE =
+      new ParameterizedTypeReference<>() {};
 
   private static final Logger log = LoggerFactory.getLogger(AllotMintClient.class);
 
@@ -60,6 +68,36 @@ class AllotMintClient {
       log.warn("AllotMint backend at {} is unreachable: {}", baseUrl, e.getMessage());
       return new AllotMintHealthStatus(false, null, baseUrl);
     }
+  }
+
+  Map<String, Object> portfolio(String owner) {
+    return getObject("portfolio", owner);
+  }
+
+  List<Map<String, Object>> portfolioSectors(String owner) {
+    List<Map<String, Object>> response =
+        restClient
+            .get()
+            .uri(builder -> builder.pathSegment("portfolio", owner, "sectors").build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(LIST_RESPONSE);
+    return response == null ? List.of() : response;
+  }
+
+  Map<String, Object> performance(String owner) {
+    return getObject("performance", owner);
+  }
+
+  private Map<String, Object> getObject(String endpoint, String owner) {
+    Map<String, Object> response =
+        restClient
+            .get()
+            .uri(builder -> builder.pathSegment(endpoint, owner).build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(OBJECT_RESPONSE);
+    return response == null ? Map.of() : response;
   }
 
   /**
