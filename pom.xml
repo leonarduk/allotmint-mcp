@@ -28,6 +28,11 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
+		<!-- Excludes @Tag("integration") tests (see AllotMintClientIntegrationTest) from the
+		     default mvn test/verify run, since they require a live AWS-deployed backend and a
+		     real, short-lived auth token. The "integration" profile below clears this property
+		     to opt in explicitly. -->
+		<surefire.excludedGroups>integration</surefire.excludedGroups>
 	</properties>
 
 	<dependencyManagement>
@@ -151,6 +156,7 @@
 					     jacoco.exec runs - silently zeroing out the coverage the check goal below
 					     enforces. -->
 					<argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
+					<excludedGroups>${surefire.excludedGroups}</excludedGroups>
 				</configuration>
 			</plugin>
 
@@ -262,5 +268,23 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<profiles>
+		<!--
+		Opts in to the @Tag("integration") tests (see AllotMintClientIntegrationTest) that the
+		default build excludes, since they need a live AWS-deployed AllotMint backend and a
+		real, short-lived auth token. Those tests skip themselves via Assumptions.assumeTrue
+		if the required env vars aren't set, so activating this profile without them is safe -
+		it just re-confirms the skip. Run explicitly with:
+
+		mvn test -Pintegration -DALLOTMINT_API_BASE=https://your-allotmint-backend.example.com -DALLOTMINT_MCP_AUTH_TOKEN=<backend-issued-jwt>
+		-->
+		<profile>
+			<id>integration</id>
+			<properties>
+				<surefire.excludedGroups/>
+			</properties>
+		</profile>
+	</profiles>
 
 </project>
