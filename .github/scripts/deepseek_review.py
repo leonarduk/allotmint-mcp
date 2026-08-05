@@ -100,7 +100,7 @@ def main() -> int:
         review = fetch_deepseek_review(context.api_key, prompt)
     except ProviderOutageError as exc:
         return emit_outage_notice("DeepSeek", str(exc))
-    return finalize_review(review, "ERROR: DeepSeek API returned an empty review")
+    return finalize_review(review, "DeepSeek")
 
 
 if __name__ == "__main__":
