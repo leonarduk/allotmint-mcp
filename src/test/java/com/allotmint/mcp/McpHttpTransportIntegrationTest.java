@@ -59,7 +59,9 @@ class McpHttpTransportIntegrationTest {
   @Test
   void echoToolIsRegisteredAndRespondsOverHttp() {
     McpSchema.ListToolsResult tools = client.listTools();
-    assertThat(tools.tools()).extracting(McpSchema.Tool::name).containsExactly("echo");
+    assertThat(tools.tools())
+        .extracting(McpSchema.Tool::name)
+        .containsExactly("echo", "allotmint_health", "allotmint_market");
 
     McpSchema.CallToolResult result =
         client.callTool(

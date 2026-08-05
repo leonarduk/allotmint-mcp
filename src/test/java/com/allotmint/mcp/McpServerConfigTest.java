@@ -1,6 +1,7 @@
 package com.allotmint.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.WebMvcStreamableServerTransportProvider;
@@ -14,7 +15,8 @@ class McpServerConfigTest {
   // ApplicationContextRunner doesn't provide.
   private final WebApplicationContextRunner contextRunner =
       new WebApplicationContextRunner()
-          .withUserConfiguration(McpServerConfig.class, McpJsonConfig.class);
+          .withUserConfiguration(McpServerConfig.class, McpJsonConfig.class)
+          .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class));
 
   @Test
   void isInactiveWithoutTheHttpProfile() {
