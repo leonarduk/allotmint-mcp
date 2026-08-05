@@ -36,10 +36,17 @@ final class AllotMintFilesTool {
    * deciding whether to register the returned specification; this method always produces a valid
    * spec.
    *
-   * @param filesRoot the resolved (real-path) root directory for all file operations
+   * @param filesRoot the files root directory (must exist and be a directory)
    * @return the tool specification
+   * @throws IllegalArgumentException if filesRoot is null, blank, does not exist, or is not a
+   *     directory
    */
   static McpServerFeatures.SyncToolSpecification specification(Path filesRoot) {
+    if (filesRoot == null || filesRoot.toString().isBlank()) {
+      throw new IllegalArgumentException(
+          "ALLOTMINT_MCP_FILES_ROOT is required when ALLOTMINT_MCP_FILES_ENABLED=true");
+    }
+
     Path resolvedRoot;
     try {
       resolvedRoot = filesRoot.toRealPath();
@@ -98,8 +105,9 @@ final class AllotMintFilesTool {
                 case "read" -> handleRead(args, resolvedRoot);
                 case "list" -> handleList(args, resolvedRoot);
                 case "search" -> handleSearch(args, resolvedRoot);
-                default -> error("Unsupported action '%s'; expected read, list, or search"
-                    .formatted(action));
+                default -> error(
+                    "Unsupported action '%s'; expected read, list, or search"
+                        .formatted(action));
               };
             })
         .build();
@@ -116,19 +124,19 @@ final class AllotMintFilesTool {
 
     Path safePath = resolveSafely(rawPath, resolvedRoot);
     if (safePath == null) {
-      // resolveSafely returns the error result
       return error(
           "Path traversal rejected: '%s' resolves outside the configured files root"
               .formatted(rawPath));
+    }
+    if (!Files.exists(safePath)) {
+      return error("File not found: %s".formatted(rawPath));
     }
     if (!Files.isRegularFile(safePath)) {
       return error("Not a regular file: %s".formatted(rawPath));
     }
     try {
       String content = Files.readString(safePath);
-      return McpSchema.CallToolResult.builder()
-          .addTextContent(content)
-          .build();
+      return McpSchema.CallToolResult.builder().addTextContent(content).build();
     } catch (IOException e) {
       return error("Failed to read file '%s': %s".formatted(rawPath, e.getMessage()));
     }
@@ -145,16 +153,20 @@ final class AllotMintFilesTool {
             "Path traversal rejected: '%s' resolves outside the configured files root"
                 .formatted(rawPath));
       }
+      if (!Files.exists(dir)) {
+        return error("Directory not found: %s".formatted(rawPath));
+      }
     }
     if (!Files.isDirectory(dir)) {
-      return error("Not a directory: %s".formatted(rawPath != null ? rawPath : "(root)"));
+      return error(
+          "Not a directory: %s".formatted(rawPath != null ? rawPath : "(root)"));
     }
 
     try {
       List<Map<String, Object>> entries = new ArrayList<>();
       try (var stream = Files.list(dir)) {
-        for (Path entry : stream.sorted(Comparator.comparing(p -> p.getFileName().toString()))
-            .toList()) {
+        for (Path entry :
+            stream.sorted(Comparator.comparing(p -> p.getFileName().toString())).toList()) {
           Map<String, Object> info = new LinkedHashMap<>();
           info.put("name", entry.getFileName().toString());
           info.put("type", Files.isDirectory(entry) ? "directory" : "file");
@@ -186,6 +198,16 @@ final class AllotMintFilesTool {
     String pattern = requireString(args, "pattern");
     if (pattern == null || pattern.isBlank()) {
       return error("pattern is required for the search action");
+    }
+
+    // Validate that the pattern itself is not a traversal attempt. While
+    // Files.walkFileTree is root-scoped, a confusing pattern like
+    // ../../etc/* should be rejected early rather than silently matching nothing.
+    String decodedPattern = decodePercentSequences(pattern);
+    if (containsTraversal(decodedPattern)) {
+      return error(
+          "Search pattern rejected: '%s' contains path traversal sequences"
+              .formatted(pattern));
     }
 
     PathMatcher matcher = resolvedRoot.getFileSystem().getPathMatcher("glob:" + pattern);
@@ -224,19 +246,18 @@ final class AllotMintFilesTool {
   // -- path security ------------------------------------------------------
 
   /**
-   * Resolves a user-supplied relative path against the configured root, following symlinks and
-   * verifying containment. Returns the real path if the target exists and is safely within the
-   * root, or {@code null} if the path escapes the root.
+   * Resolves a user-supplied relative path against the configured root, verifying containment via
+   * normalized-prefix and real-path checks. Symlink escapes are detected by resolving the closest
+   * existing ancestor to a real path and checking containment.
+   *
+   * @return the safe path within the root, or {@code null} if the path is a traversal attempt
    */
   private static Path resolveSafely(String rawPath, Path resolvedRoot) {
-    // 1. URL-decode to defeat URL-encoded traversal sequences (e.g. %2e%2e%2f)
-    String decoded;
-    try {
-      decoded = URLDecoder.decode(rawPath, StandardCharsets.UTF_8);
-    } catch (IllegalArgumentException e) {
-      // Malformed percent-encoding; treat as-is
-      decoded = rawPath;
-    }
+    // 1. Decode percent-encoded sequences to defeat URL-encoded traversal
+    //    (e.g. %2e%2e%2f → ../).  Preserve literal '+' characters — URLDecoder
+    //    treats '+' as a space per application/x-www-form-urlencoded, but file
+    //    paths are not form data.
+    String decoded = decodePercentSequences(rawPath);
 
     // 2. Create a Path from the decoded input
     Path userPath = Path.of(decoded);
@@ -247,41 +268,90 @@ final class AllotMintFilesTool {
       return null;
     }
 
-    // 4. Normalize the user path and reject any that still contain ".." after
-    //    normalization — this catches non-canonical traversal like foo/../../bar
-    Path normalizedUser = userPath.normalize();
-    for (Path element : normalizedUser) {
-      if ("..".equals(element.toString())) {
-        return null;
-      }
+    // 4. Check for traversal sequences (..) in the user-supplied path
+    if (containsTraversal(decoded)) {
+      return null;
     }
 
-    // 5. Resolve against root and normalize again
+    // 5. Normalize the user path
+    Path normalizedUser = userPath.normalize();
+
+    // 6. Resolve against root and normalize again
     Path resolved = resolvedRoot.resolve(normalizedUser).normalize();
 
-    // 6. String-prefix check is insufficient (sibling-directory bypass like
-    //    /root-eviltwin).  Use startsWith on normalized paths first.
+    // 7. Containment check on normalized paths (not string prefix — defeats
+    //    sibling-directory bypass like /root-eviltwin)
     if (!resolved.startsWith(resolvedRoot)) {
       return null;
     }
 
-    // 7. toRealPath() follows symlinks and resolves case on case-insensitive
-    //    filesystems.  If the file does not exist, toRealPath throws — return
-    //    null to signal traversal rejection (we can't verify containment of a
-    //    non-existent target, so we reject it).
-    Path realPath;
+    // 8. Resolve the closest existing ancestor to a real path to catch symlink
+    //    escapes, even when the target itself does not exist (e.g.
+    //    sub/symlink/nonexistent where sub/symlink → /etc)
+    Path existingAncestor = resolved;
+    while (existingAncestor != null && !Files.exists(existingAncestor)) {
+      existingAncestor = existingAncestor.getParent();
+    }
+
+    if (existingAncestor != null) {
+      try {
+        Path realAncestor = existingAncestor.toRealPath();
+        if (!realAncestor.startsWith(resolvedRoot)) {
+          return null;
+        }
+      } catch (IOException e) {
+        return null;
+      }
+    }
+
+    return resolved;
+  }
+
+  /**
+   * Decodes percent-encoded sequences (like {@code %2e}) in the input while preserving literal
+   * {@code +} characters. Standard {@link URLDecoder#decode(String, java.nio.charset.Charset)}
+   * treats {@code +} as a space per the {@code application/x-www-form-urlencoded} convention, which
+   * corrupts filenames like {@code a+b.txt}.
+   */
+  private static String decodePercentSequences(String input) {
+    // Temporarily encode any literal '+' so URLDecoder leaves them alone
+    String guarded = input.replace("+", "%2B");
     try {
-      realPath = resolved.toRealPath();
-    } catch (IOException e) {
-      return null;
+      return URLDecoder.decode(guarded, StandardCharsets.UTF_8);
+    } catch (IllegalArgumentException e) {
+      // Malformed percent-encoding; treat as-is
+      return input;
     }
+  }
 
-    // 8. Final containment check against the real root
-    if (!realPath.startsWith(resolvedRoot)) {
-      return null;
+  /**
+   * Returns true if the given path string contains traversal elements ({@code ..}) after
+   * resolving dot-dot segments. Uses {@link Path#normalize()} for regular paths (which
+   * collapses {@code sub/../x} to {@code x}), and falls back to string splitting for glob
+   * patterns that contain {@code *} or {@code ?} (which {@link Path#of} rejects with {@link
+   * java.nio.file.InvalidPathException}).
+   */
+  private static boolean containsTraversal(String path) {
+    if (!path.contains("*") && !path.contains("?")) {
+      try {
+        Path normalized = Path.of(path).normalize();
+        for (Path element : normalized) {
+          if ("..".equals(element.toString())) {
+            return true;
+          }
+        }
+        return false;
+      } catch (Exception e) {
+        // Fall through to string-based check for paths Path rejects
+      }
     }
-
-    return realPath;
+    // String-based check for glob patterns or paths that Path rejects
+    for (String segment : path.split("[/\\\\]")) {
+      if ("..".equals(segment)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // -- argument helpers ----------------------------------------------------

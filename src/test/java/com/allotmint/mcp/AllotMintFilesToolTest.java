@@ -1,6 +1,7 @@
 package com.allotmint.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -30,16 +31,40 @@ class AllotMintFilesToolTest {
 
   @BeforeEach
   void setUp() throws IOException {
-    // Create a nested root to exercise relative-path resolution
     root = tempDir.resolve("files-root");
     Files.createDirectories(root);
 
-    // Create a known file and subdirectory for read/list/search tests
     Files.writeString(root.resolve("hello.txt"), "Hello, AllotMint!");
     Files.createDirectories(root.resolve("sub"));
     Files.writeString(root.resolve("sub").resolve("nested.txt"), "nested content");
+    // File with a plus sign to verify URL decoding preserves '+'
+    Files.writeString(root.resolve("a+b.txt"), "plus sign preserved");
 
     spec = AllotMintFilesTool.specification(root);
+  }
+
+  // -- null/empty root validation -----------------------------------------
+
+  @Test
+  void specificationRejectsNullRoot() {
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> AllotMintFilesTool.specification(null))
+        .withMessageContaining("ALLOTMINT_MCP_FILES_ROOT is required");
+  }
+
+  @Test
+  void specificationRejectsNonExistentRoot() {
+    assertThatIllegalArgumentException()
+        .isThrownBy(
+            () -> AllotMintFilesTool.specification(tempDir.resolve("nonexistent")))
+        .withMessageContaining("does not exist");
+  }
+
+  @Test
+  void specificationRejectsEmptyRoot() {
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> AllotMintFilesTool.specification(Path.of("")))
+        .withMessageContaining("ALLOTMINT_MCP_FILES_ROOT is required");
   }
 
   // -- schema ------------------------------------------------------------
@@ -81,11 +106,20 @@ class AllotMintFilesToolTest {
   }
 
   @Test
-  void readNonExistentFileReturnsError() {
-    McpSchema.CallToolResult result = call(Map.of("action", "read", "path", "nonexistent.txt"));
+  void readNonExistentFileReturnsFileNotFound() {
+    McpSchema.CallToolResult result =
+        call(Map.of("action", "read", "path", "nonexistent.txt"));
 
     assertThat(result.isError()).isTrue();
-    assertThat(text(result)).contains("Path traversal rejected");
+    assertThat(text(result)).contains("File not found");
+  }
+
+  @Test
+  void readFileWithPlusSignInName() {
+    McpSchema.CallToolResult result = call(Map.of("action", "read", "path", "a+b.txt"));
+
+    assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);
+    assertThat(text(result)).isEqualTo("plus sign preserved");
   }
 
   // -- list --------------------------------------------------------------
@@ -100,9 +134,11 @@ class AllotMintFilesToolTest {
     assertThat(structured).containsEntry("action", "list");
 
     @SuppressWarnings("unchecked")
-    List<Map<String, Object>> entries = (List<Map<String, Object>>) structured.get("entries");
-    assertThat(entries).hasSize(2);
-    assertThat(entries.stream().map(e -> e.get("name"))).contains("hello.txt", "sub");
+    List<Map<String, Object>> entries =
+        (List<Map<String, Object>>) structured.get("entries");
+    assertThat(entries).hasSize(3);
+    assertThat(entries.stream().map(e -> e.get("name")))
+        .contains("a+b.txt", "hello.txt", "sub");
   }
 
   @Test
@@ -114,9 +150,19 @@ class AllotMintFilesToolTest {
     Map<String, Object> structured = (Map<String, Object>) result.structuredContent();
 
     @SuppressWarnings("unchecked")
-    List<Map<String, Object>> entries = (List<Map<String, Object>>) structured.get("entries");
+    List<Map<String, Object>> entries =
+        (List<Map<String, Object>>) structured.get("entries");
     assertThat(entries).hasSize(1);
     assertThat(entries.get(0)).containsEntry("name", "nested.txt");
+  }
+
+  @Test
+  void listNonExistentDirectoryReturnsDirectoryNotFound() {
+    McpSchema.CallToolResult result =
+        call(Map.of("action", "list", "path", "nonexistent"));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(text(result)).contains("Directory not found");
   }
 
   // -- search ------------------------------------------------------------
@@ -131,7 +177,8 @@ class AllotMintFilesToolTest {
 
   @Test
   void searchFindsMatchingFiles() {
-    McpSchema.CallToolResult result = call(Map.of("action", "search", "pattern", "*.txt"));
+    McpSchema.CallToolResult result =
+        call(Map.of("action", "search", "pattern", "*.txt"));
 
     assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);
     @SuppressWarnings("unchecked")
@@ -140,12 +187,13 @@ class AllotMintFilesToolTest {
 
     @SuppressWarnings("unchecked")
     List<String> matches = (List<String>) structured.get("matches");
-    assertThat(matches).contains("hello.txt", "sub/nested.txt");
+    assertThat(matches).contains("a+b.txt", "hello.txt", "sub/nested.txt");
   }
 
   @Test
   void searchWithNoMatchesReturnsEmpty() {
-    McpSchema.CallToolResult result = call(Map.of("action", "search", "pattern", "*.java"));
+    McpSchema.CallToolResult result =
+        call(Map.of("action", "search", "pattern", "*.java"));
 
     @SuppressWarnings("unchecked")
     Map<String, Object> structured = (Map<String, Object>) result.structuredContent();
@@ -153,6 +201,15 @@ class AllotMintFilesToolTest {
     @SuppressWarnings("unchecked")
     List<String> matches = (List<String>) structured.get("matches");
     assertThat(matches).isEmpty();
+  }
+
+  @Test
+  void searchRejectsTraversalPattern() {
+    McpSchema.CallToolResult result =
+        call(Map.of("action", "search", "pattern", "../../etc/*"));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(text(result)).contains("path traversal");
   }
 
   // -- path traversal: dot-dot-slash -------------------------------------
@@ -200,7 +257,10 @@ class AllotMintFilesToolTest {
   @Test
   void rejectsUrlEncodedDotDotTraversal() {
     McpSchema.CallToolResult result =
-        call(Map.of("action", "read", "path", "%2e%2e%2f%2e%2e%2fetc%2fpasswd"));
+        call(
+            Map.of(
+                "action", "read",
+                "path", "%2e%2e%2f%2e%2e%2fetc%2fpasswd"));
 
     assertThat(result.isError()).isTrue();
     assertThat(text(result)).contains("Path traversal rejected");
@@ -209,7 +269,10 @@ class AllotMintFilesToolTest {
   @Test
   void rejectsMixedUrlEncodedTraversal() {
     McpSchema.CallToolResult result =
-        call(Map.of("action", "read", "path", "sub/%2e%2e/%2e%2e/etc/passwd"));
+        call(
+            Map.of(
+                "action", "read",
+                "path", "sub/%2e%2e/%2e%2e/etc/passwd"));
 
     assertThat(result.isError()).isTrue();
     assertThat(text(result)).contains("Path traversal rejected");
@@ -219,15 +282,10 @@ class AllotMintFilesToolTest {
 
   @Test
   void rejectsSiblingDirectoryPathPrefixBypass() throws IOException {
-    // Create /tmp/root-eviltwin next to /tmp/root so string-prefix matching
-    // would wrongly allow it
     Path evilTwin = tempDir.resolve("root-eviltwin");
     Files.createDirectories(evilTwin);
     Files.writeString(evilTwin.resolve("secret.txt"), "evil");
 
-    // Path.of("..") + "root-eviltwin/secret.txt" = traverses up out of root
-    // then into the sibling.  normalize() should collapse this into
-    // tempDir/root-eviltwin/secret.txt which is outside files-root.
     McpSchema.CallToolResult result =
         call(Map.of("action", "read", "path", "../root-eviltwin/secret.txt"));
 
@@ -239,18 +297,16 @@ class AllotMintFilesToolTest {
 
   @Test
   void rejectsSymlinkEscape() throws IOException {
-    // Create a target outside the root
     Path outside = tempDir.resolve("outside.txt");
     Files.writeString(outside, "secret outside root");
 
-    // Create a symlink inside root pointing outside
     Path link = root.resolve("escape.link");
     try {
       Files.createSymbolicLink(link, outside);
     } catch (UnsupportedOperationException | IOException e) {
-      // Symlink creation requires privileges on some platforms (Windows without
-      // developer mode, restricted CI). Skip the test rather than failing.
-      assumeTrue(false, "Symlink creation not supported in this environment: " + e.getMessage());
+      assumeTrue(
+          false,
+          "Symlink creation not supported in this environment: " + e.getMessage());
       return;
     }
 
