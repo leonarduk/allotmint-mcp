@@ -2,8 +2,13 @@ package com.allotmint.mcp;
 
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
+import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,11 +24,24 @@ import org.springframework.context.annotation.Configuration;
 class StdioMcpServerConfig {
 
   @Bean
-  McpSyncServer stdioMcpSyncServer(McpJsonMapper jsonMapper) {
+  McpSyncServer stdioMcpSyncServer(
+      McpJsonMapper jsonMapper,
+      @Value("${allotmint.mcp.files.enabled:false}") boolean filesEnabled,
+      @Value("${allotmint.mcp.files.root:}") String filesRoot) {
     StdioServerTransportProvider transportProvider = new StdioServerTransportProvider(jsonMapper);
+    List<McpServerFeatures.SyncToolSpecification> tools = new ArrayList<>();
+    tools.add(EchoTool.specification());
+    if (filesEnabled) {
+      if (filesRoot == null || filesRoot.isBlank()) {
+        throw new IllegalStateException(
+            "allotmint.mcp.files.root must be set when allotmint.mcp.files.enabled=true");
+      }
+      tools.add(AllotMintFilesTool.specification(Path.of(filesRoot)));
+    }
+
     return McpServer.sync(transportProvider)
         .serverInfo("allotmint-mcp", "0.0.1")
-        .tools(EchoTool.specification())
+        .tools(tools.toArray(McpServerFeatures.SyncToolSpecification[]::new))
         .build();
   }
 }
