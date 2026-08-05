@@ -18,10 +18,10 @@ def get_ollama_endpoint() -> str:
 def get_ollama_model() -> str:
     """Return the Ollama model to use for reviews.
 
-    Defaults to 'qwen2.5-coder:14b' (a lightweight coder model). Override with
+    Defaults to 'qwen2.5-coder:7b' (a lightweight coder model). Override with
     OLLAMA_MODEL environment variable.
     """
-    return os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:14b")
+    return os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:7b")
 
 
 def list_available_models(endpoint: str) -> list[str]:
@@ -87,6 +87,12 @@ def fetch_ollama_review(endpoint: str, model: str, prompt: str) -> str:
         raise SystemExit(1) from exc
     except urllib.error.URLError as exc:
         print(f"ERROR: Ollama API request failed: {exc.reason}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    except TimeoutError as exc:
+        # A stall mid-read after the connection succeeds raises a bare
+        # TimeoutError rather than being wrapped in URLError, so it needs its
+        # own handler to avoid propagating as an uncaught exception.
+        print(f"ERROR: Ollama API request timed out: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
     except json.JSONDecodeError as exc:
         print(f"ERROR: Ollama API returned non-JSON response: {exc}", file=sys.stderr)

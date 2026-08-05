@@ -15,18 +15,14 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
-from ollama_common import (
-    fetch_ollama_review,
-    get_ollama_endpoint,
-    get_ollama_model,
-    validate_ollama_connection,
+from github_repo import get_repo_info
+from issue_review import parse_review_response
+from llm_common import (
+    describe_model_source,
+    fetch_review,
+    prompt_for_model_source,
+    validate_model_source,
 )
-
-# Windows consoles default to a legacy codepage (e.g. cp1252) that can't
-# encode the box-drawing characters used in the prompt() headers below.
-if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
 
 GITHUB_API_BASE = "https://api.github.com"
 
@@ -38,6 +34,10 @@ SECTIONS_FEATURE = [
     ("Why", "Why is this needed? What problem does it solve, or what value does it add?"),
     ("How", "Outline the intended approach at a high level."),
     (
+        "Files Affected",
+        "Specific file paths (from the repo root) to change, add, or delete. One per line.",
+    ),
+    (
         "Constraints",
         (
             "Anything the implementation must respect"
@@ -45,6 +45,14 @@ SECTIONS_FEATURE = [
         ),
     ),
     ("LLM tier", "Suggested AI agent tier: haiku / sonnet / opus"),
+    (
+        "Value",
+        "Suggested value tier: Low / Medium / High — High: real bugs, security/auth"
+        " gaps, financial-data correctness, or substantive features. Medium:"
+        " reliability/observability improvements with real blast radius, or"
+        " consolidated hardening/test-coverage backlogs. Low: single-file"
+        " test/rename/doc-only changes with no functional risk.",
+    ),
     (
         "Success looks like",
         "Checklist of acceptance criteria. Start each line with '- [ ] '.",
@@ -59,8 +67,20 @@ SECTIONS_BUG = [
     ("What", "What is broken? Describe the observed behavior."),
     ("Why", "Why does this matter? What's the user/dev impact?"),
     ("How", "Steps to reproduce, and (if known) what the fix likely involves."),
+    (
+        "Files Affected",
+        "Specific file paths (from the repo root) to change, add, or delete. One per line.",
+    ),
     ("Constraints", "Anything the fix must not break."),
     ("LLM tier", "Suggested AI agent tier: haiku / sonnet / opus"),
+    (
+        "Value",
+        "Suggested value tier: Low / Medium / High — High: real bugs, security/auth"
+        " gaps, financial-data correctness, or substantive features. Medium:"
+        " reliability/observability improvements with real blast radius, or"
+        " consolidated hardening/test-coverage backlogs. Low: single-file"
+        " test/rename/doc-only changes with no functional risk.",
+    ),
     (
         "Success looks like",
         "Checklist of acceptance criteria. Start each line with '- [ ] '.",
@@ -70,30 +90,6 @@ SECTIONS_BUG = [
         "What regressions or gaps would mean the fix failed. Start each line with '-'.",
     ),
 ]
-
-
-def get_repo_info() -> tuple[str, str]:
-    """Extract owner and repo from git remote origin."""
-    try:
-        result = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        url = result.stdout.strip()
-        if url.startswith("git@"):
-            match = re.search(r"github\.com[:/]([^/]+)/(.+?)(?:\.git)?$", url)
-        else:
-            match = re.search(r"github\.com/([^/]+)/(.+?)(?:\.git)?$", url)
-        if match:
-            repo = match.group(2)
-            if repo.endswith(".git"):
-                repo = repo[:-4]
-            return match.group(1), repo
-    except subprocess.CalledProcessError as exc:
-        raise ValueError(f"Could not determine GitHub repo from git remote origin: {exc}") from exc
-    raise ValueError("Could not determine GitHub repo from git remote origin")
 
 
 def get_github_token() -> str:
@@ -106,6 +102,7 @@ def get_github_token() -> str:
             ["gh", "auth", "token"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -198,6 +195,10 @@ def format_feature_body(sections: dict[str, str]) -> str:
         "",
         sections.get("How", ""),
         "",
+        "## Files Affected",
+        "",
+        sections.get("Files Affected", "Unknown"),
+        "",
         "## Constraints",
         "",
         sections.get("Constraints", "None"),
@@ -205,6 +206,10 @@ def format_feature_body(sections: dict[str, str]) -> str:
         "## LLM tier",
         "",
         sections.get("LLM tier", "sonnet"),
+        "",
+        "## Value",
+        "",
+        sections.get("Value", "Medium Value"),
         "",
         "## Success looks like",
         "",
@@ -232,6 +237,10 @@ def format_bug_body(sections: dict[str, str]) -> str:
         "",
         sections.get("How", ""),
         "",
+        "## Files Affected",
+        "",
+        sections.get("Files Affected", "Unknown"),
+        "",
         "## Constraints",
         "",
         sections.get("Constraints", "None"),
@@ -239,6 +248,10 @@ def format_bug_body(sections: dict[str, str]) -> str:
         "## LLM tier",
         "",
         sections.get("LLM tier", "sonnet"),
+        "",
+        "## Value",
+        "",
+        sections.get("Value", "Medium Value"),
         "",
         "## Success looks like",
         "",
@@ -290,6 +303,7 @@ def create_issue_via_gh(
     # Write body to a temp file so the CLI can read it safely on all platforms.
     import tempfile
 
+    body_path: str | None = None
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -314,8 +328,7 @@ def create_issue_via_gh(
         for label in labels:
             cmd.extend(["--label", label])
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        os.unlink(body_path)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=30)
 
         if result.returncode != 0:
             print(f"gh CLI failed: {result.stderr.strip()}", file=sys.stderr)
@@ -326,6 +339,9 @@ def create_issue_via_gh(
     except (OSError, subprocess.TimeoutExpired) as exc:
         print(f"gh CLI error: {exc}", file=sys.stderr)
         return None
+    finally:
+        if body_path and os.path.exists(body_path):
+            os.unlink(body_path)
 
 
 def derive_title_from_what(what: str) -> str | None:
@@ -359,49 +375,26 @@ def build_review_prompt(title: str, body: str) -> str:
     )
 
 
-def parse_review_response(
-    response: str, fallback_title: str, fallback_body: str
-) -> tuple[str, str]:
-    """Parse the LLM's TITLE/BODY response, falling back to the originals on any mismatch."""
-    match = re.search(r"TITLE:\s*(.*?)\s*\nBODY:\s*\n?(.*)", response, re.DOTALL)
-    if not match:
-        return fallback_title, fallback_body
-    title = match.group(1).strip()
-    body = match.group(2).strip()
-    if not title or not body:
-        return fallback_title, fallback_body
-    return title, body
-
-
-def offer_local_llm_review(title: str, body: str) -> tuple[str, str]:
-    """Optionally send the draft issue to a local Ollama model for review.
+def offer_llm_review(title: str, body: str) -> tuple[str, str]:
+    """Optionally send the draft issue to a local or cloud LLM for review.
 
     Returns the (possibly improved) title and body. Falls back to the
-    originals if the user declines, Ollama is unreachable, or the response
-    can't be parsed.
+    originals if the user declines, the chosen model is unreachable, or the
+    response can't be parsed.
     """
     try:
-        use_llm = (
-            input("\nUse local LLM (ollama) to review and improve this issue? [y/N] ")
-            .strip()
-            .lower()
-        )
+        use_llm = input("\nUse an LLM to review and improve this issue? [Y/n] ").strip().lower()
     except EOFError:
         use_llm = ""
-    if use_llm not in ("y", "yes"):
+    if use_llm not in ("y", "yes", ""):
         return title, body
 
-    endpoint = get_ollama_endpoint()
-    model = get_ollama_model()
-
-    if not validate_ollama_connection(endpoint):
-        print(
-            f"WARNING: Could not reach Ollama at {endpoint}; skipping LLM review.", file=sys.stderr
-        )
+    model_source = prompt_for_model_source()
+    if not validate_model_source(model_source):
         return title, body
 
-    print(f"Reviewing with {model} at {endpoint}...")
-    response = fetch_ollama_review(endpoint, model, build_review_prompt(title, body))
+    print(f"Reviewing with {describe_model_source(model_source)}...")
+    response = fetch_review(model_source, build_review_prompt(title, body))
     if not response.strip():
         print("WARNING: LLM review returned no content; keeping original issue.", file=sys.stderr)
         return title, body
@@ -418,10 +411,10 @@ def offer_local_llm_review(title: str, body: str) -> tuple[str, str]:
     print("=" * 60)
 
     try:
-        apply = input("Use this revised title/body? [y/N] ").strip().lower()
+        apply = input("Use this revised title/body? [Y/n] ").strip().lower()
     except EOFError:
         apply = ""
-    if apply in ("y", "yes"):
+    if apply in ("", "y", "yes"):
         return suggested_title, suggested_body
     return title, body
 
@@ -495,7 +488,9 @@ def main() -> None:
     # Pick issue type → determines template and default label
     issue_type = pick_issue_type()
     sections_def = SECTIONS_FEATURE if issue_type == TEMPLATE_FEATURE else SECTIONS_BUG
-    default_label = "enhancement" if issue_type == TEMPLATE_FEATURE else "bug"
+    default_label = (
+        "enhancement, Medium Value" if issue_type == TEMPLATE_FEATURE else "bug, Medium Value"
+    )
 
     # Collect sections
     sections: dict[str, str] = {}
@@ -503,12 +498,16 @@ def main() -> None:
         default = ""
         if label == "LLM tier":
             default = "sonnet"
+        elif label == "Value":
+            default = "Medium Value"
         elif label == "Success looks like":
             default = "- [ ] "
         elif label == "Failure looks like":
             default = "-"
         elif label == "Constraints":
             default = "None"
+        elif label == "Files Affected":
+            default = "Unknown"
 
         value = prompt(label, hint, default=default)
         sections[label] = value
@@ -538,8 +537,8 @@ def main() -> None:
     else:
         body = format_feature_body(sections)
 
-    # Optionally improve with a local LLM before creating
-    title, body = offer_local_llm_review(title, body)
+    # Optionally improve with an LLM before creating
+    title, body = offer_llm_review(title, body)
 
     # Confirm and create
     confirm_and_create(owner, repo, title, body, labels, token)
