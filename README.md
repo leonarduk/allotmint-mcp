@@ -1,75 +1,240 @@
 # allotmint-mcp
 
-Standalone MCP server for [AllotMint](https://github.com/leonarduk/allotmint) built with Spring Boot 4.1.0, Java 25, and the [MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk). Registers the same tool set on both a stdio transport (for Claude Desktop / MCP Inspector) and an HTTP/streamable transport (`/mcp`), so a single process can serve either.
+Standalone MCP server for [AllotMint](https://github.com/leonarduk/allotmint), built with Spring Boot 4.1.0, Java 25, and the [MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk). It exposes the same tools over stdio (for Claude Desktop and MCP Inspector) and HTTP streamable transport (`/mcp`).
 
-## Status
+## Prerequisites
 
-Proof of concept. The MCP plumbing (stdio + HTTP transports, JSON mapping, exception handling, Actuator health/metrics) is wired up and tested. Both transports expose the same tools:
+- Java 25 or later on `PATH` (`java -version` should report 25+)
+- A running AllotMint backend; the default URL is `http://localhost:8000`
+- Claude Desktop if you want to use the stdio MCP integration
 
-- `echo` — verifies the transport end to end.
-- `allotmint_health` — checks connectivity to the configured AllotMint backend.
-- `allotmint_instrument` — looks up an instrument. `action` is required: `search` (query required) matches by ticker/name; `detail` (ticker required) merges price history, portfolio positions, and recent news; `prices` (ticker required) returns the latest quote; `news` (ticker required) returns recent headlines. An optional `exchange` is appended to `ticker` when `ticker` doesn't already carry a suffix (e.g. `ticker=VWRL`, `exchange=L` becomes `VWRL.L`).
-- `allotmint_market` — returns the combined market overview, standalone movers, or the index portion of the overview.
-- `allotmint_portfolio` — returns a per-owner summary, exposure breakdown, or flat holdings list. `owner` is required; valid slugs are available from the AllotMint backend's `GET /owners` endpoint. Optional `account_type` and `currency` arguments filter the result client-side.
+Maven does not need to be installed: the repository includes the Maven wrapper.
 
-Set `ALLOTMINT_API_BASE` to override the default backend URL of `http://localhost:8000`.
+## Build
 
-## Running
+From a fresh clone:
 
-Stdio transport (default — how Claude Desktop and the MCP Inspector launch the process):
-
-```
-./mvnw spring-boot:run
+```bash
+git clone https://github.com/leonarduk/allotmint-mcp.git
+cd allotmint-mcp
+./mvnw clean package
 ```
 
-HTTP transport, exposed at `/mcp`, plus Actuator `health`/`info`/`metrics` endpoints:
+On Windows PowerShell, run `./mvnw.cmd clean package` instead. The build produces one executable fat JAR:
 
+```text
+target/allotmint-mcp-server.jar
 ```
-./mvnw spring-boot:run -Dspring-boot.run.profiles=http
+
+## Run
+
+The default profile uses stdio, so the process waits silently for MCP messages on standard input:
+
+```bash
+java -jar target/allotmint-mcp-server.jar
 ```
 
-The two transports register the same `McpSyncServer` tool set; HTTP is off by default because an embedded servlet container can collide with port hints an MCP client sets via environment variables for its own use (Spring Boot's relaxed env binding maps `SERVER_PORT` straight to `server.port`).
+Set `ALLOTMINT_API_BASE` to use a backend other than `http://localhost:8000`.
 
-## Connecting to an authenticated AllotMint backend
+To run the optional HTTP transport at `/mcp`, with Actuator health, info, and metrics endpoints:
 
-Set the backend URL and a backend-issued JWT before starting the MCP server:
+```bash
+java -jar target/allotmint-mcp-server.jar --spring.profiles.active=http
+```
+
+## Configure Claude Desktop
+
+Build the JAR, then add the following entry to Claude Desktop's configuration. Replace the JAR path with its absolute path; do not use a relative path because Claude Desktop does not launch servers from the repository directory.
+
+```json
+{
+  "mcpServers": {
+    "allotmint": {
+      "command": "java",
+      "args": [
+        "-jar",
+        "/absolute/path/to/allotmint-mcp/target/allotmint-mcp-server.jar"
+      ],
+      "env": {
+        "ALLOTMINT_API_BASE": "http://localhost:8000"
+      }
+    }
+  }
+}
+```
+
+On Windows, use an escaped absolute path, for example:
+
+```json
+{
+  "mcpServers": {
+    "allotmint": {
+      "command": "java",
+      "args": [
+        "-jar",
+        "C:\\path\\to\\allotmint-mcp\\target\\allotmint-mcp-server.jar"
+      ],
+      "env": {
+        "ALLOTMINT_API_BASE": "http://localhost:8000"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving the configuration. The `echo` tool is available as a transport smoke test; the four AllotMint tools are documented below.
+
+## Authentication
+
+### Local backend
+
+Start the AllotMint backend with `DISABLE_AUTH=true`. The MCP server does not need an auth token in this mode:
+
+```bash
+export ALLOTMINT_API_BASE="http://localhost:8000"
+java -jar target/allotmint-mcp-server.jar
+```
+
+`DISABLE_AUTH` is an AllotMint backend setting, not an allotmint-mcp setting.
+
+### AWS backend
+
+Set the backend URL and an AllotMint backend-issued JWT before starting the MCP server:
 
 ```bash
 export ALLOTMINT_API_BASE="https://your-allotmint-backend.example.com"
 export ALLOTMINT_MCP_AUTH_TOKEN="<backend-issued-jwt>"
-./mvnw spring-boot:run
+java -jar target/allotmint-mcp-server.jar
 ```
 
-AllotMint currently has no device-flow or service-account login for a headless MCP server. To obtain the token:
+To obtain the token:
 
 1. Sign in to the AllotMint web application with Google.
 2. Open the browser's Developer Tools and select the **Network** panel.
-3. Trigger an authenticated API request in AllotMint, then select that request.
-4. In **Request Headers**, copy only the value after `Bearer ` from the `Authorization` header.
-5. Set that value as `ALLOTMINT_MCP_AUTH_TOKEN` and restart the MCP server.
+3. Trigger an authenticated AllotMint API request and select it.
+4. Copy only the value after `Bearer ` in the request's `Authorization` header.
+5. Set that value as `ALLOTMINT_MCP_AUTH_TOKEN`, then restart the MCP server.
 
-This is AllotMint's own backend-issued HS256 JWT, not the Google ID token used during login. Its default lifetime is approximately **15 minutes**, so repeat the extraction and restart the MCP server when it expires. Missing and expired tokens are reported as:
+This is AllotMint's backend-issued HS256 JWT, not the Google ID token. Its default lifetime is approximately **15 minutes**, so repeat the extraction and restart the MCP server after it expires. Do not commit the token, include it in logs, or paste it into bug reports.
 
-```text
-Auth token missing or expired. Run 'allotmint-mcp login' or set ALLOTMINT_MCP_AUTH_TOKEN.
+Claude Desktop can pass the AWS settings in the server's `env` object:
+
+```json
+"env": {
+  "ALLOTMINT_API_BASE": "https://your-allotmint-backend.example.com",
+  "ALLOTMINT_MCP_AUTH_TOKEN": "<backend-issued-jwt>"
+}
 ```
 
-The `allotmint-mcp login` command is not implemented yet; long-lived API keys and device-flow OAuth are also deferred. Until one of those mechanisms exists, copying the short-lived token from Developer Tools is the supported AWS workflow. Treat the token as a password: do not commit it, paste it into logs, or include it in bug reports.
+AllotMint does not yet provide device-flow or service-account login for this headless server. The error message may mention `allotmint-mcp login`, but that command is not implemented; copying the short-lived token is currently the supported AWS workflow.
 
-## Build & quality gates
+## Tool reference
 
+All schemas use JSON objects. Except for `allotmint_health`, unknown properties are rejected.
+
+### `allotmint_health`
+
+Checks connectivity to the configured AllotMint backend and reports its version.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
 ```
+
+### `allotmint_instrument`
+
+Looks up instruments by ticker or name.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["search", "detail", "prices", "news"]
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ticker": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exchange": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": ["action"],
+  "additionalProperties": false
+}
+```
+
+`query` is required when `action` is `search`. `ticker` is required for `detail`, `prices`, and `news`. `exchange` is an optional suffix appended when `ticker` has no suffix: `ticker=VWRL` plus `exchange=L` becomes `VWRL.L`.
+
+### `allotmint_market`
+
+Returns the combined market overview, standalone movers, or index data.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["overview", "movers", "indices"]
+    }
+  },
+  "required": ["action"],
+  "additionalProperties": false
+}
+```
+
+### `allotmint_portfolio`
+
+Returns one owner's summary, exposure breakdown, or flat holdings list.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["summary", "exposure", "holdings"]
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "account_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "currency": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": ["action", "owner"],
+  "additionalProperties": false
+}
+```
+
+Get valid `owner` slugs from the AllotMint backend's `GET /owners` endpoint. `account_type` and `currency` are optional case-insensitive client-side filters.
+
+## Build and quality gates
+
+```bash
 ./mvnw verify
 ```
 
-This runs the test suite plus the checks wired into `verify`: Spotless (Google Java Format), JaCoCo coverage reporting, and OWASP `dependency-check` (fails the build on CVSS ≥ 9 findings). CI runs the same `verify` target on every push/PR to `main` via GitHub Actions, with Dependabot keeping Maven and Actions dependencies current.
+This runs the test suite, Spotless (Google Java Format), JaCoCo reporting, and OWASP dependency-check. GitHub Actions runs the same target for pushes and pull requests to `main` and caches Maven dependencies and the dependency-check database.
 
-## Contributing
+Before committing Java changes, run:
 
-Code style is enforced by [Spotless](https://github.com/diffplug/spotless) (Google Java Format). Before committing, run:
-
-```
+```bash
 ./mvnw spotless:apply
 ```
-
-`mvn verify` fails the build if the code isn't formatted.
