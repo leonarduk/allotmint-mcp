@@ -162,12 +162,6 @@
 						<phase>verify</phase>
 						<goals>
 							<goal>report</goal>
-						</goals>
-					</execution>
-					<execution>
-						<id>check</id>
-						<phase>verify</phase>
-						<goals>
 							<goal>check</goal>
 						</goals>
 						<configuration>
@@ -175,10 +169,12 @@
 								<rule>
 									<element>BUNDLE</element>
 									<limits>
+										<!-- Baseline instruction coverage measured via `mvn verify` was 78.81%; -->
+										<!-- threshold set with a small buffer below that to guard against regression. -->
 										<limit>
 											<counter>INSTRUCTION</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.70</minimum>
+											<minimum>0.75</minimum>
 										</limit>
 									</limits>
 								</rule>
