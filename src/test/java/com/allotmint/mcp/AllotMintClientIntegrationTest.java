@@ -15,14 +15,22 @@ import org.springframework.web.client.RestClient;
  * or network-level issues that only show up against the live service (see issue #150).
  *
  * <p>Every test here calls {@link Assumptions#assumeTrue} first and skips cleanly - rather than
- * failing - unless {@code ALLOTMINT_MCP_AUTH_TOKEN} and {@code ALLOTMINT_API_BASE} are both set in
- * the environment. The token is backend-issued and short-lived (~15 minutes; see the "AWS backend"
- * section of {@code README.md} for how to obtain one), so it is never hard-coded or logged here -
- * only read from the environment at test time.
+ * failing - unless {@code ALLOTMINT_MCP_AUTH_TOKEN} and {@code ALLOTMINT_API_BASE} are both
+ * resolvable, either as environment variables or as JVM system properties of the same name (see
+ * {@link #resolve(String)}). The token is backend-issued and short-lived (~15 minutes; see the "AWS
+ * backend" section of {@code README.md} for how to obtain one), so it is never hard-coded or logged
+ * here - only read at test time.
  *
  * <p>Tagged {@code integration} so the {@code maven-surefire-plugin} configuration in {@code
  * pom.xml} excludes it from the default {@code mvn test} / {@code mvn verify} run. To run it
- * explicitly against a live backend:
+ * explicitly against a live backend, either as environment variables:
+ *
+ * <pre>{@code
+ * ALLOTMINT_API_BASE=https://your-allotmint-backend.example.com ALLOTMINT_MCP_AUTH_TOKEN=<backend-issued-jwt> mvn test -Pintegration
+ * }</pre>
+ *
+ * <p>or as {@code -D} system properties on the Maven command line (Surefire forwards these into the
+ * forked test JVM, so both forms work identically):
  *
  * <pre>{@code
  * mvn test -Pintegration -DALLOTMINT_API_BASE=https://your-allotmint-backend.example.com -DALLOTMINT_MCP_AUTH_TOKEN=<backend-issued-jwt>
@@ -31,14 +39,14 @@ import org.springframework.web.client.RestClient;
 @Tag("integration")
 class AllotMintClientIntegrationTest {
 
-  private static final String AUTH_TOKEN = System.getenv("ALLOTMINT_MCP_AUTH_TOKEN");
-  private static final String API_BASE = System.getenv("ALLOTMINT_API_BASE");
+  private static final String AUTH_TOKEN = resolve("ALLOTMINT_MCP_AUTH_TOKEN");
+  private static final String API_BASE = resolve("ALLOTMINT_API_BASE");
 
   // Only used by the invalid-token test below, which never needs to resolve to a real owner:
   // auth is expected to be rejected before an owner lookup would even happen. Overridable in case
   // a future backend validates the owner slug before the token.
   private static final String TEST_OWNER =
-      System.getenv().getOrDefault("ALLOTMINT_TEST_OWNER", "integration-test-owner");
+      resolveOrDefault("ALLOTMINT_TEST_OWNER", "integration-test-owner");
 
   @Test
   void healthCheckSucceedsAgainstLiveBackendWithValidToken() {
@@ -83,5 +91,21 @@ class AllotMintClientIntegrationTest {
 
   private static boolean hasText(String value) {
     return value != null && !value.isBlank();
+  }
+
+  /**
+   * Resolves {@code name} from the environment first, falling back to the JVM system property of
+   * the same name. Supports both {@code NAME=value mvn ...} and {@code mvn ... -DNAME=value}
+   * invocation styles, since Maven Surefire forwards command-line {@code -D} user properties into
+   * the forked test JVM as system properties rather than environment variables.
+   */
+  private static String resolve(String name) {
+    String envValue = System.getenv(name);
+    return hasText(envValue) ? envValue : System.getProperty(name);
+  }
+
+  private static String resolveOrDefault(String name, String defaultValue) {
+    String value = resolve(name);
+    return hasText(value) ? value : defaultValue;
   }
 }
