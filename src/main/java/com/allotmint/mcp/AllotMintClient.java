@@ -125,6 +125,76 @@ class AllotMintClient {
   }
 
   /**
+   * Matches instruments by ticker or name via {@code GET /instrument/search?q=...}. Returns a
+   * (possibly empty) list of {@code {ticker, name, sector, region}} maps.
+   */
+  List<Map<String, Object>> instrumentSearch(String query) {
+    List<Map<String, Object>> response =
+        restClient
+            .get()
+            .uri(
+                builder ->
+                    builder.pathSegment("instrument", "search").queryParam("q", query).build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(LIST_RESPONSE);
+    return response == null ? List.of() : response;
+  }
+
+  /**
+   * Returns price history and portfolio positions for one ticker via {@code GET
+   * /instrument?ticker=...&format=json}. Despite living at the router root, this is a per-ticker
+   * detail endpoint, not portfolio-scoped.
+   */
+  Map<String, Object> instrumentDetail(String ticker) {
+    Map<String, Object> response =
+        restClient
+            .get()
+            .uri(
+                builder ->
+                    builder
+                        .pathSegment("instrument")
+                        .queryParam("ticker", ticker)
+                        .queryParam("format", "json")
+                        .build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(OBJECT_MAP);
+    return response == null ? Map.of() : response;
+  }
+
+  /**
+   * Returns the latest quote for one ticker via {@code GET /api/quotes?symbols=...}. The backend
+   * endpoint accepts a comma-separated list, but this client only ever requests a single symbol.
+   */
+  List<Map<String, Object>> quotes(String ticker) {
+    List<Map<String, Object>> response =
+        restClient
+            .get()
+            .uri(
+                builder ->
+                    builder.pathSegment("api", "quotes").queryParam("symbols", ticker).build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(LIST_RESPONSE);
+    return response == null ? List.of() : response;
+  }
+
+  /**
+   * Returns recent headlines for one ticker via {@code GET /news?ticker=...}, most recent first.
+   */
+  List<Map<String, Object>> news(String ticker) {
+    List<Map<String, Object>> response =
+        restClient
+            .get()
+            .uri(builder -> builder.pathSegment("news").queryParam("ticker", ticker).build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(LIST_RESPONSE);
+    return response == null ? List.of() : response;
+  }
+
+  /**
    * Maps a 4xx/5xx response into an {@link AllotMintApiException} carrying a readable message
    * (status code + backend's error body if present), so it never leaks a raw stack trace back
    * through the MCP tool layer.
