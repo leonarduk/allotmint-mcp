@@ -5,11 +5,13 @@ import java.nio.charset.StandardCharsets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -21,16 +23,23 @@ import org.springframework.web.client.RestClientException;
 @Component
 class AllotMintClient {
 
+  static final String AUTH_ERROR_MESSAGE =
+      "Auth token missing or expired. Run 'allotmint-mcp login' or set"
+          + " ALLOTMINT_MCP_AUTH_TOKEN.";
+
   private static final Logger log = LoggerFactory.getLogger(AllotMintClient.class);
 
   private final RestClient restClient;
   private final String baseUrl;
+  private final String authToken;
 
   AllotMintClient(
       RestClient allotMintRestClient,
-      @Value("${allotmint.api.base-url:http://localhost:8000}") String baseUrl) {
+      @Value("${allotmint.api.base-url:http://localhost:8000}") String baseUrl,
+      @Value("${allotmint.mcp.auth-token:}") String authToken) {
     this.restClient = allotMintRestClient;
     this.baseUrl = baseUrl;
+    this.authToken = StringUtils.hasText(authToken) ? authToken.trim() : null;
   }
 
   /**
@@ -47,10 +56,10 @@ class AllotMintClient {
    */
   AllotMintHealthStatus health() {
     try {
+      RestClient.RequestHeadersSpec<?> request = restClient.get().uri("/openapi.json");
+      addAuthorization(request);
       OpenApiDocument doc =
-          restClient
-              .get()
-              .uri("/openapi.json")
+          request
               .retrieve()
               .onStatus(HttpStatusCode::isError, this::mapError)
               .body(OpenApiDocument.class);
@@ -68,10 +77,21 @@ class AllotMintClient {
    * through the MCP tool layer.
    */
   private void mapError(HttpRequest request, ClientHttpResponse response) throws IOException {
+    if (response.getStatusCode().value() == 401) {
+      throw new AllotMintApiException(401, AUTH_ERROR_MESSAGE);
+    }
+
     String body = StreamUtils.copyToString(response.getBody(), StandardCharsets.UTF_8);
     throw new AllotMintApiException(
         response.getStatusCode().value(),
         "AllotMint backend returned %d: %s".formatted(response.getStatusCode().value(), body));
+  }
+
+  /** Adds the configured backend-issued JWT without logging or otherwise exposing it. */
+  private void addAuthorization(RestClient.RequestHeadersSpec<?> request) {
+    if (authToken != null) {
+      request.header(HttpHeaders.AUTHORIZATION, "Bearer " + authToken);
+    }
   }
 
   /** Minimal slice of an OpenAPI document - only the fields {@link #health()} needs. */
