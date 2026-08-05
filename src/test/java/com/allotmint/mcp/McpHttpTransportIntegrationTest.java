@@ -36,12 +36,24 @@ class McpHttpTransportIntegrationTest {
             .endpoint("/mcp")
             .build();
     client = McpClient.sync(transport).build();
-    client.initialize();
+    try {
+      client.initialize();
+    } catch (RuntimeException | Error initializationFailure) {
+      try {
+        client.closeGracefully();
+      } catch (RuntimeException cleanupFailure) {
+        initializationFailure.addSuppressed(cleanupFailure);
+      }
+      client = null;
+      throw initializationFailure;
+    }
   }
 
   @AfterEach
   void disconnect() {
-    client.closeGracefully();
+    if (client != null) {
+      client.closeGracefully();
+    }
   }
 
   @Test
@@ -49,7 +61,7 @@ class McpHttpTransportIntegrationTest {
     McpSchema.ListToolsResult tools = client.listTools();
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
-        .containsExactly("echo", "allotmint_instrument");
+        .containsExactly("echo", "allotmint_health", "allotmint_instrument", "allotmint_market");
 
     McpSchema.CallToolResult result =
         client.callTool(

@@ -4,12 +4,14 @@ Standalone MCP server for [AllotMint](https://github.com/leonarduk/allotmint) bu
 
 ## Status
 
-Proof of concept. The MCP plumbing (stdio + HTTP transports, JSON mapping, exception handling, Actuator health/metrics) is wired up and tested. Both transports expose the same tools:
+Proof of concept. The MCP plumbing (stdio + HTTP transports, JSON mapping, exception handling, Actuator health/metrics) is wired up and tested. The server currently exposes:
 
-- `echo` — verifies the transport end to end.
+- `echo` — proves the transport works end to end
+- `allotmint_health` — checks connectivity to the configured AllotMint backend
 - `allotmint_instrument` — looks up an instrument. `action` is required: `search` (query required) matches by ticker/name; `detail` (ticker required) merges price history, portfolio positions, and recent news; `prices` (ticker required) returns the latest quote; `news` (ticker required) returns recent headlines. An optional `exchange` is appended to `ticker` when `ticker` doesn't already carry a suffix (e.g. `ticker=VWRL`, `exchange=L` becomes `VWRL.L`).
+- `allotmint_market` — returns the combined market overview, standalone movers, or the index portion of the overview
 
-More AllotMint API and local file-access tools described in the repo summary are not implemented yet.
+Set `ALLOTMINT_API_BASE` to override the default backend URL of `http://localhost:8000`.
 
 ## Running
 
@@ -26,6 +28,32 @@ HTTP transport, exposed at `/mcp`, plus Actuator `health`/`info`/`metrics` endpo
 ```
 
 The two transports register the same `McpSyncServer` tool set; HTTP is off by default because an embedded servlet container can collide with port hints an MCP client sets via environment variables for its own use (Spring Boot's relaxed env binding maps `SERVER_PORT` straight to `server.port`).
+
+## Connecting to an authenticated AllotMint backend
+
+Set the backend URL and a backend-issued JWT before starting the MCP server:
+
+```bash
+export ALLOTMINT_API_BASE="https://your-allotmint-backend.example.com"
+export ALLOTMINT_MCP_AUTH_TOKEN="<backend-issued-jwt>"
+./mvnw spring-boot:run
+```
+
+AllotMint currently has no device-flow or service-account login for a headless MCP server. To obtain the token:
+
+1. Sign in to the AllotMint web application with Google.
+2. Open the browser's Developer Tools and select the **Network** panel.
+3. Trigger an authenticated API request in AllotMint, then select that request.
+4. In **Request Headers**, copy only the value after `Bearer ` from the `Authorization` header.
+5. Set that value as `ALLOTMINT_MCP_AUTH_TOKEN` and restart the MCP server.
+
+This is AllotMint's own backend-issued HS256 JWT, not the Google ID token used during login. Its default lifetime is approximately **15 minutes**, so repeat the extraction and restart the MCP server when it expires. Missing and expired tokens are reported as:
+
+```text
+Auth token missing or expired. Run 'allotmint-mcp login' or set ALLOTMINT_MCP_AUTH_TOKEN.
+```
+
+The `allotmint-mcp login` command is not implemented yet; long-lived API keys and device-flow OAuth are also deferred. Until one of those mechanisms exists, copying the short-lived token from Developer Tools is the supported AWS workflow. Treat the token as a password: do not commit it, paste it into logs, or include it in bug reports.
 
 ## Build & quality gates
 
