@@ -42,3 +42,5 @@ build/
 issues/
 __pycache__/
 *.pyc
+.venv/
+/scripts/spikes/pgvector_research/fixtures/key_findings.md
