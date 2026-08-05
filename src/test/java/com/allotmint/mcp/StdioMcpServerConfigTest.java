@@ -1,6 +1,7 @@
 package com.allotmint.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -11,7 +12,8 @@ class StdioMcpServerConfigTest {
 
   private final ApplicationContextRunner contextRunner =
       new ApplicationContextRunner()
-          .withUserConfiguration(StdioMcpServerConfig.class, McpJsonConfig.class);
+          .withUserConfiguration(StdioMcpServerConfig.class, McpJsonConfig.class)
+          .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class));
 
   /**
    * Asserts on bean *definition* presence via the raw bean factory rather than {@code
