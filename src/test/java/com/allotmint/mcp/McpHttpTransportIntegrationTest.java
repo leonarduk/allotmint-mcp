@@ -36,12 +36,24 @@ class McpHttpTransportIntegrationTest {
             .endpoint("/mcp")
             .build();
     client = McpClient.sync(transport).build();
-    client.initialize();
+    try {
+      client.initialize();
+    } catch (RuntimeException | Error initializationFailure) {
+      try {
+        client.closeGracefully();
+      } catch (RuntimeException cleanupFailure) {
+        initializationFailure.addSuppressed(cleanupFailure);
+      }
+      client = null;
+      throw initializationFailure;
+    }
   }
 
   @AfterEach
   void disconnect() {
-    client.closeGracefully();
+    if (client != null) {
+      client.closeGracefully();
+    }
   }
 
   @Test
