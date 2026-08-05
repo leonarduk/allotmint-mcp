@@ -6,7 +6,7 @@ import re
 import sys
 from pathlib import Path
 
-from review_common import PROVIDER_OUTAGE_MARKER
+from review_common import EMPTY_REVIEW_MARKER, PROVIDER_OUTAGE_MARKER
 
 # Primary format: bold verdict, optionally with backticks inside the bold markers, e.g.
 # `**APPROVE**` or `` **`APPROVE`** ``. Matched anywhere in the text (first occurrence wins),
@@ -59,9 +59,10 @@ def main(review_file: str, provider_name: str) -> int:
     Returns:
         0 if verdict is APPROVE, 1 if REQUEST CHANGES or no verdict found,
         2 if the review was skipped due to a provider outage (see
-        `review_common.PROVIDER_OUTAGE_MARKER`) — a soft-fail distinct from a
-        genuine review failure, so the calling workflow doesn't block the
-        merge gate over an infra incident.
+        `review_common.PROVIDER_OUTAGE_MARKER`) or an empty provider response
+        (see `review_common.EMPTY_REVIEW_MARKER`) — both soft-fails distinct
+        from a genuine review failure, so the calling workflow doesn't block
+        the merge gate over an infra incident.
     """
     try:
         review_text = Path(review_file).read_text()
@@ -75,6 +76,10 @@ def main(review_file: str, provider_name: str) -> int:
 
     if PROVIDER_OUTAGE_MARKER in review_text:
         print(f"⚠ {provider_name} review skipped: provider outage (see log for details)")
+        return 2
+
+    if EMPTY_REVIEW_MARKER in review_text:
+        print(f"⚠ {provider_name} review skipped: empty provider response (see log for details)")
         return 2
 
     verdict = extract_verdict(review_text)
