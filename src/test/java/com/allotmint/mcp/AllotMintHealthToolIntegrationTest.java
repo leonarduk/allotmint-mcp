@@ -1,42 +1,70 @@
 package com.allotmint.mcp;
 
-import org.junit.jupiter.api.Disabled;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.spec.McpSchema;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 /**
- * TODO(#4): integration test for {@code allotmint_health}, per the issue's success
- * criteria:
+ * Exercises {@code allotmint_health} against a real AllotMint backend.
  *
- * "Integration test passes against a local AllotMint backend started with
- * {@code DISABLE_AUTH=true}."
+ * <p>Per the issue: "Integration test passes against a local AllotMint backend started with {@code
+ * DISABLE_AUTH=true}." Start the backend first, e.g. from the {@code allotmint} repo:
  *
- * Suggested approach:
- * <ol>
- *   <li>Start the AllotMint backend out-of-process before the test class (a shell
- *       script the test shells out to, or a manually-started process the CI job
- *       brings up first - decide which fits this repo's CI setup) with
- *       {@code DISABLE_AUTH=true} so no auth token is needed.</li>
- *   <li>Point {@code allotmint.api.base-url} at that instance, e.g. via
- *       {@code @SpringBootTest(properties = "allotmint.api.base-url=http://localhost:8000")}
- *       or a {@code src/test/resources/application-integration.properties} profile.</li>
- *   <li>Call the tool the same way an MCP client would - either invoke
- *       {@code AllotMintHealthTool.specification(client)}'s callHandler directly, or
- *       (closer to the real thing) drive it through {@code McpSyncServer} /
- *       {@code McpClient} over stdio, matching how {@link AllotmintMcpApplicationTests}
- *       exercises context startup.</li>
- *   <li>Assert the result is {@code {reachable: true, version: ..., baseUrl: ...}}.</li>
- * </ol>
+ * <pre>
+ *   DISABLE_AUTH=true bash scripts/bash/run-local-api.sh
+ * </pre>
  *
- * Left {@code @Disabled} because it depends on a real AllotMint backend being
- * reachable, which isn't available in a plain {@code mvn test} run - un-disable once
- * wired into whatever local/CI harness starts that backend.
+ * then point this test at it, e.g. {@code ALLOTMINT_API_BASE=http://localhost:8000 mvn test
+ * -Dtest=AllotMintHealthToolIntegrationTest}. No auth token is needed since the backend's {@code
+ * /openapi.json} route (what {@link AllotMintClient#health()} calls) isn't gated.
+ *
+ * <p>When no backend is reachable at {@code allotmint.api.base-url} - e.g. a plain {@code mvn test}
+ * in CI with nothing else running - the test skips itself via {@link
+ * org.junit.jupiter.api.Assumptions#assumeTrue} rather than failing, since that's an environment
+ * gap, not a code defect.
  */
 @SpringBootTest
 class AllotMintHealthToolIntegrationTest {
 
-    @Test
-    @Disabled("TODO(#4): implement against a local AllotMint backend started with DISABLE_AUTH=true")
-    void allotmintHealthReportsReachableBackend() {
-    }
+  @Autowired private AllotMintClient allotMintClient;
+
+  @Test
+  void allotmintHealthReportsReachableBackend() {
+    AllotMintHealthStatus status = allotMintClient.health();
+    assumeTrue(
+        status.reachable(),
+        "No AllotMint backend reachable at "
+            + status.baseUrl()
+            + " - start one locally with DISABLE_AUTH=true to run this test "
+            + "(see class Javadoc)");
+
+    assertThat(status.version()).isNotBlank();
+    assertThat(status.baseUrl()).isNotBlank();
+  }
+
+  @Test
+  void allotmintHealthToolReturnsStructuredResult() {
+    AllotMintHealthStatus status = allotMintClient.health();
+    assumeTrue(status.reachable(), "No AllotMint backend reachable at " + status.baseUrl());
+
+    McpServerFeatures.SyncToolSpecification spec =
+        AllotMintHealthTool.specification(allotMintClient);
+    McpSchema.CallToolResult result =
+        spec.callHandler().apply(null, new McpSchema.CallToolRequest("allotmint_health", Map.of()));
+
+    assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);
+    assertThat(result.structuredContent()).isInstanceOf(Map.class);
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> structured = (Map<String, Object>) result.structuredContent();
+    assertThat(structured).containsEntry("reachable", true);
+    assertThat(structured).containsKey("version");
+    assertThat(structured).containsEntry("baseUrl", status.baseUrl());
+  }
 }
