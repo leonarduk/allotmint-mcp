@@ -37,10 +37,14 @@ final class AllotMintPortfolioTool {
 
     Map<String, Object> inputSchema =
         Map.of(
-            "type", "object",
-            "properties", properties,
-            "required", List.of(ACTION, OWNER),
-            "additionalProperties", false);
+            "type",
+            "object",
+            "properties",
+            properties,
+            "required",
+            List.of(ACTION, OWNER),
+            "additionalProperties",
+            false);
 
     McpSchema.Tool tool =
         McpSchema.Tool.builder("allotmint_portfolio", inputSchema)
@@ -155,7 +159,8 @@ final class AllotMintPortfolioTool {
   private static Map<String, Object> holdings(
       AllotMintClient client, String owner, String accountType, String currency) {
     Map<String, Object> portfolio = client.portfolio(owner);
-    List<Map<String, Object>> holdings = flatten(filteredAccounts(portfolio, accountType, currency));
+    List<Map<String, Object>> holdings =
+        flatten(filteredAccounts(portfolio, accountType, currency));
     holdings.sort(
         (left, right) ->
             decimal(right.get("market_value_gbp"))

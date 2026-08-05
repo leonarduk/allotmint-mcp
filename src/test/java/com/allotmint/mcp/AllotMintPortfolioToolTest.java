@@ -31,8 +31,8 @@ class AllotMintPortfolioToolTest {
   @Test
   void schemaRequiresActionAndOwner() {
     assertThat(specification.tool().name()).isEqualTo("allotmint_portfolio");
-    assertThat(specification.tool().inputSchema().required())
-        .containsExactly("action", "owner");
+    assertThat(specification.tool().inputSchema().get("required"))
+        .isEqualTo(List.of("action", "owner"));
   }
 
   @Test
@@ -47,11 +47,9 @@ class AllotMintPortfolioToolTest {
   @Test
   void summaryComposesPortfolioAndPerformance() {
     when(client.portfolio("steve")).thenReturn(portfolio());
-    when(client.performance("steve"))
-        .thenReturn(Map.of("owner", "steve", "max_drawdown", -0.12));
+    when(client.performance("steve")).thenReturn(Map.of("owner", "steve", "max_drawdown", -0.12));
 
-    McpSchema.CallToolResult result =
-        call(Map.of("action", "summary", "owner", "steve"));
+    McpSchema.CallToolResult result = call(Map.of("action", "summary", "owner", "steve"));
 
     Map<String, Object> structured = structured(result);
     assertThat(structured)
@@ -95,8 +93,7 @@ class AllotMintPortfolioToolTest {
                     "currency", "usd")));
 
     @SuppressWarnings("unchecked")
-    List<Map<String, Object>> holdings =
-        (List<Map<String, Object>>) structured.get("holdings");
+    List<Map<String, Object>> holdings = (List<Map<String, Object>>) structured.get("holdings");
     assertThat(holdings)
         .singleElement()
         .satisfies(row -> assertThat(row.get("ticker")).isEqualTo("AAA"));
@@ -111,8 +108,7 @@ class AllotMintPortfolioToolTest {
     when(client.portfolio("missing"))
         .thenThrow(new AllotMintApiException(404, "AllotMint backend returned 404: owner missing"));
 
-    McpSchema.CallToolResult result =
-        call(Map.of("action", "holdings", "owner", "missing"));
+    McpSchema.CallToolResult result = call(Map.of("action", "holdings", "owner", "missing"));
 
     assertThat(result.isError()).isTrue();
     assertThat(text(result)).contains("404").contains("owner missing");
