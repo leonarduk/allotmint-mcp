@@ -13,12 +13,6 @@ from typing import Optional
 
 import requests
 
-# Windows consoles default to a legacy codepage (e.g. cp1252) that can't
-# encode the checkmark used in the success message below.
-if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
-
 
 def get_repo_info() -> tuple[str, str]:
     """Extract owner and repo from git remote origin."""
@@ -27,6 +21,7 @@ def get_repo_info() -> tuple[str, str]:
             ["git", "config", "--get", "remote.origin.url"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=True,
         )
         url = result.stdout.strip()
@@ -51,6 +46,7 @@ def get_current_branch() -> str:
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=True,
         )
         return result.stdout.strip()
@@ -77,6 +73,7 @@ def get_default_branch(owner: str, repo: str) -> str:
             ["gh", "repo", "view", f"{owner}/{repo}", "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
         if result.returncode == 0:
@@ -93,6 +90,7 @@ def check_working_tree_clean() -> bool:
             ["git", "status", "--porcelain"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=True,
         )
         return not result.stdout.strip()
@@ -110,6 +108,7 @@ def get_changed_files(branch: str, default_branch: str = "main") -> list[str]:
             ["git", "diff", "--name-only", "HEAD"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -121,6 +120,7 @@ def get_changed_files(branch: str, default_branch: str = "main") -> list[str]:
             ["git", "merge-base", branch, remote_default_branch],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
         if result.returncode == 0:
@@ -129,6 +129,7 @@ def get_changed_files(branch: str, default_branch: str = "main") -> list[str]:
                 ["git", "diff", "--name-only", f"{merge_base}...HEAD"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 check=False,
             )
             if result.returncode == 0 and result.stdout.strip():
@@ -180,6 +181,7 @@ def branch_is_ahead_of_main(branch: str, default_branch: str) -> bool:
             ["git", "rev-list", "--count", f"{default_branch}..{branch}"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
         if result.returncode == 0:
@@ -191,7 +193,12 @@ def branch_is_ahead_of_main(branch: str, default_branch: str) -> bool:
 
 
 def push_to_remote(branch: str) -> bool:
-    """Push the branch to remote."""
+    """Push the branch to remote.
+
+    Always passes `-u` so the branch's upstream is set on the first push,
+    not just on subsequent ones -- callers don't need the branch to already
+    be tracking upstream before calling this.
+    """
     try:
         subprocess.run(["git", "push", "-u", "origin", branch], check=True)
         return True
@@ -339,6 +346,7 @@ def find_existing_pr(owner: str, repo: str, branch: str) -> Optional[str]:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
     if result.returncode == 0:
@@ -391,6 +399,7 @@ def create_pr(
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
 
@@ -417,6 +426,7 @@ def check_gh_available() -> None:
             ["gh", "auth", "status"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
     except FileNotFoundError:
@@ -467,6 +477,7 @@ def main() -> None:
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=True,
         )
         git_root = result.stdout.strip()
