@@ -2,9 +2,12 @@ package com.allotmint.mcp;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.client.ClientHttpResponse;
@@ -60,6 +63,56 @@ class AllotMintClient {
       log.warn("AllotMint backend at {} is unreachable: {}", baseUrl, e.getMessage());
       return new AllotMintHealthStatus(false, null, baseUrl);
     }
+  }
+
+  List<Map<String, Object>> searchInstruments(String query) {
+    List<Map<String, Object>> matches =
+        restClient
+            .get()
+            .uri(uriBuilder -> uriBuilder.path("/instrument/search").queryParam("q", query).build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(new ParameterizedTypeReference<>() {});
+    return matches == null ? List.of() : matches;
+  }
+
+  Map<String, Object> instrumentDetail(String ticker) {
+    Map<String, Object> detail =
+        restClient
+            .get()
+            .uri(
+                uriBuilder ->
+                    uriBuilder
+                        .path("/instrument")
+                        .queryParam("ticker", ticker)
+                        .queryParam("format", "json")
+                        .build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(new ParameterizedTypeReference<>() {});
+    return detail == null ? Map.of() : detail;
+  }
+
+  List<Map<String, Object>> latestQuotes(String ticker) {
+    List<Map<String, Object>> quotes =
+        restClient
+            .get()
+            .uri(uriBuilder -> uriBuilder.path("/api/quotes").queryParam("symbols", ticker).build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(new ParameterizedTypeReference<>() {});
+    return quotes == null ? List.of() : quotes;
+  }
+
+  List<Map<String, Object>> instrumentNews(String ticker) {
+    List<Map<String, Object>> news =
+        restClient
+            .get()
+            .uri(uriBuilder -> uriBuilder.path("/news").queryParam("ticker", ticker).build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(new ParameterizedTypeReference<>() {});
+    return news == null ? List.of() : news;
   }
 
   /**
