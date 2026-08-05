@@ -19,11 +19,11 @@ import org.springframework.context.annotation.Configuration;
 class StdioMcpServerConfig {
 
   @Bean
-  McpSyncServer stdioMcpSyncServer(McpJsonMapper jsonMapper) {
+  McpSyncServer stdioMcpSyncServer(McpJsonMapper jsonMapper, AllotMintClient client) {
     StdioServerTransportProvider transportProvider = new StdioServerTransportProvider(jsonMapper);
     return McpServer.sync(transportProvider)
         .serverInfo("allotmint-mcp", "0.0.1")
-        .tools(EchoTool.specification())
+        .tools(EchoTool.specification(), AllotMintInstrumentTool.specification(client))
         .build();
   }
 }

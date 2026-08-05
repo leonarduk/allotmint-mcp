@@ -38,10 +38,11 @@ class McpServerConfig {
   }
 
   @Bean
-  McpSyncServer httpMcpSyncServer(WebMvcStreamableServerTransportProvider transportProvider) {
+  McpSyncServer httpMcpSyncServer(
+      WebMvcStreamableServerTransportProvider transportProvider, AllotMintClient client) {
     return McpServer.sync(transportProvider)
         .serverInfo("allotmint-mcp", "0.0.1")
-        .tools(EchoTool.specification())
+        .tools(EchoTool.specification(), AllotMintInstrumentTool.specification(client))
         .build();
   }
 }
