@@ -42,4 +42,4 @@ build/
 issues/
 __pycache__/
 *.pyc
-/scripts/developer_tools/.issue-10.md
+**/.issue-*.md

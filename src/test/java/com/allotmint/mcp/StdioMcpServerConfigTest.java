@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 class StdioMcpServerConfigTest {
@@ -16,14 +17,24 @@ class StdioMcpServerConfigTest {
           .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class));
 
   /**
-   * Asserts on bean *definition* presence via the raw bean factory rather than {@code
-   * context.getBean(...)}, since actually instantiating this bean attaches a real reader to
-   * System.in (see {@link StdioMcpServerConfig}'s class javadoc).
+   * Asserts on bean *definition* presence rather than instantiating it, since actually
+   * instantiating this bean attaches a real reader to System.in (see {@link StdioMcpServerConfig}'s
+   * class javadoc). {@code ApplicationContextRunner.run()} eagerly pre-instantiates every non-lazy
+   * singleton during refresh regardless of what the assertion itself touches, so the postprocessor
+   * below is required to actually defer construction - without it, this test attaches a live stdin
+   * reader in every run, which on CI (where stdin is already at EOF) intermittently made the JVM
+   * exit mid-suite and zeroed out JaCoco's coverage data for the whole build.
    */
   @Test
   void registersTheStdioServerBeanDefinitionByDefault() {
-    contextRunner.run(
-        context -> assertThat(context.getBeanFactory().containsBeanDefinition(BEAN_NAME)).isTrue());
+    contextRunner
+        .withInitializer(
+            context ->
+                context.addBeanFactoryPostProcessor(
+                    new LazyInitializationBeanFactoryPostProcessor()))
+        .run(
+            context ->
+                assertThat(context.getBeanFactory().containsBeanDefinition(BEAN_NAME)).isTrue());
   }
 
   @Test
@@ -37,8 +48,14 @@ class StdioMcpServerConfigTest {
 
   @Test
   void startsSuccessfullyWithFilesFeatureDisabledByDefault() {
-    contextRunner.run(
-        context -> assertThat(context.getBeanFactory().containsBeanDefinition(BEAN_NAME)).isTrue());
+    contextRunner
+        .withInitializer(
+            context ->
+                context.addBeanFactoryPostProcessor(
+                    new LazyInitializationBeanFactoryPostProcessor()))
+        .run(
+            context ->
+                assertThat(context.getBeanFactory().containsBeanDefinition(BEAN_NAME)).isTrue());
   }
 
   @Test
