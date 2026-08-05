@@ -8,6 +8,7 @@ Proof of concept. The MCP plumbing (stdio + HTTP transports, JSON mapping, excep
 
 - `echo` — proves the transport works end to end
 - `allotmint_health` — checks connectivity to the configured AllotMint backend
+- `allotmint_instrument` — looks up an instrument. `action` is required: `search` (query required) matches by ticker/name; `detail` (ticker required) merges price history, portfolio positions, and recent news; `prices` (ticker required) returns the latest quote; `news` (ticker required) returns recent headlines. An optional `exchange` is appended to `ticker` when `ticker` doesn't already carry a suffix (e.g. `ticker=VWRL`, `exchange=L` becomes `VWRL.L`).
 - `allotmint_market` — returns the combined market overview, standalone movers, or the index portion of the overview
 
 Set `ALLOTMINT_API_BASE` to override the default backend URL of `http://localhost:8000`.

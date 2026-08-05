@@ -61,7 +61,7 @@ class McpHttpTransportIntegrationTest {
     McpSchema.ListToolsResult tools = client.listTools();
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
-        .containsExactly("echo", "allotmint_health", "allotmint_market");
+        .containsExactly("echo", "allotmint_health", "allotmint_instrument", "allotmint_market");
 
     McpSchema.CallToolResult result =
         client.callTool(

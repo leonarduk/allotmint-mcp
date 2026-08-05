@@ -45,6 +45,7 @@ class McpServerConfig {
         .tools(
             EchoTool.specification(),
             AllotMintHealthTool.specification(allotMintClient),
+            AllotMintInstrumentTool.specification(allotMintClient),
             AllotMintMarketTool.specification(allotMintClient))
         .build();
   }
