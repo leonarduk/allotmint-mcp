@@ -128,6 +128,33 @@
 			</plugin>
 
 			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>resolve-mockito-agent</id>
+						<goals>
+							<goal>properties</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<!-- Load Mockito's inline-mock-maker agent statically instead of letting it
+					     self-attach at runtime: the dynamic self-attach can leave the forked test
+					     JVM unable to exit cleanly, which under CI's tighter resource limits has
+					     caused Surefire to force-kill the fork before JaCoco's exit-time dump of
+					     jacoco.exec runs - silently zeroing out the coverage the check goal below
+					     enforces. -->
+					<argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
+				</configuration>
+			</plugin>
+
+			<plugin>
 				<groupId>com.diffplug.spotless</groupId>
 				<artifactId>spotless-maven-plugin</artifactId>
 				<version>3.9.0</version>
@@ -169,7 +196,7 @@
 								<rule>
 									<element>BUNDLE</element>
 									<limits>
-										<!-- Baseline instruction coverage measured via `mvn verify` was 78.81%; -->
+										<!-- Baseline instruction coverage measured via `mvn verify` was 80.41%; -->
 										<!-- threshold set with a small buffer below that to guard against regression. -->
 										<limit>
 											<counter>INSTRUCTION</counter>
