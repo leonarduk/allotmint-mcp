@@ -26,6 +26,14 @@ DEFAULT_ISSUE_BODY = "No linked issue found. Review code on its own merits."
 # verdict — an infra outage isn't a code-review finding and shouldn't hold up
 # a merge the way a real review failure does.
 PROVIDER_OUTAGE_MARKER = "**REVIEW SKIPPED - PROVIDER OUTAGE**"
+# Sentinel embedded in the review body when a provider responds 200 OK but
+# extracts to no usable review text - observed with DeepSeek's reasoning
+# models, which can spend their whole `max_tokens` budget on internal
+# reasoning and never write a final answer into `content`. Handled the same
+# way as PROVIDER_OUTAGE_MARKER (see extract_verdict.py): a soft-fail skip,
+# not a blocking verdict, since an empty provider response is a provider/config
+# issue rather than a code-review finding.
+EMPTY_REVIEW_MARKER = "**REVIEW SKIPPED - EMPTY PROVIDER RESPONSE**"
 TRUNCATION_NOTICE_TEMPLATE = (
     "\n\n[diff truncated after {kept_files} file(s); skipped {skipped_files} additional file(s) "
     "to stay within the 120k-character review budget while preserving whole-file diff blocks]"
@@ -194,11 +202,28 @@ def emit_outage_notice(provider_name: str, detail: str) -> int:
     return 0
 
 
-def finalize_review(review: str, empty_error: str) -> int:
-    """Print a non-empty review or fail with a clear error for workflow handling."""
+def finalize_review(review: str, provider_name: str) -> int:
+    """Print a non-empty review, or soft-fail when the provider returned no content.
+
+    A 200 OK response with no usable review text (observed with DeepSeek's
+    reasoning models exhausting their `max_tokens` budget on internal reasoning
+    before writing a final answer - see EMPTY_REVIEW_MARKER) is a provider/config
+    issue, not a real review verdict. It's treated the same way as a genuine
+    provider outage: print an advisory body carrying EMPTY_REVIEW_MARKER and
+    return 0, so extract_verdict.py soft-fails the check (exit 2) instead of the
+    workflow defaulting to a blocking "CHANGES REQUESTED".
+    """
     if not review.strip():
-        print(empty_error, file=sys.stderr)
-        return 1
+        print(f"WARNING: {provider_name} API returned an empty review", file=sys.stderr)
+        print(
+            f"{provider_name} review could not be completed: the API responded "
+            "successfully but returned no review content (possibly a reasoning "
+            "model's token budget exhausted before producing a final answer). "
+            "This looks like a provider/config issue rather than a code issue; "
+            "re-run the check if it persists.\n\n"
+            f"{EMPTY_REVIEW_MARKER}"
+        )
+        return 0
     print(review.strip())
     return 0
 

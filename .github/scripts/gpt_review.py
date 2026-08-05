@@ -81,7 +81,7 @@ def main() -> int:
         review = fetch_openai_review(context.api_key, prompt)
     except ProviderOutageError as exc:
         return emit_outage_notice("GPT", str(exc))
-    return finalize_review(review, "ERROR: OpenAI API returned an empty review")
+    return finalize_review(review, "OpenAI")
 
 
 if __name__ == "__main__":
