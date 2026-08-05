@@ -55,8 +55,7 @@ class AllotMintFilesToolTest {
   @Test
   void specificationRejectsNonExistentRoot() {
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () -> AllotMintFilesTool.specification(tempDir.resolve("nonexistent")))
+        .isThrownBy(() -> AllotMintFilesTool.specification(tempDir.resolve("nonexistent")))
         .withMessageContaining("does not exist");
   }
 
@@ -107,8 +106,7 @@ class AllotMintFilesToolTest {
 
   @Test
   void readNonExistentFileReturnsFileNotFound() {
-    McpSchema.CallToolResult result =
-        call(Map.of("action", "read", "path", "nonexistent.txt"));
+    McpSchema.CallToolResult result = call(Map.of("action", "read", "path", "nonexistent.txt"));
 
     assertThat(result.isError()).isTrue();
     assertThat(text(result)).contains("File not found");
@@ -134,11 +132,9 @@ class AllotMintFilesToolTest {
     assertThat(structured).containsEntry("action", "list");
 
     @SuppressWarnings("unchecked")
-    List<Map<String, Object>> entries =
-        (List<Map<String, Object>>) structured.get("entries");
+    List<Map<String, Object>> entries = (List<Map<String, Object>>) structured.get("entries");
     assertThat(entries).hasSize(3);
-    assertThat(entries.stream().map(e -> e.get("name")))
-        .contains("a+b.txt", "hello.txt", "sub");
+    assertThat(entries.stream().map(e -> e.get("name"))).contains("a+b.txt", "hello.txt", "sub");
   }
 
   @Test
@@ -150,16 +146,14 @@ class AllotMintFilesToolTest {
     Map<String, Object> structured = (Map<String, Object>) result.structuredContent();
 
     @SuppressWarnings("unchecked")
-    List<Map<String, Object>> entries =
-        (List<Map<String, Object>>) structured.get("entries");
+    List<Map<String, Object>> entries = (List<Map<String, Object>>) structured.get("entries");
     assertThat(entries).hasSize(1);
     assertThat(entries.get(0)).containsEntry("name", "nested.txt");
   }
 
   @Test
   void listNonExistentDirectoryReturnsDirectoryNotFound() {
-    McpSchema.CallToolResult result =
-        call(Map.of("action", "list", "path", "nonexistent"));
+    McpSchema.CallToolResult result = call(Map.of("action", "list", "path", "nonexistent"));
 
     assertThat(result.isError()).isTrue();
     assertThat(text(result)).contains("Directory not found");
@@ -177,8 +171,7 @@ class AllotMintFilesToolTest {
 
   @Test
   void searchFindsMatchingFiles() {
-    McpSchema.CallToolResult result =
-        call(Map.of("action", "search", "pattern", "*.txt"));
+    McpSchema.CallToolResult result = call(Map.of("action", "search", "pattern", "*.txt"));
 
     assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);
     @SuppressWarnings("unchecked")
@@ -192,8 +185,7 @@ class AllotMintFilesToolTest {
 
   @Test
   void searchWithNoMatchesReturnsEmpty() {
-    McpSchema.CallToolResult result =
-        call(Map.of("action", "search", "pattern", "*.java"));
+    McpSchema.CallToolResult result = call(Map.of("action", "search", "pattern", "*.java"));
 
     @SuppressWarnings("unchecked")
     Map<String, Object> structured = (Map<String, Object>) result.structuredContent();
@@ -205,19 +197,46 @@ class AllotMintFilesToolTest {
 
   @Test
   void searchRejectsTraversalPattern() {
-    McpSchema.CallToolResult result =
-        call(Map.of("action", "search", "pattern", "../../etc/*"));
+    McpSchema.CallToolResult result = call(Map.of("action", "search", "pattern", "../../etc/*"));
 
     assertThat(result.isError()).isTrue();
     assertThat(text(result)).contains("path traversal");
+  }
+
+  @Test
+  void searchRejectsMalformedPattern() {
+    McpSchema.CallToolResult result = call(Map.of("action", "search", "pattern", "["));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(text(result)).contains("Invalid search pattern");
+  }
+
+  @Test
+  void searchTruncatesAtMaxMatches() throws IOException {
+    Path many = root.resolve("many");
+    Files.createDirectories(many);
+    for (int i = 0; i < 510; i++) {
+      Files.writeString(many.resolve("f" + i + ".dat"), "x");
+    }
+
+    McpSchema.CallToolResult result = call(Map.of("action", "search", "pattern", "**/*.dat"));
+
+    assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> structured = (Map<String, Object>) result.structuredContent();
+    assertThat(structured).containsEntry("truncated", true);
+
+    @SuppressWarnings("unchecked")
+    List<String> matches = (List<String>) structured.get("matches");
+    assertThat(matches).hasSize(500);
+    assertThat(text(result)).contains("truncated");
   }
 
   // -- path traversal: dot-dot-slash -------------------------------------
 
   @Test
   void rejectsDotDotTraversal() {
-    McpSchema.CallToolResult result =
-        call(Map.of("action", "read", "path", "../../etc/passwd"));
+    McpSchema.CallToolResult result = call(Map.of("action", "read", "path", "../../etc/passwd"));
 
     assertThat(result.isError()).isTrue();
     assertThat(text(result)).contains("Path traversal rejected");
@@ -236,8 +255,7 @@ class AllotMintFilesToolTest {
 
   @Test
   void rejectsAbsoluteUnixPath() {
-    McpSchema.CallToolResult result =
-        call(Map.of("action", "read", "path", "/etc/passwd"));
+    McpSchema.CallToolResult result = call(Map.of("action", "read", "path", "/etc/passwd"));
 
     assertThat(result.isError()).isTrue();
     assertThat(text(result)).contains("Path traversal rejected");
@@ -304,14 +322,11 @@ class AllotMintFilesToolTest {
     try {
       Files.createSymbolicLink(link, outside);
     } catch (UnsupportedOperationException | IOException e) {
-      assumeTrue(
-          false,
-          "Symlink creation not supported in this environment: " + e.getMessage());
+      assumeTrue(false, "Symlink creation not supported in this environment: " + e.getMessage());
       return;
     }
 
-    McpSchema.CallToolResult result =
-        call(Map.of("action", "read", "path", "escape.link"));
+    McpSchema.CallToolResult result = call(Map.of("action", "read", "path", "escape.link"));
 
     assertThat(result.isError()).isTrue();
     assertThat(text(result)).contains("Path traversal rejected");
@@ -321,8 +336,7 @@ class AllotMintFilesToolTest {
 
   @Test
   void readNestedFile() {
-    McpSchema.CallToolResult result =
-        call(Map.of("action", "read", "path", "sub/nested.txt"));
+    McpSchema.CallToolResult result = call(Map.of("action", "read", "path", "sub/nested.txt"));
 
     assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);
     assertThat(text(result)).isEqualTo("nested content");
@@ -331,8 +345,7 @@ class AllotMintFilesToolTest {
   @Test
   void readWithNormalizedPath() {
     // sub/../hello.txt should resolve to hello.txt within root
-    McpSchema.CallToolResult result =
-        call(Map.of("action", "read", "path", "sub/../hello.txt"));
+    McpSchema.CallToolResult result = call(Map.of("action", "read", "path", "sub/../hello.txt"));
 
     assertThat(result.isError()).isNotEqualTo(Boolean.TRUE);
     assertThat(text(result)).isEqualTo("Hello, AllotMint!");
@@ -341,8 +354,7 @@ class AllotMintFilesToolTest {
   // -- helpers -----------------------------------------------------------
 
   private McpSchema.CallToolResult call(Map<String, Object> arguments) {
-    return spec
-        .callHandler()
+    return spec.callHandler()
         .apply(null, new McpSchema.CallToolRequest("allotmint_files", arguments));
   }
 

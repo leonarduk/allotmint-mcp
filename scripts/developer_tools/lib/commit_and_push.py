@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -36,6 +37,19 @@ def refuse_if_main_branch(branch: str) -> None:
     print(
         f"ERROR: Refusing to commit directly to '{MAIN_BRANCH}'.\n"
         "Create or switch to a feature/bugfix branch first, e.g.:\n"
+        "    git checkout -b fix/<issue-number>-short-description",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+
+def refuse_if_detached_head(branch: str) -> None:
+    """Exit with guidance if not on a named branch (detached HEAD)."""
+    if branch != "HEAD":
+        return
+    print(
+        "ERROR: Refusing to commit in a detached HEAD state.\n"
+        "Check out a branch first, e.g.:\n"
         "    git checkout -b fix/<issue-number>-short-description",
         file=sys.stderr,
     )
@@ -140,11 +154,15 @@ def generate_commit_message(diff: str, issue_id: int | None, model_source: str) 
 
 
 def ensure_issue_reference(message: str, issue_id: int | None) -> str:
-    """Append a 'Refs #<issue_id>' trailer if the message doesn't already mention it."""
+    """Append a 'Refs #<issue_id>' trailer if the message doesn't already mention it.
+
+    Matches the marker as a complete issue number, not a numeric prefix, so
+    e.g. issue 1 doesn't treat a reference to #10 or #100 as already present.
+    """
     if issue_id is None:
         return message
     marker = f"#{issue_id}"
-    if marker in message:
+    if re.search(rf"(?<!\d){re.escape(marker)}(?!\d)", message):
         return message
     return f"{message}\n\nRefs {marker}"
 
@@ -226,6 +244,7 @@ def main() -> int:
 
     branch = get_current_branch()
     refuse_if_main_branch(branch)
+    refuse_if_detached_head(branch)
     issue_id = extract_issue_id(branch)
 
     stage_changes(args.files)

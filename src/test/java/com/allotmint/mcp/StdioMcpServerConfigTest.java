@@ -38,16 +38,13 @@ class StdioMcpServerConfigTest {
   @Test
   void startsSuccessfullyWithFilesFeatureDisabledByDefault() {
     contextRunner.run(
-        context ->
-            assertThat(context.getBeanFactory().containsBeanDefinition(BEAN_NAME)).isTrue());
+        context -> assertThat(context.getBeanFactory().containsBeanDefinition(BEAN_NAME)).isTrue());
   }
 
   @Test
   void failsToStartWhenFilesEnabledButRootIsEmpty() {
     contextRunner
-        .withPropertyValues(
-            "allotmint.mcp.files.enabled=true",
-            "allotmint.mcp.files.root=")
+        .withPropertyValues("allotmint.mcp.files.enabled=true", "allotmint.mcp.files.root=")
         .run(context -> assertThat(context).hasFailed());
   }
 }

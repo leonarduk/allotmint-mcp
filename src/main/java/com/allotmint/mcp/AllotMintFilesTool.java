@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * Optional {@code allotmint_files} MCP tool, registered only when {@code
@@ -28,6 +29,9 @@ import java.util.Map;
  * tools/list} when the feature flag is unset or false.
  */
 final class AllotMintFilesTool {
+
+  /** Caps the number of matches a single search returns, to bound response size and walk time. */
+  private static final int MAX_SEARCH_MATCHES = 500;
 
   private AllotMintFilesTool() {}
 
@@ -65,10 +69,7 @@ final class AllotMintFilesTool {
             "object",
             "properties",
             Map.of(
-                "action",
-                    Map.of(
-                        "type", "string",
-                        "enum", List.of("read", "list", "search")),
+                "action", Map.of("type", "string", "enum", List.of("read", "list", "search")),
                 "path",
                     Map.of(
                         "type", "string",
@@ -76,10 +77,11 @@ final class AllotMintFilesTool {
                             "File or directory path relative to the configured files root"),
                 "pattern",
                     Map.of(
-                        "type", "string",
+                        "type",
+                        "string",
                         "description",
-                            "Glob pattern for search (e.g. **/*.java, *.md). Searches"
-                                + " recursively from the files root; ignored for read/list.")),
+                        "Glob pattern for search (e.g. **/*.java, *.md). Searches"
+                            + " recursively from the files root; ignored for read/list.")),
             "required",
             List.of("action"),
             "additionalProperties",
@@ -105,9 +107,10 @@ final class AllotMintFilesTool {
                 case "read" -> handleRead(args, resolvedRoot);
                 case "list" -> handleList(args, resolvedRoot);
                 case "search" -> handleSearch(args, resolvedRoot);
-                default -> error(
-                    "Unsupported action '%s'; expected read, list, or search"
-                        .formatted(action));
+                default ->
+                    error(
+                        "Unsupported action '%s'; expected read, list, or search"
+                            .formatted(action));
               };
             })
         .build();
@@ -115,8 +118,7 @@ final class AllotMintFilesTool {
 
   // -- action handlers ----------------------------------------------------
 
-  private static McpSchema.CallToolResult handleRead(
-      Map<String, Object> args, Path resolvedRoot) {
+  private static McpSchema.CallToolResult handleRead(Map<String, Object> args, Path resolvedRoot) {
     String rawPath = requireString(args, "path");
     if (rawPath == null) {
       return error("path is required for the read action");
@@ -142,8 +144,7 @@ final class AllotMintFilesTool {
     }
   }
 
-  private static McpSchema.CallToolResult handleList(
-      Map<String, Object> args, Path resolvedRoot) {
+  private static McpSchema.CallToolResult handleList(Map<String, Object> args, Path resolvedRoot) {
     String rawPath = stringArg(args, "path");
     Path dir = resolvedRoot;
     if (rawPath != null && !rawPath.isBlank()) {
@@ -158,8 +159,7 @@ final class AllotMintFilesTool {
       }
     }
     if (!Files.isDirectory(dir)) {
-      return error(
-          "Not a directory: %s".formatted(rawPath != null ? rawPath : "(root)"));
+      return error("Not a directory: %s".formatted(rawPath != null ? rawPath : "(root)"));
     }
 
     try {
@@ -206,14 +206,14 @@ final class AllotMintFilesTool {
     String decodedPattern = decodePercentSequences(pattern);
     if (containsTraversal(decodedPattern)) {
       return error(
-          "Search pattern rejected: '%s' contains path traversal sequences"
-              .formatted(pattern));
+          "Search pattern rejected: '%s' contains path traversal sequences".formatted(pattern));
     }
 
-    PathMatcher matcher = resolvedRoot.getFileSystem().getPathMatcher("glob:" + pattern);
     List<String> matches = new ArrayList<>();
+    boolean[] truncated = {false};
 
     try {
+      PathMatcher matcher = resolvedRoot.getFileSystem().getPathMatcher("glob:" + pattern);
       Files.walkFileTree(
           resolvedRoot,
           new SimpleFileVisitor<>() {
@@ -222,10 +222,22 @@ final class AllotMintFilesTool {
               Path relative = resolvedRoot.relativize(file);
               if (matcher.matches(relative) || matcher.matches(file.getFileName())) {
                 matches.add(relative.toString().replace('\\', '/'));
+                if (matches.size() >= MAX_SEARCH_MATCHES) {
+                  truncated[0] = true;
+                  return FileVisitResult.TERMINATE;
+                }
               }
               return FileVisitResult.CONTINUE;
             }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException exc) {
+              // Skip files we can't read (permissions, races) rather than aborting the walk.
+              return FileVisitResult.CONTINUE;
+            }
           });
+    } catch (PatternSyntaxException e) {
+      return error("Invalid search pattern '%s': %s".formatted(pattern, e.getMessage()));
     } catch (IOException e) {
       return error("Search failed: %s".formatted(e.getMessage()));
     }
@@ -236,9 +248,15 @@ final class AllotMintFilesTool {
     structured.put("action", "search");
     structured.put("pattern", pattern);
     structured.put("matches", matches);
+    structured.put("truncated", truncated[0]);
+
+    String summary = "Found %d match(es) for '%s'".formatted(matches.size(), pattern);
+    if (truncated[0]) {
+      summary += " (truncated at %d matches)".formatted(MAX_SEARCH_MATCHES);
+    }
 
     return McpSchema.CallToolResult.builder()
-        .addTextContent("Found %d match(es) for '%s'".formatted(matches.size(), pattern))
+        .addTextContent(summary)
         .structuredContent(structured)
         .build();
   }
@@ -263,8 +281,11 @@ final class AllotMintFilesTool {
     Path userPath = Path.of(decoded);
 
     // 3. Reject absolute paths — Path.resolve() would return them verbatim,
-    //    bypassing the root entirely (e.g. /etc/passwd, C:\Windows\...)
-    if (userPath.isAbsolute()) {
+    //    bypassing the root entirely (e.g. /etc/passwd, C:\Windows\...).
+    //    isAbsolute() only catches Unix-style and native Windows paths; we
+    //    also detect Windows drive-letter paths on non-Windows hosts so the
+    //    check is not OS-dependent.
+    if (userPath.isAbsolute() || isWindowsAbsolutePath(decoded)) {
       return null;
     }
 
@@ -325,10 +346,23 @@ final class AllotMintFilesTool {
   }
 
   /**
-   * Returns true if the given path string contains traversal elements ({@code ..}) after
-   * resolving dot-dot segments. Uses {@link Path#normalize()} for regular paths (which
-   * collapses {@code sub/../x} to {@code x}), and falls back to string splitting for glob
-   * patterns that contain {@code *} or {@code ?} (which {@link Path#of} rejects with {@link
+   * Returns true if the given path string is a Windows absolute path (starts with a drive letter
+   * followed by {@code :\} or {@code :/}). This is needed because {@link Path#isAbsolute()} only
+   * returns true for Windows paths on a Windows host; on Linux the same string looks like a
+   * relative path, which would allow drive-letter paths through the absolute-path check.
+   */
+  private static boolean isWindowsAbsolutePath(String path) {
+    return path.length() >= 3
+        && Character.isLetter(path.charAt(0))
+        && path.charAt(1) == ':'
+        && (path.charAt(2) == '\\' || path.charAt(2) == '/');
+  }
+
+  /**
+   * Returns true if the given path string contains traversal elements ({@code ..}) after resolving
+   * dot-dot segments. Uses {@link Path#normalize()} for regular paths (which collapses {@code
+   * sub/../x} to {@code x}), and falls back to string splitting for glob patterns that contain
+   * {@code *} or {@code ?} (which {@link Path#of} rejects with {@link
    * java.nio.file.InvalidPathException}).
    */
   private static boolean containsTraversal(String path) {
