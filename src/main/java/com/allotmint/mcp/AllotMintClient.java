@@ -73,6 +73,36 @@ class AllotMintClient {
     }
   }
 
+  Map<String, Object> portfolio(String owner) {
+    return getObject("portfolio", owner);
+  }
+
+  List<Map<String, Object>> portfolioSectors(String owner) {
+    List<Map<String, Object>> response =
+        restClient
+            .get()
+            .uri(builder -> builder.pathSegment("portfolio", owner, "sectors").build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(LIST_RESPONSE);
+    return response == null ? List.of() : response;
+  }
+
+  Map<String, Object> performance(String owner) {
+    return getObject("performance", owner);
+  }
+
+  private Map<String, Object> getObject(String endpoint, String owner) {
+    Map<String, Object> response =
+        restClient
+            .get()
+            .uri(builder -> builder.pathSegment(endpoint, owner).build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(OBJECT_MAP);
+    return response == null ? Map.of() : response;
+  }
+
   /** Returns the combined market overview from {@code /market/overview}. */
   Map<String, Object> marketOverview() {
     return getObjectMap("/market/overview");

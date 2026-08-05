@@ -27,7 +27,8 @@ class StdioMcpServerConfig {
             EchoTool.specification(),
             AllotMintHealthTool.specification(allotMintClient),
             AllotMintInstrumentTool.specification(allotMintClient),
-            AllotMintMarketTool.specification(allotMintClient))
+            AllotMintMarketTool.specification(allotMintClient),
+            AllotMintPortfolioTool.specification(allotMintClient))
         .build();
   }
 }
