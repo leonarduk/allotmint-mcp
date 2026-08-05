@@ -1,0 +1,26 @@
+[
+  {
+    "ticker": "NVDA",
+    "headline": "NVIDIA raises data center revenue guidance on AI chip demand",
+    "summary": "NVIDIA lifted its quarterly revenue guidance, citing sustained demand for its data center GPUs from cloud providers building out AI infrastructure. Analysts noted supply constraints remain the key risk to further upside.",
+    "published": "2026-05-14"
+  },
+  {
+    "ticker": "MSFT",
+    "headline": "Microsoft Azure growth accelerates on AI services adoption",
+    "summary": "Microsoft reported Azure revenue growth of 31%, ahead of estimates, with management attributing the acceleration to enterprise adoption of Copilot and AI-related cloud services.",
+    "published": "2026-04-28"
+  },
+  {
+    "ticker": "ASML",
+    "headline": "ASML order backlog grows as chipmakers invest in next-gen lithography",
+    "summary": "ASML reported a larger-than-expected order backlog as semiconductor manufacturers continue investing in EUV lithography equipment to support advanced chip production.",
+    "published": "2026-06-02"
+  },
+  {
+    "ticker": "SMCI",
+    "headline": "Super Micro Computer expands AI server production capacity",
+    "summary": "Super Micro Computer announced expanded manufacturing capacity for AI-optimized server racks, aiming to reduce lead times amid strong demand from hyperscale customers.",
+    "published": "2026-03-19"
+  }
+]
