@@ -90,6 +90,15 @@ class Settings:
     # An empty string disables trace logging entirely.
     trace_file: str = ""
 
+    # --- Langfuse ----------------------------------------------------------
+    # Observability via Langfuse (cloud or self-hosted). When both
+    # LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are set, each
+    # allotmint_research invocation is sent as a Langfuse trace with distinct
+    # spans for retrieval, each tool call, and synthesis.
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://cloud.langfuse.com"
+
     tools: tuple[str, ...] = V0_TOOL_ALLOWLIST
 
     @property
@@ -120,4 +129,7 @@ def load_settings() -> Settings:
         retrieval_enabled=_env_str("ALLOTMINT_RESEARCH_RETRIEVAL_ENABLED", "true").lower()
         not in ("false", "0", "no"),
         trace_file=_env_str("ALLOTMINT_RESEARCH_TRACE_FILE", ""),
+        langfuse_public_key=_env_str("LANGFUSE_PUBLIC_KEY", ""),
+        langfuse_secret_key=_env_str("LANGFUSE_SECRET_KEY", ""),
+        langfuse_host=_env_str("LANGFUSE_HOST", "https://cloud.langfuse.com"),
     )

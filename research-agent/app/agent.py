@@ -32,6 +32,7 @@ from .mcp_tools import ToolSession, open_session
 from .models import AskRequest, AskResponse, Citation, RetrievedDocument, ToolCallRecord
 from .retrieval import RetrievalUnavailable, search
 from .tracing import TraceLogger
+from .langfuse_tracing import LangfuseTracer, new_langfuse_tracer
 
 log = logging.getLogger(__name__)
 
@@ -282,6 +283,7 @@ async def run_research(
     request: AskRequest,
     settings: Settings,
     trace_logger: TraceLogger | None = None,
+    langfuse_tracer: LangfuseTracer | None = None,
 ) -> AskResponse:
     """Runs one full research question end to end."""
     started = time.monotonic()
@@ -294,11 +296,20 @@ async def run_research(
             request.lookback_days,
             settings.model_label,
         )
+    if langfuse_tracer is not None:
+        langfuse_tracer.request_start(
+            request.question,
+            request.owner,
+            request.lookback_days,
+            settings.model_label,
+        )
 
     # --- retrieval ---------------------------------------------------------
     documents: list[RetrievedDocument] = []
     if trace_logger is not None:
         trace_logger.retrieval_start()
+    if langfuse_tracer is not None:
+        langfuse_tracer.retrieval_start()
     try:
         documents = await search(
             request.question,
@@ -313,9 +324,17 @@ async def run_research(
         )
         if trace_logger is not None:
             trace_logger.retrieval_end(0, [], unavailable=True)
+        if langfuse_tracer is not None:
+            langfuse_tracer.retrieval_end(0, [], unavailable=True)
     else:
         if trace_logger is not None:
             trace_logger.retrieval_end(
+                len(documents),
+                [d.source for d in documents],
+                unavailable=False,
+            )
+        if langfuse_tracer is not None:
+            langfuse_tracer.retrieval_end(
                 len(documents),
                 [d.source for d in documents],
                 unavailable=False,
@@ -327,6 +346,8 @@ async def run_research(
 
     if trace_logger is not None:
         trace_logger.agent_start(settings.model_label)
+    if langfuse_tracer is not None:
+        langfuse_tracer.agent_start(settings.model_label)
 
     async with open_session(settings, trace_logger=trace_logger) as tools:
         agent = _make_agent(model, tools, settings)
@@ -335,11 +356,34 @@ async def run_research(
 
     answer = strip_reasoning(str(result.output))
 
+    # Extract cumulative token usage from the pydantic_ai result.
+    agent_usage: dict[str, int] | None = None
+    try:
+        usage_list = result.usage()
+        if usage_list:
+            total_input = sum(
+                getattr(u, "request_tokens", 0) or 0 for u in usage_list
+            )
+            total_output = sum(
+                getattr(u, "response_tokens", 0) or 0 for u in usage_list
+            )
+            if total_input > 0 or total_output > 0:
+                agent_usage = {"input": total_input, "output": total_output}
+    except Exception:
+        pass
+
     if trace_logger is not None:
         trace_logger.agent_end(
             tool_call_count=len(tool_calls),
             answer_length=len(answer),
             grounded=bool(documents) or bool(tool_calls),
+        )
+    if langfuse_tracer is not None:
+        langfuse_tracer.agent_end(
+            tool_call_count=len(tool_calls),
+            answer_length=len(answer),
+            grounded=bool(documents) or bool(tool_calls),
+            usage=agent_usage,
         )
 
     answer, referenced, marker_warnings = resolve_markers(answer, documents, tool_calls)
@@ -387,6 +431,16 @@ async def run_research(
             document_count=len(documents),
             warnings=warnings,
         )
+    if langfuse_tracer is not None:
+        langfuse_tracer.request_end(
+            grounded=grounded,
+            answer_length=len(answer),
+            citation_count=len(citations),
+            tool_call_count=len(tool_calls),
+            document_count=len(documents),
+            warnings=warnings,
+        )
+        langfuse_tracer.flush()
 
     return AskResponse(
         question=request.question,
