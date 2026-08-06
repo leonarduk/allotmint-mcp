@@ -17,12 +17,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from html import escape
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
 
 import client
 import deps
@@ -48,9 +49,14 @@ class AskRequest(BaseModel):
     skip_preflight: bool = False
 
 
+class ToolsRequest(BaseModel):
+    url: str = client.DEFAULT_MCP_URL
+    timeout: float = 30.0
+
+
 class CallRequest(BaseModel):
     tool: str
-    args: dict = {}
+    args: dict = Field(default_factory=dict)
     url: str = client.DEFAULT_MCP_URL
     timeout: float = 180.0
 
@@ -63,21 +69,25 @@ async def api_ask(payload: AskRequest) -> dict:
             if not payload.skip_preflight:
                 problems = await client.preflight(session, payload.research_url, payload.timeout)
                 if problems:
-                    return JSONResponse({"error": "\n".join(problems)}, status_code=409)
+                    raise HTTPException(status_code=409, detail="\n".join(problems))
             answer = await client.ask(session, payload.question, payload.owner, payload.lookback_days)
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001 - reported to the caller, not swallowed
-        return JSONResponse({"error": client.format_exception(exc)}, status_code=502)
+        raise HTTPException(status_code=502, detail=client.format_exception(exc)) from exc
     return {"answer": answer}
 
 
-@app.get("/api/tools")
-async def api_tools(url: str = client.DEFAULT_MCP_URL, timeout: float = 30.0) -> dict:
+@app.post("/api/tools")
+async def api_tools(payload: ToolsRequest) -> dict:
     """Same path as the CLI's --list-tools."""
     try:
-        async with client.open_session(url, timeout) as session:
+        async with client.open_session(payload.url, payload.timeout) as session:
             listing = await client.list_tools(session)
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
-        return JSONResponse({"error": client.format_exception(exc)}, status_code=502)
+        raise HTTPException(status_code=502, detail=client.format_exception(exc)) from exc
     return {"tools": listing}
 
 
@@ -87,8 +97,10 @@ async def api_call(payload: CallRequest) -> dict:
     try:
         async with client.open_session(payload.url, payload.timeout) as session:
             output = await client.call_tool(session, payload.tool, payload.args)
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
-        return JSONResponse({"error": client.format_exception(exc)}, status_code=502)
+        raise HTTPException(status_code=502, detail=client.format_exception(exc)) from exc
     return {"output": output}
 
 
@@ -96,10 +108,17 @@ def render_index() -> str:
     """Renders the single-page UI, prefilled with this run's --url/--research-url.
 
     Plain token substitution rather than str.format(): the template is mostly
-    CSS/JS, whose braces would otherwise all need doubling.
+    CSS/JS, whose braces would otherwise all need doubling.  URL values are
+    escaped for HTML attributes (via html.escape) and injected into JS via
+    json.dumps so that special characters in URLs never break the script.
     """
-    return _INDEX_TEMPLATE.replace("__URL__", escape(DEFAULTS["url"])).replace(
-        "__RESEARCH_URL__", escape(DEFAULTS["research_url"])
+    defaults_json = json.dumps(
+        {"url": DEFAULTS["url"], "researchUrl": DEFAULTS["research_url"]}
+    )
+    return (
+        _INDEX_TEMPLATE.replace("__URL__", escape(DEFAULTS["url"]))
+        .replace("__RESEARCH_URL__", escape(DEFAULTS["research_url"]))
+        .replace("__DEFAULTS_JSON__", defaults_json)
     )
 
 
@@ -160,7 +179,11 @@ _INDEX_TEMPLATE = """<!doctype html>
 
 <fieldset>
 <legend>List tools</legend>
-<button id="list-tools-btn">List tools</button>
+<form id="tools-form">
+  <label>allotmint-mcp URL <input type="text" name="url" value="__URL__"></label>
+  <label>Timeout (seconds) <input type="number" name="timeout" value="30"></label>
+  <button type="submit">List tools</button>
+</form>
 <pre id="tools-result" hidden></pre>
 </fieldset>
 
@@ -169,12 +192,17 @@ _INDEX_TEMPLATE = """<!doctype html>
 <form id="call-form">
   <label>Tool name <input type="text" name="tool" required placeholder="allotmint_health"></label>
   <label>Arguments (JSON) <textarea name="args">{}</textarea></label>
+  <label>allotmint-mcp URL <input type="text" name="url" value="__URL__"></label>
+  <label>Timeout (seconds) <input type="number" name="timeout" value="180"></label>
   <button type="submit">Call</button>
 </form>
 <pre id="call-result" hidden></pre>
 </fieldset>
 
 <script>
+/* Injected by render_index() via json.dumps — safe for any URL chars */
+const DEFAULTS = __DEFAULTS_JSON__;
+
 async function postJSON(url, body) {
   const response = await fetch(url, {
     method: "POST",
@@ -200,29 +228,36 @@ document.getElementById("ask-form").addEventListener("submit", async (event) => 
     question: form.get("question"),
     owner: form.get("owner") || null,
     lookback_days: lookback ? parseInt(lookback, 10) : null,
-    url: form.get("url"),
-    research_url: form.get("research_url"),
+    url: form.get("url") || DEFAULTS.url,
+    research_url: form.get("research_url") || DEFAULTS.researchUrl,
     timeout: timeout ? parseFloat(timeout) : 180.0,
     skip_preflight: form.get("skip_preflight") === "on",
   };
   const el = document.getElementById("ask-result");
   showResult(el, true, "Asking...");
   const {ok, data} = await postJSON("/api/ask", body);
-  showResult(el, ok && !data.error, data.error || data.answer);
+  showResult(el, ok && !data.detail, data.detail || data.answer);
 });
 
-document.getElementById("list-tools-btn").addEventListener("click", async () => {
+document.getElementById("tools-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = new FormData(event.target);
+  const timeout = form.get("timeout");
+  const body = {
+    url: form.get("url") || DEFAULTS.url,
+    timeout: timeout ? parseFloat(timeout) : 30.0,
+  };
   const el = document.getElementById("tools-result");
   showResult(el, true, "Loading...");
-  const response = await fetch("/api/tools?url=" + encodeURIComponent("__URL__"));
-  const data = await response.json();
-  showResult(el, response.ok && !data.error, data.error || data.tools);
+  const {ok, data} = await postJSON("/api/tools", body);
+  showResult(el, ok && !data.detail, data.detail || data.tools);
 });
 
 document.getElementById("call-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = new FormData(event.target);
   const el = document.getElementById("call-result");
+  const timeout = form.get("timeout");
   let args;
   try {
     args = JSON.parse(form.get("args") || "{}");
@@ -231,8 +266,14 @@ document.getElementById("call-form").addEventListener("submit", async (event) =>
     return;
   }
   showResult(el, true, "Calling...");
-  const {ok, data} = await postJSON("/api/call", {tool: form.get("tool"), args, url: "__URL__"});
-  showResult(el, ok && !data.error, data.error || data.output);
+  const body = {
+    tool: form.get("tool"),
+    args: args,
+    url: form.get("url") || DEFAULTS.url,
+    timeout: timeout ? parseFloat(timeout) : 180.0,
+  };
+  const {ok, data} = await postJSON("/api/call", body);
+  showResult(el, ok && !data.detail, data.detail || data.output);
 });
 </script>
 </body>

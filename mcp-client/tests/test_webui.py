@@ -29,7 +29,9 @@ def _result(text: str, is_error: bool = False) -> SimpleNamespace:
 class FakeSession:
     def __init__(self, result=None, tools=None):
         self.result = result
-        self.tools = tools if tools is not None else [SimpleNamespace(name=n, description="") for n in client_module.REQUIRED_TOOLS]
+        self.tools = tools if tools is not None else [
+            SimpleNamespace(name=n, description="") for n in client_module.REQUIRED_TOOLS
+        ]
         self.calls: list[tuple[str, dict]] = []
 
     async def call_tool(self, name, arguments):
@@ -53,12 +55,18 @@ def test_client():
     return TestClient(webui.app)
 
 
+# ------------------------------------------------------------------ GET /
+
+
 def test_index_serves_the_form(test_client):
     response = test_client.get("/")
 
     assert response.status_code == 200
     assert "Ask allotmint_research" in response.text
     assert "List tools" in response.text
+
+
+# -------------------------------------------------------------- POST /api/ask
 
 
 def test_api_ask_returns_the_answer(monkeypatch, test_client):
@@ -70,12 +78,22 @@ def test_api_ask_returns_the_answer(monkeypatch, test_client):
 
     monkeypatch.setattr(client_module, "fetch_research_agent_health", healthy)
 
-    response = test_client.post("/api/ask", json={"question": "how has my tech exposure changed?", "owner": "demo"})
+    response = test_client.post(
+        "/api/ask",
+        json={"question": "how has my tech exposure changed?", "owner": "demo"},
+    )
 
     assert response.status_code == 200
     assert response.json() == {"answer": "Technology rose from 18% to 27% [1]."}
     assert session.calls == [
-        ("allotmint_research", {"action": "ask", "question": "how has my tech exposure changed?", "owner": "demo"})
+        (
+            "allotmint_research",
+            {
+                "action": "ask",
+                "question": "how has my tech exposure changed?",
+                "owner": "demo",
+            },
+        )
     ]
 
 
@@ -97,13 +115,15 @@ def test_api_ask_skips_preflight_when_requested(monkeypatch, test_client):
 
 
 def test_api_ask_reports_preflight_problems(monkeypatch, test_client):
-    session = FakeSession(tools=[SimpleNamespace(name="allotmint_health", description="")])
+    session = FakeSession(
+        tools=[SimpleNamespace(name="allotmint_health", description="")]
+    )
     monkeypatch.setattr(client_module, "open_session", _fake_open_session(session))
 
     response = test_client.post("/api/ask", json={"question": "?"})
 
     assert response.status_code == 409
-    assert "allotmint_research" in response.json()["error"]
+    assert "allotmint_research" in response.json()["detail"]
     assert session.calls == []
 
 
@@ -115,10 +135,15 @@ def test_api_ask_reports_connection_failures(monkeypatch, test_client):
 
     monkeypatch.setattr(client_module, "open_session", broken_session)
 
-    response = test_client.post("/api/ask", json={"question": "?", "skip_preflight": True})
+    response = test_client.post(
+        "/api/ask", json={"question": "?", "skip_preflight": True}
+    )
 
     assert response.status_code == 502
-    assert "ConnectionRefusedError" in response.json()["error"]
+    assert "ConnectionRefusedError" in response.json()["detail"]
+
+
+# ------------------------------------------------------------ POST /api/tools
 
 
 def test_api_tools_lists_names_and_descriptions(monkeypatch, test_client):
@@ -130,7 +155,7 @@ def test_api_tools_lists_names_and_descriptions(monkeypatch, test_client):
     )
     monkeypatch.setattr(client_module, "open_session", _fake_open_session(session))
 
-    response = test_client.get("/api/tools")
+    response = test_client.post("/api/tools", json={})
 
     assert response.status_code == 200
     assert response.json() == {
@@ -138,15 +163,53 @@ def test_api_tools_lists_names_and_descriptions(monkeypatch, test_client):
     }
 
 
+def test_api_tools_reports_connection_failures(monkeypatch, test_client):
+    @asynccontextmanager
+    async def broken_session(url, timeout_seconds):
+        raise ConnectionRefusedError("[Errno 111] Connection refused")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(client_module, "open_session", broken_session)
+
+    response = test_client.post("/api/tools", json={})
+
+    assert response.status_code == 502
+    assert "ConnectionRefusedError" in response.json()["detail"]
+
+
+# ------------------------------------------------------------ POST /api/call
+
+
 def test_api_call_passes_arguments_through(monkeypatch, test_client):
     session = FakeSession(result=_result('{"status": "ok"}'))
     monkeypatch.setattr(client_module, "open_session", _fake_open_session(session))
 
-    response = test_client.post("/api/call", json={"tool": "allotmint_health", "args": {}})
+    response = test_client.post(
+        "/api/call", json={"tool": "allotmint_health", "args": {}}
+    )
 
     assert response.status_code == 200
     assert response.json() == {"output": '{"status": "ok"}'}
     assert session.calls == [("allotmint_health", {})]
+
+
+def test_api_call_reports_connection_failures(monkeypatch, test_client):
+    @asynccontextmanager
+    async def broken_session(url, timeout_seconds):
+        raise ConnectionRefusedError("[Errno 111] Connection refused")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(client_module, "open_session", broken_session)
+
+    response = test_client.post(
+        "/api/call", json={"tool": "allotmint_health", "args": {}}
+    )
+
+    assert response.status_code == 502
+    assert "ConnectionRefusedError" in response.json()["detail"]
+
+
+# ------------------------------------------------------------- render / args
 
 
 def test_render_index_prefills_the_configured_urls():
@@ -169,7 +232,9 @@ def test_parse_args_defaults():
 
 
 def test_parse_args_overrides():
-    args = webui.parse_args(["--host", "0.0.0.0", "--port", "9000", "--url", "http://x/mcp"])
+    args = webui.parse_args(
+        ["--host", "0.0.0.0", "--port", "9000", "--url", "http://x/mcp"]
+    )
 
     assert args.host == "0.0.0.0"
     assert args.port == 9000
