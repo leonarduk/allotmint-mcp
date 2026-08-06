@@ -1,6 +1,8 @@
 package com.allotmint.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -79,7 +81,24 @@ class AllotMintPortfolioToolTest {
     assertThat((List<?>) structured.get("asset_classes")).hasSize(2);
     assertThat((List<?>) structured.get("currencies")).hasSize(2);
     verify(client).portfolioSectors("steve");
+    verify(client).portfolioSectors("steve", 365);
     verify(client).portfolio("steve");
+  }
+
+  @Test
+  void exposureSkipsHistoricalLookupWhenLookbackDaysIsZero() {
+    List<Map<String, Object>> sectors =
+        List.of(Map.of("sector", "Technology", "market_value_gbp", 1000.0));
+    when(client.portfolioSectors("steve")).thenReturn(sectors);
+    when(client.portfolio("steve")).thenReturn(portfolio());
+
+    Map<String, Object> structured =
+        structured(
+            call(Map.of("action", "exposure", "owner", "steve", "lookback_days", 0)));
+
+    assertThat(structured.get("sectors")).isEqualTo(sectors);
+    // Must not attempt the historical call when lookback_days is 0.
+    verify(client, never()).portfolioSectors(anyString(), anyInt());
   }
 
   @Test

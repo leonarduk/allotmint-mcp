@@ -9,6 +9,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.client.RestClientException;
 
 /** Read-only portfolio queries composed from the per-owner AllotMint endpoints. */
@@ -19,6 +21,8 @@ final class AllotMintPortfolioTool {
   static final String ACCOUNT_TYPE = "account_type";
   static final String CURRENCY = "currency";
   static final String LOOKBACK_DAYS = "lookback_days";
+
+  private static final Logger log = LoggerFactory.getLogger(AllotMintPortfolioTool.class);
 
   private static final List<String> ACTIONS = List.of("summary", "exposure", "holdings");
   private static final int DEFAULT_LOOKBACK_DAYS = 365;
@@ -41,12 +45,13 @@ final class AllotMintPortfolioTool {
         LOOKBACK_DAYS,
         Map.of(
             "type", "integer",
-            "minimum", 1,
+            "minimum", 0,
             "maximum", MAX_LOOKBACK_DAYS,
             "description",
             "Days to look back for historical sector-weight comparison. "
-                + "When set, each sector in the exposure response includes a "
-                + "weight_pct_lookback field with the weight from that many days ago. "
+                + "Set to 0 to skip the historical lookup. "
+                + "When 1–3650, each sector in the exposure response includes a "
+                + "weight_pct_year_ago field with the weight from that many days ago. "
                 + "Defaults to 365 (year-ago comparison) when omitted."));
 
     Map<String, Object> inputSchema =
@@ -173,7 +178,10 @@ final class AllotMintPortfolioTool {
         List<Map<String, Object>> historical = client.portfolioSectors(owner, lookbackDays);
         sectors = enrichWithHistoricalWeights(sectors, historical);
       } catch (AllotMintApiException | RestClientException e) {
-        // Graceful fallback: omit year-ago data rather than failing the call.
+        log.warn(
+            "Unable to fetch historical sector weights for owner {} (lookback {} days): {} — "
+                + "year-ago enrichment skipped",
+            owner, lookbackDays, e.getMessage());
       }
     }
 
@@ -348,12 +356,16 @@ final class AllotMintPortfolioTool {
   }
 
   private static int parseLookbackDays(Map<String, Object> arguments) {
+    if (!arguments.containsKey(LOOKBACK_DAYS)) {
+      return DEFAULT_LOOKBACK_DAYS;
+    }
     Object raw = arguments.get(LOOKBACK_DAYS);
     if (raw instanceof Number num) {
       int value = num.intValue();
-      if (value > 0) {
-        return Math.min(value, MAX_LOOKBACK_DAYS);
+      if (value <= 0) {
+        return 0;
       }
+      return Math.min(value, MAX_LOOKBACK_DAYS);
     }
     return DEFAULT_LOOKBACK_DAYS;
   }
