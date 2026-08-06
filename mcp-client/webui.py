@@ -12,6 +12,7 @@ Usage:
     pip install -r requirements.txt
     python webui.py
     python webui.py --port 8600 --url http://localhost:8080/mcp
+    python webui.py --start-deps
 """
 
 from __future__ import annotations
@@ -297,6 +298,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=client.DEFAULT_RESEARCH_URL,
         help=f"research-agent sidecar URL prefilled in the UI (default: {client.DEFAULT_RESEARCH_URL})",
     )
+    client.add_start_deps_args(parser)
     return parser.parse_args(argv)
 
 
@@ -306,6 +308,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     DEFAULTS["url"] = args.url
     DEFAULTS["research_url"] = args.research_url
+
+    which = client.requested_dependencies(args)
+    if which:
+        deps.ensure_running(args.url, args.research_url, args.start_timeout, which)
+
     deps.log(f"web UI: serving on http://{args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
     return 0
