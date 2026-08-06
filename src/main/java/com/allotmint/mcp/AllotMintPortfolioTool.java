@@ -20,6 +20,7 @@ final class AllotMintPortfolioTool {
   static final String OWNER = "owner";
   static final String ACCOUNT_TYPE = "account_type";
   static final String CURRENCY = "currency";
+  static final String INCLUDE_HISTORY = "include_history";
   static final String LOOKBACK_DAYS = "lookback_days";
 
   private static final Logger log = LoggerFactory.getLogger(AllotMintPortfolioTool.class);
@@ -41,6 +42,14 @@ final class AllotMintPortfolioTool {
             "description", "Owner slug returned by GET /owners"));
     properties.put(ACCOUNT_TYPE, Map.of("type", "string", "minLength", 1));
     properties.put(CURRENCY, Map.of("type", "string", "minLength", 1));
+    properties.put(
+        INCLUDE_HISTORY,
+        Map.of(
+            "type", "boolean",
+            "default", false,
+            "description",
+            "When true, include the full performance.history array in summary. "
+                + "Defaults to false to keep the payload compact for small models."));
     properties.put(
         LOOKBACK_DAYS,
         Map.of(
@@ -71,7 +80,9 @@ final class AllotMintPortfolioTool {
                 "Reads one owner's AllotMint portfolio. owner is required; call GET /owners "
                     + "through the AllotMint API to discover valid owner slugs. Actions: summary, "
                     + "exposure, or holdings. Optional account_type and currency filters are "
-                    + "applied client-side.")
+                    + "applied client-side. For summary, set include_history=true to receive "
+                    + "the full performance.history array (omitted by default to keep the payload "
+                    + "compact for small models).")
             .build();
 
     return McpServerFeatures.SyncToolSpecification.builder()
@@ -94,12 +105,13 @@ final class AllotMintPortfolioTool {
 
     String accountType = optionalString(arguments, ACCOUNT_TYPE);
     String currency = optionalString(arguments, CURRENCY);
+    boolean includeHistory = optionalBoolean(arguments, INCLUDE_HISTORY);
     int lookbackDays = parseLookbackDays(arguments);
 
     try {
       Map<String, Object> structured =
           switch (action.toLowerCase(Locale.ROOT)) {
-            case "summary" -> summary(client, owner, accountType, currency);
+            case "summary" -> summary(client, owner, accountType, currency, includeHistory);
             case "exposure" -> exposure(client, owner, accountType, currency, lookbackDays);
             case "holdings" -> holdings(client, owner, accountType, currency);
             default -> throw new IllegalStateException("validated action became invalid");
@@ -119,7 +131,11 @@ final class AllotMintPortfolioTool {
   }
 
   private static Map<String, Object> summary(
-      AllotMintClient client, String owner, String accountType, String currency) {
+      AllotMintClient client,
+      String owner,
+      String accountType,
+      String currency,
+      boolean includeHistory) {
     Map<String, Object> portfolio = client.portfolio(owner);
     Map<String, Object> performance = client.performance(owner);
     List<Account> accounts = filteredAccounts(portfolio, accountType, currency);
@@ -150,8 +166,22 @@ final class AllotMintPortfolioTool {
     result.put("total_value_gbp", totalValue);
     result.put("day_change_gbp", dayChange);
     result.put("allocation", allocation);
-    result.put("performance", performance);
+    result.put("performance", includeHistory ? performance : withoutHistory(performance));
     return result;
+  }
+
+  /**
+   * Returns a copy of the performance map without the {@code history} key, so the default payload
+   * stays compact for small local models. When the caller explicitly sets {@code include_history:
+   * true} the full map is passed through as-is.
+   */
+  private static Map<String, Object> withoutHistory(Map<String, Object> performance) {
+    if (performance == null || performance.isEmpty()) {
+      return performance;
+    }
+    Map<String, Object> trimmed = new LinkedHashMap<>(performance);
+    trimmed.remove("history");
+    return trimmed;
   }
 
   private static Map<String, Object> exposure(
@@ -353,6 +383,20 @@ final class AllotMintPortfolioTool {
       return null;
     }
     return text.trim();
+  }
+
+  private static boolean optionalBoolean(Map<String, Object> values, String key) {
+    Object value = values.get(key);
+    if (value instanceof Boolean bool) {
+      return bool;
+    }
+    if (value instanceof String text) {
+      return "true".equalsIgnoreCase(text.trim());
+    }
+    if (value instanceof Number number) {
+      return number.intValue() != 0;
+    }
+    return false;
   }
 
   private static int parseLookbackDays(Map<String, Object> arguments) {

@@ -142,22 +142,23 @@ def _make_agent(model: Any, tools: ToolSession, settings: Settings):
         owner: str,
         account_type: str | None = None,
         currency: str | None = None,
+        include_history: bool = False,
         lookback_days: int | None = None,
     ) -> str:
         """Read one owner's portfolio. action: summary, exposure, or holdings.
 
         When action='exposure', lookback_days (default 365) adds a
         weight_pct_year_ago field to each sector for historical comparison."""
-        return await tools.call_tool(
-            "allotmint_portfolio",
-            {
-                "action": action,
-                "owner": owner,
-                "account_type": account_type,
-                "currency": currency,
-                "lookback_days": lookback_days,
-            },
-        )
+        args: dict[str, object] = {
+            "action": action,
+            "owner": owner,
+            "account_type": account_type,
+            "currency": currency,
+            "lookback_days": lookback_days,
+        }
+        if action.lower() == "summary":
+            args["include_history"] = include_history
+        return await tools.call_tool("allotmint_portfolio", args)
 
     @agent.tool_plain
     async def allotmint_instrument(

@@ -210,6 +210,52 @@ class AllotMintPortfolioToolTest {
   }
 
   @Test
+  void summaryExcludesHistoryByDefault() {
+    Map<String, Object> perfWithHistory =
+        Map.of(
+            "owner",
+            "steve",
+            "max_drawdown",
+            -0.12,
+            "history",
+            List.of(
+                Map.of("date", "2026-08-05", "value_gbp", 1500.0),
+                Map.of("date", "2026-08-04", "value_gbp", 1490.0)));
+    when(client.portfolio("steve")).thenReturn(portfolio());
+    when(client.performance("steve")).thenReturn(perfWithHistory);
+
+    McpSchema.CallToolResult result = call(Map.of("action", "summary", "owner", "steve"));
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> perf = (Map<String, Object>) structured(result).get("performance");
+    assertThat(perf).containsEntry("max_drawdown", -0.12).doesNotContainKey("history");
+  }
+
+  @Test
+  void summaryIncludesHistoryWhenOptedIn() {
+    Map<String, Object> perfWithHistory =
+        Map.of(
+            "owner",
+            "steve",
+            "max_drawdown",
+            -0.12,
+            "history",
+            List.of(Map.of("date", "2026-08-05", "value_gbp", 1500.0)));
+    when(client.portfolio("steve")).thenReturn(portfolio());
+    when(client.performance("steve")).thenReturn(perfWithHistory);
+
+    McpSchema.CallToolResult result =
+        call(Map.of("action", "summary", "owner", "steve", "include_history", true));
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> perf = (Map<String, Object>) structured(result).get("performance");
+    assertThat(perf)
+        .containsEntry("max_drawdown", -0.12)
+        .containsKey("history");
+    assertThat((List<?>) perf.get("history")).hasSize(1);
+  }
+
+  @Test
   void backendErrorsBecomeMcpErrors() {
     when(client.portfolio("missing"))
         .thenThrow(new AllotMintApiException(404, "AllotMint backend returned 404: owner missing"));
