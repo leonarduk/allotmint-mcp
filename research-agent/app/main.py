@@ -8,12 +8,14 @@ already calls the AllotMint backend. Three endpoints, all read-only.
 from __future__ import annotations
 
 import logging
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
 from .agent import run_research
 from .config import load_settings
+from .langfuse_tracing import new_langfuse_tracer
 from .llm import UnsupportedProvider
 from .models import AskRequest, AskResponse
 from .tracing import new_trace, read_trace
@@ -63,8 +65,15 @@ async def ask(request: AskRequest) -> AskResponse:
     """Answers one question with a grounded, cited response."""
     settings = load_settings()
     trace_logger = new_trace(_trace_file(settings))
+    trace_id = trace_logger.trace_id if trace_logger is not None else str(uuid.uuid4())
+    lf_tracer = new_langfuse_tracer(trace_id, settings)
     try:
-        return await run_research(request, settings, trace_logger=trace_logger)
+        response = await run_research(request, settings, trace_logger=trace_logger, langfuse_tracer=lf_tracer)
+        if lf_tracer is not None and lf_tracer.enabled:
+            trace_url = lf_tracer.trace_url
+            if trace_url:
+                log.info("Langfuse trace: %s", trace_url)
+        return response
     except UnsupportedProvider as exc:
         # Misconfiguration, not a failed question - say so in a way the MCP
         # tool's error message can pass straight to whoever has to fix it.
@@ -72,6 +81,9 @@ async def ask(request: AskRequest) -> AskResponse:
     except Exception as exc:  # noqa: BLE001 - the boundary; nothing above catches
         log.exception("Research run failed")
         raise HTTPException(status_code=502, detail=f"research run failed: {exc}") from exc
+    finally:
+        if lf_tracer is not None:
+            lf_tracer.flush()
 
 
 @app.get("/research/trace/{trace_id}")
