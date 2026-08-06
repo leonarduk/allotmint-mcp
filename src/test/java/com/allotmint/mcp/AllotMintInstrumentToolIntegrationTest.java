@@ -25,7 +25,7 @@ import org.springframework.boot.test.context.SpringBootTest;
  * <p>The test skips when {@code ALLOTMINT_TEST_TICKER} is unset or the backend is unavailable so a
  * normal unit-test run does not require a separately running service.
  */
-@SpringBootTest
+@SpringBootTest(properties = "mcp.stdio.enabled=false")
 class AllotMintInstrumentToolIntegrationTest {
 
   @Autowired private AllotMintClient allotMintClient;

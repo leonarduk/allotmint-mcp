@@ -29,7 +29,7 @@ import org.springframework.boot.test.context.SpringBootTest;
  * org.junit.jupiter.api.Assumptions#assumeTrue} rather than failing, since that's an environment
  * gap, not a code defect.
  */
-@SpringBootTest
+@SpringBootTest(properties = "mcp.stdio.enabled=false")
 class AllotMintHealthToolIntegrationTest {
 
   @Autowired private AllotMintClient allotMintClient;

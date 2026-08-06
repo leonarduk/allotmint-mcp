@@ -1,9 +1,11 @@
 package com.allotmint.mcp;
 
+import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
@@ -23,8 +25,15 @@ class AllotMintClientConfig {
   @Bean
   RestClient allotMintRestClient(
       @Value("${allotmint.api.base-url:http://localhost:8000}") String baseUrl,
-      @Value("${allotmint.mcp.auth-token:}") String authToken) {
-    return withAuthorization(RestClient.builder().baseUrl(baseUrl), authToken).build();
+      @Value("${allotmint.mcp.auth-token:}") String authToken,
+      @Value("${allotmint.api.connect-timeout-seconds:5}") int connectTimeoutSeconds,
+      @Value("${allotmint.api.read-timeout-seconds:15}") int readTimeoutSeconds) {
+    SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+    requestFactory.setConnectTimeout(Duration.ofSeconds(connectTimeoutSeconds));
+    requestFactory.setReadTimeout(Duration.ofSeconds(readTimeoutSeconds));
+    return withAuthorization(
+            RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory), authToken)
+        .build();
   }
 
   /**
