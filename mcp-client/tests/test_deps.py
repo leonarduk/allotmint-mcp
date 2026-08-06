@@ -266,11 +266,14 @@ def test_ensure_mcp_server_starts_it_with_research_enabled(monkeypatch, tmp_path
 
 def test_ensure_research_agent_is_a_noop_when_already_reachable(monkeypatch):
     monkeypatch.setattr(deps, "http_ok", lambda url, timeout=2.0: True)
+    seeded = []
+    monkeypatch.setattr(deps, "_seed_sample_corpus", lambda: seeded.append(True))
 
     assert deps.ensure_research_agent("http://localhost:8100", timeout_seconds=5) is None
+    assert seeded == []
 
 
-def test_ensure_research_agent_starts_the_compose_profile(monkeypatch):
+def test_ensure_research_agent_starts_the_compose_profile_and_seeds_it(monkeypatch):
     monkeypatch.setattr(deps, "http_ok", lambda url, timeout=2.0: False)
     monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
 
@@ -287,11 +290,75 @@ def test_ensure_research_agent_starts_the_compose_profile(monkeypatch):
 
     monkeypatch.setattr(deps.subprocess, "run", fake_run)
     monkeypatch.setattr(deps, "wait_until", lambda check, timeout_seconds, interval=2.0: True)
+    seeded = []
+    monkeypatch.setattr(deps, "_seed_sample_corpus", lambda: seeded.append(True))
 
     assert deps.ensure_research_agent("http://localhost:8100", timeout_seconds=5) is None
     assert commands == [
         ["docker", "compose", "--profile", "research", "up", "-d", "--no-deps", "research-agent"]
     ]
+    assert seeded == [True]
+
+
+def test_ensure_research_agent_does_not_seed_if_the_container_never_came_up(monkeypatch):
+    monkeypatch.setattr(deps, "http_ok", lambda url, timeout=2.0: False)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+
+    class FakeCompletedProcess:
+        returncode = 0
+
+    monkeypatch.setattr(deps.subprocess, "run", lambda command, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(deps, "wait_until", lambda check, timeout_seconds, interval=2.0: False)
+    seeded = []
+    monkeypatch.setattr(deps, "_seed_sample_corpus", lambda: seeded.append(True))
+
+    problem = deps.ensure_research_agent("http://localhost:8100", timeout_seconds=5)
+
+    assert problem is not None
+    assert seeded == []
+
+
+def test_seed_sample_corpus_runs_ingest_inside_the_container(monkeypatch):
+    commands = []
+
+    class FakeCompletedProcess:
+        returncode = 0
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return FakeCompletedProcess()
+
+    monkeypatch.setattr(deps.subprocess, "run", fake_run)
+
+    deps._seed_sample_corpus()
+
+    assert commands == [
+        [
+            "docker",
+            "compose",
+            "--profile",
+            "research",
+            "exec",
+            "-T",
+            "research-agent",
+            "python",
+            "ingest.py",
+            "--sample",
+        ]
+    ]
+
+
+def test_seed_sample_corpus_logs_a_warning_on_failure_without_raising(monkeypatch):
+    class FakeCompletedProcess:
+        returncode = 1
+
+    monkeypatch.setattr(deps.subprocess, "run", lambda command, **kwargs: FakeCompletedProcess())
+    warnings = []
+    monkeypatch.setattr(deps, "log", lambda message, level="INFO": warnings.append((level, message)))
+
+    deps._seed_sample_corpus()  # must not raise
+
+    assert any(level == "WARNING" and "ingest.py" in message for level, message in warnings)
 
 
 def test_ensure_running_only_runs_requested_steps_in_order(monkeypatch):

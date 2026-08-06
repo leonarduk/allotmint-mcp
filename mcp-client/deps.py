@@ -270,7 +270,48 @@ def ensure_research_agent(research_url: str, timeout_seconds: float) -> str | No
         return f"docker compose up -d research-agent exited {result.returncode} - see the output above"
     if not wait_until(lambda: http_ok(health_url), timeout_seconds):
         return f"container started but {health_url} never responded - check `docker compose logs research-agent`"
+    _seed_sample_corpus()
     return None
+
+
+def _seed_sample_corpus() -> None:
+    """Seeds pgvector with the #11 spike's sample corpus, via ingest.py --sample.
+
+    Runs inside the research-agent container - already has sentence-transformers/
+    psycopg baked into its image - rather than requiring those heavy dependencies
+    on the host too just to run one script. Only called right after starting
+    research-agent from cold (not on the already-reachable no-op path above), so
+    a plain --start-deps rerun against an already-running stack doesn't recompute
+    embeddings every time; ingest.py itself is still idempotent (upserts keyed on
+    `source`) if it ends up running against an already-seeded database anyway -
+    e.g. pgvector's data survived a research-agent restart.
+
+    Best-effort: a failure here is logged, not returned as a problem. A missing
+    sample corpus degrades to `retrieval unavailable`, which the agent already
+    handles by answering from tool calls alone rather than failing outright.
+    """
+    log("research-agent: seeding sample corpus (ingest.py --sample)...")
+    result = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "--profile",
+            "research",
+            "exec",
+            "-T",
+            "research-agent",
+            "python",
+            "ingest.py",
+            "--sample",
+        ],
+        cwd=REPO_ROOT,
+    )
+    if result.returncode != 0:
+        log(
+            f"research-agent: ingest.py --sample exited {result.returncode} - retrieval may stay "
+            "unavailable until you run it manually (see research-agent/README.md#ingestion)",
+            level="WARNING",
+        )
 
 
 _STEPS = {
