@@ -357,6 +357,17 @@ async def run_research(
 
     grounded = bool(documents) or bool(tool_calls)
 
+    from .guardrails import review
+
+    safety = review(
+        request=request,
+        answer=answer,
+        documents=documents,
+        tool_calls=tool_calls,
+        grounded=grounded,
+        warnings=warnings,
+    )
+
     log.info(
         "research complete in %.1fs: %d document(s), %d tool call(s), grounded=%s",
         time.monotonic() - started,
@@ -386,6 +397,8 @@ async def run_research(
         tool_calls=tool_calls,
         retrieved_documents=documents,
         grounded=grounded,
+        needs_review=safety.needs_review,
+        review_reasons=safety.reasons,
         warnings=warnings,
         model=settings.model_label,
         trace_id=trace_logger.trace_id if trace_logger is not None else None,
