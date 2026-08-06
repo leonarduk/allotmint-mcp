@@ -31,6 +31,7 @@ from .llm import build_model
 from .mcp_tools import ToolSession, open_session
 from .models import AskRequest, AskResponse, Citation, RetrievedDocument, ToolCallRecord
 from .retrieval import RetrievalUnavailable, search
+from .tracing import TraceLogger
 
 log = logging.getLogger(__name__)
 
@@ -277,12 +278,27 @@ def resolve_markers(
     return rewritten, referenced, warnings
 
 
-async def run_research(request: AskRequest, settings: Settings) -> AskResponse:
+async def run_research(
+    request: AskRequest,
+    settings: Settings,
+    trace_logger: TraceLogger | None = None,
+) -> AskResponse:
     """Runs one full research question end to end."""
     started = time.monotonic()
     warnings: list[str] = []
 
+    if trace_logger is not None:
+        trace_logger.request_start(
+            request.question,
+            request.owner,
+            request.lookback_days,
+            settings.model_label,
+        )
+
+    # --- retrieval ---------------------------------------------------------
     documents: list[RetrievedDocument] = []
+    if trace_logger is not None:
+        trace_logger.retrieval_start()
     try:
         documents = await search(
             request.question,
@@ -295,16 +311,37 @@ async def run_research(request: AskRequest, settings: Settings) -> AskResponse:
         warnings.append(
             f"Retrieval store unavailable ({exc}); the answer rests on tool calls alone."
         )
+        if trace_logger is not None:
+            trace_logger.retrieval_end(0, [], unavailable=True)
+    else:
+        if trace_logger is not None:
+            trace_logger.retrieval_end(
+                len(documents),
+                [d.source for d in documents],
+                unavailable=False,
+            )
 
+    # --- agent run ---------------------------------------------------------
     model = build_model(settings)
     prompt = build_user_prompt(request, documents)
 
-    async with open_session(settings) as tools:
+    if trace_logger is not None:
+        trace_logger.agent_start(settings.model_label)
+
+    async with open_session(settings, trace_logger=trace_logger) as tools:
         agent = _make_agent(model, tools, settings)
         result = await agent.run(prompt)
         tool_calls = list(tools.calls)
 
     answer = strip_reasoning(str(result.output))
+
+    if trace_logger is not None:
+        trace_logger.agent_end(
+            tool_call_count=len(tool_calls),
+            answer_length=len(answer),
+            grounded=bool(documents) or bool(tool_calls),
+        )
+
     answer, referenced, marker_warnings = resolve_markers(answer, documents, tool_calls)
     warnings.extend(marker_warnings)
 
@@ -328,15 +365,28 @@ async def run_research(request: AskRequest, settings: Settings) -> AskResponse:
         grounded,
     )
 
+    citations = build_citations(documents, tool_calls)
+
+    if trace_logger is not None:
+        trace_logger.request_end(
+            grounded=grounded,
+            answer_length=len(answer),
+            citation_count=len(citations),
+            tool_call_count=len(tool_calls),
+            document_count=len(documents),
+            warnings=warnings,
+        )
+
     return AskResponse(
         question=request.question,
         owner=request.owner,
         lookback_days=request.lookback_days,
         answer=answer,
-        citations=build_citations(documents, tool_calls),
+        citations=citations,
         tool_calls=tool_calls,
         retrieved_documents=documents,
         grounded=grounded,
         warnings=warnings,
         model=settings.model_label,
+        trace_id=trace_logger.trace_id if trace_logger is not None else None,
     )

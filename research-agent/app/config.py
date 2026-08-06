@@ -85,6 +85,11 @@ class Settings:
     max_distance: float = 0.85
     retrieval_enabled: bool = True
 
+    # --- Tracing -----------------------------------------------------------
+    # Where structured JSON trace events are written (one line per event).
+    # An empty string disables trace logging entirely.
+    trace_file: str = ""
+
     tools: tuple[str, ...] = V0_TOOL_ALLOWLIST
 
     @property
@@ -114,4 +119,5 @@ def load_settings() -> Settings:
         max_distance=_env_float("ALLOTMINT_RESEARCH_MAX_DISTANCE", 0.85),
         retrieval_enabled=_env_str("ALLOTMINT_RESEARCH_RETRIEVAL_ENABLED", "true").lower()
         not in ("false", "0", "no"),
+        trace_file=_env_str("ALLOTMINT_RESEARCH_TRACE_FILE", ""),
     )
