@@ -280,6 +280,10 @@ The tool stays read-only: the sidecar allowlists exactly the four v0 tool names,
 
 To exercise this tool without Claude Desktop or the MCP Inspector, use the [mcp-client](mcp-client/README.md) — a minimal CLI that connects over MCP and asks it questions directly.
 
+### Multiple checkouts of this repo
+
+When more than one clone of this repo runs on the same machine, `docker-compose.yml` no longer sets hardcoded `container_name` values — Compose derives per-project names automatically (`${COMPOSE_PROJECT_NAME}-pgvector-1`, etc.), so two checkouts can run their own pgvector and research-agent containers without colliding. Use `docker compose ps` to find the actual container names in your checkout. If you have old containers from before this change, remove them first: `docker rm -f allotmint-mcp-pgvector allotmint-mcp-research-agent`.
+
 ## Build and quality gates
 
 ```bash
