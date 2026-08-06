@@ -140,6 +140,29 @@ python client.py --call allotmint_health --args "{}"
 | `--start-pgvector` / `--start-ollama` / `--start-mcp-server` / `--start-research-agent` | | Start just one of them |
 | `--start-timeout` | `90` | Seconds to wait for a started dependency to become ready |
 
+## Web UI
+
+`webui.py` puts a locally hosted browser front end on this same client ([issue #302](https://github.com/leonarduk/allotmint-mcp/issues/302)) — the same prerequisites above, the same `ask`/`--list-tools`/`--call` calls, just a form instead of a terminal. `client.py` is unchanged and still works exactly as documented above; this is a second entrypoint onto it, not a replacement.
+
+```bash
+python webui.py
+```
+
+Then open [http://localhost:8600](http://localhost:8600). The page has three panels, one per CLI mode:
+
+- **Ask allotmint_research** — question, owner, lookback days, plus an *Advanced* section for the allotmint-mcp/research-agent URLs, timeout, and skipping preflight — mirrors `python client.py "..." --owner ...`.
+- **List tools** — connects to the configured allotmint-mcp URL (with its own URL and timeout fields) and lists the tools it exposes — mirrors `--list-tools`.
+- **Call a tool directly** — tool name, JSON arguments, URL, and timeout — mirrors `--call TOOL --args JSON`.
+
+Preflight runs by default before a question is asked, same as the CLI, and reports the same problems (missing tool registration, unreachable sidecar) instead of a raw error.
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--host` | `127.0.0.1` | Interface to bind — the server is meant for local/laptop use, not for exposing on a network |
+| `--port` | `8600` | Port to listen on |
+| `--url` | `http://localhost:8080/mcp` | allotmint-mcp endpoint prefilled in the form |
+| `--research-url` | `http://localhost:8100` | research-agent sidecar URL prefilled in the form |
+
 ### `Unknown tool: invalid_tool_name`
 
 If you still see this exact message with `--skip-preflight` (or from `--call`), it almost never means the LLM asked for a bogus tool. It's a known bug in the server's underlying Java SDK (`io.modelcontextprotocol.sdk:mcp-core`'s `McpAsyncServer#toolsCallRequestHandler`): the "tool not found" error hardcodes its message to the literal string `invalid_tool_name` regardless of which tool was actually requested. This client appends the error's `data` field in parentheses, which does name the real tool — check that first. Without `--skip-preflight`, the preflight check above catches the underlying cause (a missing tool registration) before it gets this far.

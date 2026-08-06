@@ -278,7 +278,7 @@ The sidecar's own configuration — which LLM, which retrieval store — is docu
 
 The tool stays read-only: the sidecar allowlists exactly the four v0 tool names, so no write path is reachable through it, and `allotmint_research` is excluded from that allowlist so the agent cannot recurse into itself. An answer with no retrieved context and no tool calls behind it is returned as an error, not as prose.
 
-To exercise this tool without Claude Desktop or the MCP Inspector, use the [mcp-client](mcp-client/README.md) — a minimal CLI that connects over MCP and asks it questions directly.
+To exercise this tool without Claude Desktop or the MCP Inspector, use the [mcp-client](mcp-client/README.md) — a minimal CLI that connects over MCP and asks it questions directly, plus an optional [locally hosted browser UI](mcp-client/README.md#web-ui) (`python webui.py`) on the same client.
 
 ### Multiple checkouts of this repo
 

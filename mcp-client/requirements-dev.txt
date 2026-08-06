@@ -1,4 +1,6 @@
 # Test dependencies only.
 mcp>=1.9
+fastapi>=0.115
+uvicorn[standard]>=0.32
 pytest>=8.0
 pytest-asyncio>=0.24
