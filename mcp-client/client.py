@@ -127,6 +127,21 @@ except NameError:  # pragma: no cover - only reachable before Python 3.11
     _EXCEPTION_GROUP = ()
 
 
+def _mcp_error_types() -> tuple[type, ...]:
+    """The MCP SDK's JSON-RPC error exception, under whichever name it has.
+
+    Renamed McpError -> MCPError at some point; both are checked rather than
+    pinning to whichever one a given pip install resolves.
+    """
+    import mcp.shared.exceptions as exceptions
+
+    return tuple(
+        cls
+        for cls in (getattr(exceptions, "MCPError", None), getattr(exceptions, "McpError", None))
+        if cls is not None
+    )
+
+
 def format_exception(exc: BaseException) -> str:
     """Renders an exception for display, unwrapping anyio TaskGroup noise.
 
@@ -135,11 +150,26 @@ def format_exception(exc: BaseException) -> str:
     ...) surfaces as an ExceptionGroup whose own message is just "unhandled
     errors in a TaskGroup (1 sub-exception)" - true but useless. The actual
     cause is one level inside it.
+
+    A server-side JSON-RPC error for an unrecognized tool name is a second,
+    unrelated trap: the allotmint-mcp server's underlying Java SDK
+    (io.modelcontextprotocol.sdk:mcp-core, McpAsyncServer#toolsCallRequestHandler)
+    has a bug where that error's message is always the literal string "Unknown
+    tool: invalid_tool_name" regardless of which tool was actually requested -
+    the real name only appears in the error's `data` field ("Tool not found:
+    <name>"). Appending `data` when present is what makes this message
+    actionable instead of actively misleading.
     """
     if isinstance(exc, _EXCEPTION_GROUP):
         leaves = [format_exception(sub) for sub in exc.exceptions]  # type: ignore[attr-defined]
         return "; ".join(leaves) if leaves else str(exc)
-    return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+
+    base = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+    if isinstance(exc, _mcp_error_types()):
+        data = getattr(exc, "data", None)
+        if data:
+            return f"{base} ({data})"
+    return base
 
 
 def _streamable_http_client():

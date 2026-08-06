@@ -74,6 +74,15 @@ python client.py --call allotmint_health --args "{}"
 | `--call TOOL` | | Call an arbitrary tool instead of `allotmint_research` |
 | `--args JSON` | `{}` | Arguments for `--call` |
 
+### `Unknown tool: invalid_tool_name`
+
+If every question fails with this exact message, it almost never means the LLM asked for a bogus tool. It's a known bug in the server's underlying Java SDK (`io.modelcontextprotocol.sdk:mcp-core`'s `McpAsyncServer#toolsCallRequestHandler`): the "tool not found" error hardcodes its message to the literal string `invalid_tool_name` regardless of which tool was actually requested. This client appends the error's `data` field in parentheses, which does name the real tool — check that first. In practice this fires because the server being called doesn't have `allotmint_research` registered at all, usually because:
+
+- `ALLOTMINT_MCP_RESEARCH_ENABLED=true` wasn't set when the server started, or
+- `--url` points at a server built from a branch/jar that predates the tool's `#249` merge.
+
+`--list-tools` confirms which tools a given server instance actually exposes.
+
 ## Tests
 
 ```bash

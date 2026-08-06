@@ -201,3 +201,34 @@ def test_format_exception_unwraps_nested_and_multiple_sub_exceptions():
     )
 
     assert format_exception(group) == "ValueError: first; TimeoutError: second"
+
+
+def _mcp_error_class():
+    """The installed SDK's JSON-RPC error class, whether it's McpError or MCPError."""
+    import mcp.shared.exceptions as exceptions
+
+    return getattr(exceptions, "MCPError", None) or getattr(exceptions, "McpError")
+
+
+def test_format_exception_appends_mcp_error_data():
+    error_cls = _mcp_error_class()
+
+    # Real-world case: the server's "unknown tool" error hardcodes its message
+    # to "Unknown tool: invalid_tool_name" no matter what was actually
+    # requested (io.modelcontextprotocol.sdk:mcp-core McpAsyncServer bug) - the
+    # real tool name only shows up in `data`.
+    error = error_cls(code=-32602, message="Unknown tool: invalid_tool_name")
+    error.error.data = "Tool not found: allotmint_research"
+
+    assert format_exception(error) == (
+        f"{error_cls.__name__}: Unknown tool: invalid_tool_name"
+        " (Tool not found: allotmint_research)"
+    )
+
+
+def test_format_exception_skips_the_parenthetical_when_mcp_error_has_no_data():
+    error_cls = _mcp_error_class()
+
+    error = error_cls(code=-32602, message="Something else went wrong")
+
+    assert format_exception(error) == f"{error_cls.__name__}: Something else went wrong"
