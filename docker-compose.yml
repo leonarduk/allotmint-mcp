@@ -8,7 +8,6 @@
 services:
   pgvector:
     image: pgvector/pgvector:pg16
-    container_name: allotmint-mcp-pgvector
     environment:
       POSTGRES_DB: allotmint_research
       POSTGRES_USER: allotmint
@@ -26,7 +25,6 @@ services:
   research-agent:
     profiles: ["research"]
     build: ./research-agent
-    container_name: allotmint-mcp-research-agent
     ports:
       - "8100:8100"
     environment:
