@@ -1,5 +1,11 @@
 """Locally hosted browser UI for the mcp-client (issue #302).
 
+Deprecated (issue #310): gradio_ui.py is the successor to this module - a
+proper, modern interface for the same client.py functions, instead of this
+Swagger-like hand-rolled HTML form. This module is left in place because it
+still works and some tests/workflows may depend on it, but new usage should
+prefer `python gradio_ui.py`.
+
 Wraps the same functions client.py's CLI uses - open_session, ask,
 list_tools, call_tool, preflight, format_exception - behind a small FastAPI
 app instead of argparse/stdin, so asking allotmint_research a question, or
@@ -312,6 +318,8 @@ def main(argv: list[str] | None = None) -> int:
     which = client.requested_dependencies(args)
     if which:
         deps.ensure_running(args.url, args.research_url, args.start_timeout, which)
+
+    deps.log("webui.py is deprecated; prefer gradio_ui.py (issue #310)", level="WARNING")
 
     deps.log(f"web UI: serving on http://{args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)

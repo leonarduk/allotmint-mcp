@@ -142,13 +142,13 @@ python client.py --call allotmint_health --args "{}"
 
 ## Web UI
 
-`webui.py` puts a locally hosted browser front end on this same client ([issue #302](https://github.com/leonarduk/allotmint-mcp/issues/302)) — the same prerequisites above, the same `ask`/`--list-tools`/`--call` calls, just a form instead of a terminal. `client.py` is unchanged and still works exactly as documented above; this is a second entrypoint onto it, not a replacement.
+`gradio_ui.py` puts a locally hosted [Gradio](https://gradio.app) front end on this same client ([issue #310](https://github.com/leonarduk/allotmint-mcp/issues/310)) — the same prerequisites above, the same `ask`/`--list-tools`/`--call` calls, just a modern interactive interface instead of a terminal. `client.py` is unchanged and still works exactly as documented above; this is a second entrypoint onto it, not a replacement.
 
 ```bash
-python webui.py
+python gradio_ui.py
 ```
 
-Then open [http://localhost:8600](http://localhost:8600). The page has three panels, one per CLI mode:
+Then open [http://localhost:8601](http://localhost:8601). The page has three tabs, one per CLI mode:
 
 - **Ask allotmint_research** — question, owner, lookback days, plus an *Advanced* section for the allotmint-mcp/research-agent URLs, timeout, and skipping preflight — mirrors `python client.py "..." --owner ...`.
 - **List tools** — connects to the configured allotmint-mcp URL (with its own URL and timeout fields) and lists the tools it exposes — mirrors `--list-tools`.
@@ -159,9 +159,14 @@ Preflight runs by default before a question is asked, same as the CLI, and repor
 | Flag | Default | Purpose |
 |---|---|---|
 | `--host` | `127.0.0.1` | Interface to bind — the server is meant for local/laptop use, not for exposing on a network |
-| `--port` | `8600` | Port to listen on |
+| `--port` | `8601` | Port to listen on |
 | `--url` | `http://localhost:8080/mcp` | allotmint-mcp endpoint prefilled in the form |
 | `--research-url` | `http://localhost:8100` | research-agent sidecar URL prefilled in the form |
+| `--share` | | Create a public Gradio share link, tunneled through Gradio's own servers (off by default) |
+
+### `webui.py` (deprecated)
+
+`webui.py` was the original FastAPI/hand-rolled-HTML browser front end ([issue #302](https://github.com/leonarduk/allotmint-mcp/issues/302)). `gradio_ui.py` replaces it with a proper interactive UI; `webui.py` still works exactly as before (`python webui.py`, serving on port 8600) but new usage should prefer `gradio_ui.py`.
 
 ### `Unknown tool: invalid_tool_name`
 

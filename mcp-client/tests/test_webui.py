@@ -16,38 +16,7 @@ from fastapi.testclient import TestClient
 
 import client as client_module
 import webui
-
-
-def _content(text: str) -> SimpleNamespace:
-    return SimpleNamespace(text=text)
-
-
-def _result(text: str, is_error: bool = False) -> SimpleNamespace:
-    return SimpleNamespace(content=[_content(text)], isError=is_error)
-
-
-class FakeSession:
-    def __init__(self, result=None, tools=None):
-        self.result = result
-        self.tools = tools if tools is not None else [
-            SimpleNamespace(name=n, description="") for n in client_module.REQUIRED_TOOLS
-        ]
-        self.calls: list[tuple[str, dict]] = []
-
-    async def call_tool(self, name, arguments):
-        self.calls.append((name, arguments))
-        return self.result
-
-    async def list_tools(self):
-        return SimpleNamespace(tools=self.tools)
-
-
-def _fake_open_session(session: FakeSession):
-    @asynccontextmanager
-    async def open_session(url, timeout_seconds):
-        yield session
-
-    return open_session
+from tests._helpers import FakeSession, _content, _fake_open_session, _result
 
 
 @pytest.fixture
@@ -70,7 +39,10 @@ def test_index_serves_the_form(test_client):
 
 
 def test_api_ask_returns_the_answer(monkeypatch, test_client):
-    session = FakeSession(result=_result("Technology rose from 18% to 27% [1]."))
+    session = FakeSession(
+        result=_result("Technology rose from 18% to 27% [1]."),
+        required_tools=client_module.REQUIRED_TOOLS,
+    )
     monkeypatch.setattr(client_module, "open_session", _fake_open_session(session))
 
     async def healthy(research_url, timeout_seconds):
@@ -181,7 +153,10 @@ def test_api_tools_reports_connection_failures(monkeypatch, test_client):
 
 
 def test_api_call_passes_arguments_through(monkeypatch, test_client):
-    session = FakeSession(result=_result('{"status": "ok"}'))
+    session = FakeSession(
+        result=_result('{"status": "ok"}'),
+        required_tools=client_module.REQUIRED_TOOLS,
+    )
     monkeypatch.setattr(client_module, "open_session", _fake_open_session(session))
 
     response = test_client.post(
