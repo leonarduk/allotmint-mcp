@@ -122,6 +122,8 @@ One rough edge worth knowing: `llama3.2` sometimes copies a citation marker into
 
 Every setting has a working local default; the default configuration costs nothing to run.
 
+> **What's different from v0:** The four v0 tools (`allotmint_health`, `allotmint_instrument`, `allotmint_market`, `allotmint_portfolio`) are deterministic REST wrappers with no external dependencies beyond the AllotMint backend. The research agent adds an LLM, a vector store, and optional observability — each with its own configuration, dependency, and egress path. See [Design: allotmint_research agentic/RAG MCP tool + LLM observability (Langfuse)](https://github.com/leonarduk/allotmint/discussions/4915) for the full rationale behind these choices.
+
 | Variable | Default | Purpose |
 |---|---|---|
 | `ALLOTMINT_RESEARCH_LLM_PROVIDER` | `ollama` | `ollama`, `deepseek`, or `openai-compatible` |
@@ -133,10 +135,17 @@ Every setting has a working local default; the default configuration costs nothi
 | `ALLOTMINT_RESEARCH_MCP_TIMEOUT_SECONDS` | `30` | Per-tool-call timeout |
 | `ALLOTMINT_RESEARCH_MAX_TOOL_CALLS` | `6` | Bounds a runaway agent loop |
 | `ALLOTMINT_RESEARCH_DB_DSN` | `postgresql://allotmint:allotmint@localhost:5432/allotmint_research` | Retrieval store |
-| `ALLOTMINT_RESEARCH_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Local, 384-dimension |
+| `ALLOTMINT_RESEARCH_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Local sentence-transformer model |
+| `ALLOTMINT_RESEARCH_EMBEDDING_DIM` | `384` | Must match the model's output dimension |
 | `ALLOTMINT_RESEARCH_TOP_K` | `5` | Documents retrieved per question |
 | `ALLOTMINT_RESEARCH_MAX_DISTANCE` | `0.85` | Cosine distance above which a document is dropped |
 | `ALLOTMINT_RESEARCH_RETRIEVAL_ENABLED` | `true` | Set false to run on tool calls alone |
+| `ALLOTMINT_RESEARCH_TRACE_FILE` | *(empty)* | File path for structured JSON trace log; empty disables |
+| `LANGFUSE_PUBLIC_KEY` | *(empty)* | Langfuse public key for LLM observability |
+| `LANGFUSE_SECRET_KEY` | *(empty)* | Langfuse secret key |
+| `LANGFUSE_HOST` | `https://cloud.langfuse.com` | Langfuse instance URL (cloud or self-hosted) |
+
+### LLM provider
 
 Switching to the low-cost hosted option is configuration only:
 
@@ -145,6 +154,38 @@ export ALLOTMINT_RESEARCH_LLM_PROVIDER=deepseek
 export ALLOTMINT_RESEARCH_LLM_MODEL=deepseek-chat
 export ALLOTMINT_RESEARCH_LLM_API_KEY=sk-...
 ```
+
+### Tracing
+
+Set `ALLOTMINT_RESEARCH_TRACE_FILE` to a file path to enable structured JSON trace logging. Every step of a research invocation — retrieval, agent start/end, each tool call — emits one JSON event line with a shared `trace_id`. Traces are written immediately (append + flush), so they survive a process crash and are queryable via `GET /research/trace/{trace_id}` before the request completes.
+
+This is the lightweight MVP tier: no tracing SDK, no new infrastructure. The same file is both the write target and the query source.
+
+### Langfuse observability
+
+Set both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` to send each `allotmint_research` invocation to Langfuse as a trace with distinct spans for retrieval, each tool call, and synthesis. The same `trace_id` is used for both the file log and Langfuse, so the two can be correlated.
+
+```bash
+export LANGFUSE_PUBLIC_KEY=pk-lf-...
+export LANGFUSE_SECRET_KEY=sk-lf-...
+export LANGFUSE_HOST=https://cloud.langfuse.com   # or your self-hosted instance
+```
+
+Langfuse is best-effort: failures to reach it are logged as warnings but never cause the research request to fail. Leaving both keys empty (the default) disables it entirely.
+
+### Network egress
+
+The four v0 tools need only the AllotMint backend (default `localhost:8000`). The research agent adds these outbound connections:
+
+| Target | Default | When required |
+|---|---|---|
+| AllotMint backend | `localhost:8000` | Always (the v0 tools) |
+| allotmint-mcp `/mcp` | `localhost:8080` | Always (the agent is an MCP client of the v0 tools) |
+| pgvector | `localhost:5432` | When `ALLOTMINT_RESEARCH_RETRIEVAL_ENABLED` is `true` (the default) |
+| LLM provider | `localhost:11434` (Ollama) | Always — `ollama` is local; `deepseek` and `openai-compatible` reach out to the configured `ALLOTMINT_RESEARCH_LLM_BASE_URL` |
+| Langfuse | `cloud.langfuse.com:443` | Only when both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set |
+
+With the default configuration everything stays on `localhost`. Switching to a hosted LLM or enabling Langfuse is what introduces outbound internet egress — make sure your firewall allows it.
 
 ## Ingestion
 

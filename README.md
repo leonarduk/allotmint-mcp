@@ -227,6 +227,8 @@ Get valid `owner` slugs from the AllotMint backend's `GET /owners` endpoint. `ac
 
 ### `allotmint_research` (opt-in)
 
+> **What's different from v0:** The four v0 tools above are deterministic REST wrappers with no external dependencies beyond the AllotMint backend. Enabling `allotmint_research` introduces the server's first LLM dependency, a pgvector retrieval store, and optional Langfuse observability — each with its own configuration, dependency, and egress path. The defaults stay local and free (Ollama + local embeddings), but switching to a hosted LLM or enabling Langfuse requires outbound internet access. See [Design: allotmint_research agentic/RAG MCP tool + LLM observability (Langfuse)](https://github.com/leonarduk/allotmint/discussions/4915) for the full rationale.
+
 Answers a compound natural-language question by retrieving relevant embedded context and chaining the four read-only tools above as the question requires, returning a grounded answer whose `[n]` markers cite the retrieved documents and tool calls behind it.
 
 ```json
