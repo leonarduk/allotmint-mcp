@@ -37,7 +37,10 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 DEFAULT_MCP_URL = "http://localhost:8080/mcp"
+DEFAULT_RESEARCH_URL = "http://localhost:8100"
 RESEARCH_TOOL = "allotmint_research"
+V0_TOOLS = ("allotmint_portfolio", "allotmint_instrument", "allotmint_market", "allotmint_health")
+REQUIRED_TOOLS = (RESEARCH_TOOL,) + V0_TOOLS
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -85,6 +88,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="JSON",
         default="{}",
         help="JSON object of arguments for --call (default: {})",
+    )
+    parser.add_argument(
+        "--research-url",
+        default=DEFAULT_RESEARCH_URL,
+        help=(
+            "research-agent sidecar base URL, used only for the startup prerequisite "
+            f"check (default: {DEFAULT_RESEARCH_URL})"
+        ),
+    )
+    parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="Skip the startup checks that verify the server and sidecar are ready before asking anything",
     )
     return parser.parse_args(argv)
 
@@ -227,6 +243,72 @@ async def list_tools(session) -> str:
     return "\n".join(lines) if lines else "(server exposes no tools)"
 
 
+def missing_required_tools(tool_names: set[str]) -> list[str]:
+    return [name for name in REQUIRED_TOOLS if name not in tool_names]
+
+
+async def fetch_research_agent_health(research_url: str, timeout_seconds: float) -> dict:
+    """Fetches the research-agent sidecar's own GET /health.
+
+    Plain stdlib HTTP, not MCP: the sidecar isn't reachable through the
+    allotmint-mcp server's tool surface, so this is the only way this client
+    can tell it's up at all, or see which LLM it's actually configured to use.
+    Mirrors the sidecar's own /health philosophy (research-agent/app/main.py):
+    it reports configuration, it doesn't probe the LLM/database itself, so a
+    200 here doesn't guarantee an `ask` will succeed - only that the process
+    answering for allotmint_research is alive and reachable.
+    """
+    import urllib.request
+
+    def _get() -> dict:
+        url = f"{research_url.rstrip('/')}/health"
+        with urllib.request.urlopen(url, timeout=timeout_seconds) as response:  # noqa: S310
+            return json.loads(response.read())
+
+    return await asyncio.to_thread(_get)
+
+
+async def preflight(session, research_url: str, timeout_seconds: float) -> list[str]:
+    """Checks what allotmint_research needs before asking it anything.
+
+    Two independent prerequisites can each be silently missing: the
+    allotmint-mcp server may not have allotmint_research (or the v0 tools it
+    chains) registered at all (ALLOTMINT_MCP_RESEARCH_ENABLED unset, or a
+    server built before the tool existed), and even when it is registered,
+    the research-agent sidecar behind it can be down or misconfigured. Either
+    one otherwise only surfaces as a confusing error from inside a real
+    question - see the "Unknown tool: invalid_tool_name" case in the README.
+    Returns a list of human-readable problems; empty means everything checked
+    out.
+    """
+    response = await session.list_tools()
+    tool_names = {tool.name for tool in response.tools}
+    missing = missing_required_tools(tool_names)
+    if missing:
+        return [
+            "allotmint-mcp server is missing required tool(s): "
+            + ", ".join(missing)
+            + ". Check that ALLOTMINT_MCP_RESEARCH_ENABLED=true was set and that the "
+            "server was built from a version that includes allotmint_research "
+            "(issue #13, merged in #249) - run --list-tools to see what it actually exposes."
+        ]
+
+    try:
+        health = await fetch_research_agent_health(research_url, timeout_seconds)
+    except Exception as exc:  # noqa: BLE001 - reported to the user, not swallowed
+        return [
+            f"research-agent sidecar unreachable at {research_url}: {format_exception(exc)}. "
+            "Is it running (cd research-agent && uvicorn app.main:app --port 8100)?"
+        ]
+
+    print(
+        "research-agent ready: model={model}, retrieval_enabled={retrieval_enabled}".format(
+            model=health.get("model", "?"), retrieval_enabled=health.get("retrieval_enabled", "?")
+        )
+    )
+    return []
+
+
 async def ask(session, question: str, owner: str | None, lookback_days: int | None) -> str:
     arguments = build_research_arguments(question, owner, lookback_days)
     result = await session.call_tool(RESEARCH_TOOL, arguments)
@@ -241,7 +323,7 @@ async def call_tool(session, name: str, arguments: dict[str, Any]) -> str:
 
 
 async def repl(session, owner: str | None, lookback_days: int | None) -> None:
-    print("Connected. Type a question for allotmint_research (blank line or Ctrl-D to quit).")
+    print("Type a question for allotmint_research (blank line or Ctrl-D to quit).")
     while True:
         try:
             question = input("> ").strip()
@@ -272,6 +354,15 @@ async def run(args: argparse.Namespace) -> int:
         if args.call:
             print(await call_tool(session, args.call, args_json))
             return 0
+
+        # Only the ask/REPL paths need the full stack (research tool + sidecar);
+        # --list-tools and --call are themselves diagnostic, so they run unchecked.
+        if not args.skip_preflight:
+            problems = await preflight(session, args.research_url, args.timeout)
+            if problems:
+                for problem in problems:
+                    print(f"Error: {problem}", file=sys.stderr)
+                return 1
 
         if args.question:
             print(await ask(session, args.question, args.owner, args.lookback_days))

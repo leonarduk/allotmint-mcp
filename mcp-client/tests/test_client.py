@@ -18,7 +18,9 @@ from client import (
     call_tool,
     format_exception,
     list_tools,
+    missing_required_tools,
     parse_args,
+    preflight,
     result_is_error,
     result_text,
 )
@@ -144,6 +146,15 @@ def test_parse_args_defaults():
     assert args.list_tools is False
     assert args.call is None
     assert args.args == "{}"
+    assert args.research_url == client_module.DEFAULT_RESEARCH_URL
+    assert args.skip_preflight is False
+
+
+def test_parse_args_skip_preflight_and_research_url():
+    args = parse_args(["--skip-preflight", "--research-url", "http://localhost:9100"])
+
+    assert args.skip_preflight is True
+    assert args.research_url == "http://localhost:9100"
 
 
 def test_parse_args_one_shot_question_with_flags():
@@ -232,3 +243,64 @@ def test_format_exception_skips_the_parenthetical_when_mcp_error_has_no_data():
     error = error_cls(code=-32602, message="Something else went wrong")
 
     assert format_exception(error) == f"{error_cls.__name__}: Something else went wrong"
+
+
+def test_missing_required_tools_reports_only_what_is_absent():
+    assert missing_required_tools(set(client_module.REQUIRED_TOOLS)) == []
+    assert missing_required_tools({"allotmint_health"}) == [
+        "allotmint_research",
+        "allotmint_portfolio",
+        "allotmint_instrument",
+        "allotmint_market",
+    ]
+
+
+def _tools_session(names: list[str]) -> FakeSession:
+    return FakeSession(SimpleNamespace(tools=[SimpleNamespace(name=n, description="") for n in names]))
+
+
+@pytest.mark.asyncio
+async def test_preflight_reports_missing_tools_without_checking_the_sidecar(monkeypatch):
+    async def fail_if_called(*args, **kwargs):
+        raise AssertionError("should not check the sidecar when tools are missing")
+
+    monkeypatch.setattr(client_module, "fetch_research_agent_health", fail_if_called)
+    session = _tools_session(["allotmint_health"])
+
+    problems = await preflight(session, client_module.DEFAULT_RESEARCH_URL, 5.0)
+
+    assert len(problems) == 1
+    assert "allotmint_research" in problems[0]
+    assert "ALLOTMINT_MCP_RESEARCH_ENABLED" in problems[0]
+
+
+@pytest.mark.asyncio
+async def test_preflight_reports_an_unreachable_sidecar(monkeypatch, capsys):
+    async def unreachable(research_url, timeout_seconds):
+        raise ConnectionRefusedError("[Errno 111] Connection refused")
+
+    monkeypatch.setattr(client_module, "fetch_research_agent_health", unreachable)
+    session = _tools_session(list(client_module.REQUIRED_TOOLS))
+
+    problems = await preflight(session, "http://localhost:8100", 5.0)
+
+    assert len(problems) == 1
+    assert "http://localhost:8100" in problems[0]
+    assert "ConnectionRefusedError" in problems[0]
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.asyncio
+async def test_preflight_passes_and_prints_the_sidecar_config(monkeypatch, capsys):
+    async def healthy(research_url, timeout_seconds):
+        return {"status": "ok", "model": "ollama:llama3.2", "retrieval_enabled": True}
+
+    monkeypatch.setattr(client_module, "fetch_research_agent_health", healthy)
+    session = _tools_session(list(client_module.REQUIRED_TOOLS))
+
+    problems = await preflight(session, client_module.DEFAULT_RESEARCH_URL, 5.0)
+
+    assert problems == []
+    output = capsys.readouterr().out
+    assert "ollama:llama3.2" in output
+    assert "retrieval_enabled=True" in output

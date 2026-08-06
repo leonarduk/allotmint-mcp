@@ -36,6 +36,21 @@ python -m venv .venv
 ./.venv/Scripts/pip install -r requirements.txt   # .venv/bin/pip on macOS/Linux
 ```
 
+## Prerequisite checks
+
+Before asking anything (a one-shot question or the REPL — not `--list-tools` or `--call`, which are themselves diagnostic), the client checks that what `allotmint_research` needs is actually in place:
+
+1. **The tool is registered** — `allotmint_research` and the four v0 tools it chains all appear in the connected server's `list_tools()`. Catches a server started without `ALLOTMINT_MCP_RESEARCH_ENABLED=true`, or one built from a jar that predates the tool.
+2. **The sidecar is reachable** — `GET <research-url>/health` succeeds. Catches the `research-agent` process not running, or listening on a different port than `--research-url` expects.
+
+Either failure is reported with a specific, actionable cause and the client exits before making a call — no more generic errors from three layers down. On success it prints what it found, e.g.:
+
+```
+research-agent ready: model=ollama:llama3.2, retrieval_enabled=True
+```
+
+Pass `--skip-preflight` to bypass both checks (e.g. if `--research-url` isn't reachable from where this client runs but the server can still reach it itself).
+
 ## Use
 
 One-shot question:
@@ -73,15 +88,12 @@ python client.py --call allotmint_health --args "{}"
 | `--list-tools` | | List the tools the server exposes, then exit |
 | `--call TOOL` | | Call an arbitrary tool instead of `allotmint_research` |
 | `--args JSON` | `{}` | Arguments for `--call` |
+| `--research-url` | `http://localhost:8100` | The sidecar's base URL, used only for the prerequisite health check |
+| `--skip-preflight` | | Skip the startup checks described above |
 
 ### `Unknown tool: invalid_tool_name`
 
-If every question fails with this exact message, it almost never means the LLM asked for a bogus tool. It's a known bug in the server's underlying Java SDK (`io.modelcontextprotocol.sdk:mcp-core`'s `McpAsyncServer#toolsCallRequestHandler`): the "tool not found" error hardcodes its message to the literal string `invalid_tool_name` regardless of which tool was actually requested. This client appends the error's `data` field in parentheses, which does name the real tool — check that first. In practice this fires because the server being called doesn't have `allotmint_research` registered at all, usually because:
-
-- `ALLOTMINT_MCP_RESEARCH_ENABLED=true` wasn't set when the server started, or
-- `--url` points at a server built from a branch/jar that predates the tool's `#249` merge.
-
-`--list-tools` confirms which tools a given server instance actually exposes.
+If you still see this exact message with `--skip-preflight` (or from `--call`), it almost never means the LLM asked for a bogus tool. It's a known bug in the server's underlying Java SDK (`io.modelcontextprotocol.sdk:mcp-core`'s `McpAsyncServer#toolsCallRequestHandler`): the "tool not found" error hardcodes its message to the literal string `invalid_tool_name` regardless of which tool was actually requested. This client appends the error's `data` field in parentheses, which does name the real tool — check that first. Without `--skip-preflight`, the preflight check above catches the underlying cause (a missing tool registration) before it gets this far.
 
 ## Tests
 
