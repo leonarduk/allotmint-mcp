@@ -141,6 +141,7 @@ def _make_agent(model: Any, tools: ToolSession, settings: Settings):
         owner: str,
         account_type: str | None = None,
         currency: str | None = None,
+        include_history: bool = False,
     ) -> str:
         """Read one owner's portfolio. action: summary, exposure, or holdings."""
         return await tools.call_tool(
@@ -150,6 +151,7 @@ def _make_agent(model: Any, tools: ToolSession, settings: Settings):
                 "owner": owner,
                 "account_type": account_type,
                 "currency": currency,
+                "include_history": include_history,
             },
         )
 

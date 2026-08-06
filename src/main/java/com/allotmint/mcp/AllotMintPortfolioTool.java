@@ -18,6 +18,7 @@ final class AllotMintPortfolioTool {
   static final String OWNER = "owner";
   static final String ACCOUNT_TYPE = "account_type";
   static final String CURRENCY = "currency";
+  static final String INCLUDE_HISTORY = "include_history";
 
   private static final List<String> ACTIONS = List.of("summary", "exposure", "holdings");
 
@@ -34,6 +35,14 @@ final class AllotMintPortfolioTool {
             "description", "Owner slug returned by GET /owners"));
     properties.put(ACCOUNT_TYPE, Map.of("type", "string", "minLength", 1));
     properties.put(CURRENCY, Map.of("type", "string", "minLength", 1));
+    properties.put(
+        INCLUDE_HISTORY,
+        Map.of(
+            "type", "boolean",
+            "default", false,
+            "description",
+            "When true, include the full performance.history array in summary. "
+                + "Defaults to false to keep the payload compact for small models."));
 
     Map<String, Object> inputSchema =
         Map.of(
@@ -75,11 +84,12 @@ final class AllotMintPortfolioTool {
 
     String accountType = optionalString(arguments, ACCOUNT_TYPE);
     String currency = optionalString(arguments, CURRENCY);
+    boolean includeHistory = optionalBoolean(arguments, INCLUDE_HISTORY);
 
     try {
       Map<String, Object> structured =
           switch (action.toLowerCase(Locale.ROOT)) {
-            case "summary" -> summary(client, owner, accountType, currency);
+            case "summary" -> summary(client, owner, accountType, currency, includeHistory);
             case "exposure" -> exposure(client, owner, accountType, currency);
             case "holdings" -> holdings(client, owner, accountType, currency);
             default -> throw new IllegalStateException("validated action became invalid");
@@ -99,7 +109,11 @@ final class AllotMintPortfolioTool {
   }
 
   private static Map<String, Object> summary(
-      AllotMintClient client, String owner, String accountType, String currency) {
+      AllotMintClient client,
+      String owner,
+      String accountType,
+      String currency,
+      boolean includeHistory) {
     Map<String, Object> portfolio = client.portfolio(owner);
     Map<String, Object> performance = client.performance(owner);
     List<Account> accounts = filteredAccounts(portfolio, accountType, currency);
@@ -130,8 +144,22 @@ final class AllotMintPortfolioTool {
     result.put("total_value_gbp", totalValue);
     result.put("day_change_gbp", dayChange);
     result.put("allocation", allocation);
-    result.put("performance", performance);
+    result.put("performance", includeHistory ? performance : withoutHistory(performance));
     return result;
+  }
+
+  /**
+   * Returns a copy of the performance map without the {@code history} key, so the default payload
+   * stays compact for small local models. When the caller explicitly sets {@code include_history:
+   * true} the full map is passed through as-is.
+   */
+  private static Map<String, Object> withoutHistory(Map<String, Object> performance) {
+    if (performance == null || performance.isEmpty()) {
+      return performance;
+    }
+    Map<String, Object> trimmed = new LinkedHashMap<>(performance);
+    trimmed.remove("history");
+    return trimmed;
   }
 
   private static Map<String, Object> exposure(
@@ -316,6 +344,14 @@ final class AllotMintPortfolioTool {
       return null;
     }
     return text.trim();
+  }
+
+  private static boolean optionalBoolean(Map<String, Object> values, String key) {
+    Object value = values.get(key);
+    if (value instanceof Boolean bool) {
+      return bool;
+    }
+    return false;
   }
 
   private static McpSchema.CallToolResult error(String message) {
