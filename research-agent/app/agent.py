@@ -52,7 +52,7 @@ real person's real money, so every number, ticker, and headline you state must \
 come from either the retrieved context below or a tool you actually called.
 
 Tools available to you (all read-only):
-- allotmint_portfolio(action, owner, account_type, currency): action is one of \
+- allotmint_portfolio(action, owner, account_type, currency, lookback_days): action is one of \
 summary, exposure, holdings. Use exposure for sector/asset-class/currency \
 weights, holdings for the per-position list, summary for totals and performance.
 - allotmint_instrument(action, query, ticker, exchange): action is one of \

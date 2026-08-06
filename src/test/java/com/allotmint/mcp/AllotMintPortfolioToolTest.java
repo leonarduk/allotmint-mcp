@@ -86,6 +86,36 @@ class AllotMintPortfolioToolTest {
   }
 
   @Test
+  void exposureEnrichesWithDefaultLookbackWhenOmitted() {
+    List<Map<String, Object>> current =
+        List.of(
+            Map.of("sector", "Technology", "contribution_pct", 27.0),
+            Map.of("sector", "Financials", "contribution_pct", 15.5));
+    List<Map<String, Object>> historical =
+        List.of(
+            Map.of("sector", "Technology", "contribution_pct", 18.0),
+            Map.of("sector", "Financials", "contribution_pct", 17.0));
+    when(client.portfolioSectors("steve")).thenReturn(current);
+    when(client.portfolioSectors("steve", 365)).thenReturn(historical);
+    when(client.portfolio("steve")).thenReturn(portfolio());
+
+    Map<String, Object> structured =
+        structured(call(Map.of("action", "exposure", "owner", "steve")));
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> sectors =
+        (List<Map<String, Object>>) structured.get("sectors");
+    assertThat(sectors).hasSize(2);
+    assertThat(sectors.get(0))
+        .containsEntry("sector", "Technology")
+        .containsEntry("weight_pct_year_ago", new BigDecimal("18.0"));
+    assertThat(sectors.get(1))
+        .containsEntry("sector", "Financials")
+        .containsEntry("weight_pct_year_ago", new BigDecimal("17.0"));
+    verify(client).portfolioSectors("steve", 365);
+  }
+
+  @Test
   void exposureSkipsHistoricalLookupWhenLookbackDaysIsZero() {
     List<Map<String, Object>> sectors =
         List.of(Map.of("sector", "Technology", "market_value_gbp", 1000.0));
