@@ -34,3 +34,26 @@ jobs:
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: ./mvnw -B verify
+
+  research-agent:
+    # The Python sidecar behind allotmint_research. Its tests stub the LLM, the
+    # MCP transport, and the retrieval store, so this job needs no services and
+    # no model download.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: research-agent/requirements-dev.txt
+
+      - name: Install test dependencies
+        working-directory: research-agent
+        run: pip install -r requirements-dev.txt
+
+      - name: Test
+        working-directory: research-agent
+        run: python -m pytest -q

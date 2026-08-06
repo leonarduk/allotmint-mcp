@@ -2,6 +2,7 @@ package com.allotmint.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.WebMvcStreamableServerTransportProvider;
@@ -16,7 +17,14 @@ class McpServerConfigTest {
   private final WebApplicationContextRunner contextRunner =
       new WebApplicationContextRunner()
           .withUserConfiguration(McpServerConfig.class, McpJsonConfig.class)
-          .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class));
+          .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class))
+          .withBean(ResearchAgentClient.class, McpServerConfigTest::researchAgentClient);
+
+  private static ResearchAgentClient researchAgentClient() {
+    ResearchAgentClient client = mock(ResearchAgentClient.class);
+    when(client.baseUrl()).thenReturn("http://localhost:8100");
+    return client;
+  }
 
   @Test
   void isInactiveWithoutTheHttpProfile() {
@@ -49,6 +57,32 @@ class McpServerConfigTest {
               assertThat(context).hasSingleBean(McpSyncServer.class);
               assertThat(context).hasNotFailed();
             });
+  }
+
+  @Test
+  void registersTheResearchToolWhenEnabled() {
+    contextRunner
+        .withPropertyValues("spring.profiles.active=http", "allotmint.mcp.research.enabled=true")
+        .run(
+            context -> {
+              assertThat(context).hasSingleBean(McpSyncServer.class);
+              assertThat(context).hasNotFailed();
+            });
+  }
+
+  @Test
+  void failsToStartWhenResearchEnabledButSidecarUrlIsEmpty() {
+    // Same reasoning as the files root below: enabling a feature without the
+    // configuration it needs must fail loudly at startup, not at first call.
+    ResearchAgentClient unconfigured = mock(ResearchAgentClient.class);
+    when(unconfigured.baseUrl()).thenReturn("");
+
+    new WebApplicationContextRunner()
+        .withUserConfiguration(McpServerConfig.class, McpJsonConfig.class)
+        .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class))
+        .withBean(ResearchAgentClient.class, () -> unconfigured)
+        .withPropertyValues("spring.profiles.active=http", "allotmint.mcp.research.enabled=true")
+        .run(context -> assertThat(context).hasFailed());
   }
 
   @Test

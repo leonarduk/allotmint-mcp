@@ -2,6 +2,7 @@ package com.allotmint.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
@@ -14,7 +15,14 @@ class StdioMcpServerConfigTest {
   private final ApplicationContextRunner contextRunner =
       new ApplicationContextRunner()
           .withUserConfiguration(StdioMcpServerConfig.class, McpJsonConfig.class)
-          .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class));
+          .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class))
+          .withBean(ResearchAgentClient.class, StdioMcpServerConfigTest::researchAgentClient);
+
+  private static ResearchAgentClient researchAgentClient() {
+    ResearchAgentClient client = mock(ResearchAgentClient.class);
+    when(client.baseUrl()).thenReturn("http://localhost:8100");
+    return client;
+  }
 
   /**
    * Asserts on bean *definition* presence rather than instantiating it, since actually
@@ -56,6 +64,32 @@ class StdioMcpServerConfigTest {
         .run(
             context ->
                 assertThat(context.getBeanFactory().containsBeanDefinition(BEAN_NAME)).isTrue());
+  }
+
+  @Test
+  void registersTheResearchToolWhenEnabled() {
+    contextRunner
+        .withPropertyValues("allotmint.mcp.research.enabled=true")
+        .withInitializer(
+            context ->
+                context.addBeanFactoryPostProcessor(
+                    new LazyInitializationBeanFactoryPostProcessor()))
+        .run(
+            context ->
+                assertThat(context.getBeanFactory().containsBeanDefinition(BEAN_NAME)).isTrue());
+  }
+
+  @Test
+  void failsToStartWhenResearchEnabledButSidecarUrlIsEmpty() {
+    ResearchAgentClient unconfigured = mock(ResearchAgentClient.class);
+    when(unconfigured.baseUrl()).thenReturn("");
+
+    new ApplicationContextRunner()
+        .withUserConfiguration(StdioMcpServerConfig.class, McpJsonConfig.class)
+        .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class))
+        .withBean(ResearchAgentClient.class, () -> unconfigured)
+        .withPropertyValues("allotmint.mcp.research.enabled=true")
+        .run(context -> assertThat(context).hasFailed());
   }
 
   @Test
