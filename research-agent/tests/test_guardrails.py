@@ -366,6 +366,22 @@ def test_is_refusal_detects_cannot_answer():
     assert _is_refusal("I do not have sufficient information to answer.")
 
 
+def test_is_refusal_detects_long_refusal():
+    """A long refusal that exceeds 500 chars but starts with a refusal should still match."""
+    long_refusal = (
+        "I cannot determine your portfolio exposure because no owner slug "
+        "was supplied. Please provide an owner identifier so I can look up "
+        "your portfolio. "
+        + "This is important because the portfolio tool requires an owner "
+        + "parameter to fetch holdings, exposure, or summary data. Without "
+        + "an owner, the system does not know which account to query. "
+        + "You can find your owner slug in your account settings "
+        + "or by contacting your administrator. " * 10  # pad past 500 chars
+    )
+    assert len(long_refusal) > 500
+    assert _is_refusal(long_refusal)
+
+
 def test_is_refusal_does_not_false_positive():
     assert not _is_refusal(
         "Your technology exposure is 27%, up from 18% last year. "

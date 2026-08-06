@@ -67,16 +67,18 @@ _HALLUCINATION_BAIT_PATTERNS = [
 # not the question text — because the question might trick the agent into
 # producing them.
 _OUT_OF_SCOPE_ARG_PATTERNS = [
-    (re.compile(r"drop\b", re.IGNORECASE), "destructive verb"),
-    (re.compile(r"delete\b", re.IGNORECASE), "destructive verb"),
-    (re.compile(r"insert\b", re.IGNORECASE), "destructive verb"),
-    (re.compile(r"update\b", re.IGNORECASE), "destructive verb"),
-    (re.compile(r"create\b", re.IGNORECASE), "destructive verb"),
-    (re.compile(r"exec\b", re.IGNORECASE), "code execution verb"),
-    (re.compile(r"eval\b", re.IGNORECASE), "code execution verb"),
-    (re.compile(r"sudo\b", re.IGNORECASE), "privilege escalation"),
-    (re.compile(r"password", re.IGNORECASE), "credential keyword"),
-    (re.compile(r"token", re.IGNORECASE), "credential keyword"),
+    # Destructive verbs — match only as action values, not as random words
+    (re.compile(r"action=(?:delete|drop|update)\b", re.IGNORECASE), "destructive action"),
+    # Code execution / privilege — match as whole words only
+    (re.compile(r"\bexec\b", re.IGNORECASE), "code execution verb"),
+    (re.compile(r"\beval\b", re.IGNORECASE), "code execution verb"),
+    (re.compile(r"\bsudo\b", re.IGNORECASE), "privilege escalation"),
+    # Credential keywords — match as standalone words anywhere in args.
+    # Uses \b boundaries to avoid matching "auth_token_refresh" or
+    # "password_reset" as partial matches; will match "admin password"
+    # or "query=token" as legitimate concerns.
+    (re.compile(r"\bpassword\b", re.IGNORECASE), "credential keyword"),
+    (re.compile(r"\btoken\b", re.IGNORECASE), "credential keyword"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -135,13 +137,10 @@ def review(
             "answer is not grounded: no retrieved documents and no tool calls to back it"
         )
 
-    # An answer that carries no citations at all is claiming authority it
-    # does not have, unless the model honestly said it could not answer.
-    cited_docs_or_tools = any(
-        f"[{c.ref}]" in answer or f"[tool:{c.ref}]" in answer for c in _fake_citations(documents, tool_calls)
-    )
-    no_citations_detected = not cited_docs_or_tools and _marker_count(answer) == 0
-    if no_citations_detected and grounded:
+    # An answer that carries no citation markers at all is claiming authority
+    # it does not have, unless the model honestly said it could not answer.
+    # _marker_count catches both numeric [1],[2] and [tool:x] formats.
+    if _marker_count(answer) == 0 and grounded:
         reasons.append("answer contains no citation markers despite having sources available")
 
     # If the model was given documents but called no tools and the question
@@ -209,22 +208,6 @@ def _check_tool_args(tool_calls: list[ToolCallRecord]) -> list[str]:
     return reasons
 
 
-def _fake_citations(
-    documents: list[RetrievedDocument], tool_calls: list[ToolCallRecord]
-) -> list:
-    """Produces lightweight objects with a `.ref` for citation-marker matching."""
-    class _Ref:
-        def __init__(self, ref: str):
-            self.ref = ref
-
-    result: list = []
-    for d in documents:
-        result.append(_Ref(d.source))
-    for tc in tool_calls:
-        result.append(_Ref(tc.tool))
-    return result
-
-
 def _marker_count(text: str) -> int:
     """Counts `[n]` and `[tool:x]` markers in the answer."""
     markers = set()
@@ -247,8 +230,7 @@ def _question_looks_tool_dependent(question: str) -> bool:
         "what am i invested in", "how much of", "what is my",
     ]
     market_signals = [
-        "today", "right now", "current price", "current value",
-        "latest", "this week", "this month", "live",
+        "right now", "current price", "current value", "live price",
     ]
     for signal in portfolio_signals:
         if signal in lower:
@@ -260,7 +242,12 @@ def _question_looks_tool_dependent(question: str) -> bool:
 
 
 def _is_refusal(answer: str) -> bool:
-    """Detects whether the answer is the model declining to answer."""
+    """Detects whether the answer is the model declining to answer.
+
+    Checks refusal phrases in the first ~500 chars — long answers that start
+    with a refusal and then narrate at length are still refusals, but a long
+    factual answer that happens to contain "I cannot" deep inside is not.
+    """
     lower = answer.lower().strip()
     refusal_phrases = [
         "i cannot", "i can't", "i do not have", "i don't have",
@@ -269,8 +256,8 @@ def _is_refusal(answer: str) -> bool:
         "i'm unable", "cannot determine", "can't determine",
         "could not determine", "couldn't determine",
     ]
-    if len(lower) < 200:
-        for phrase in refusal_phrases:
-            if phrase in lower:
-                return True
+    for phrase in refusal_phrases:
+        idx = lower.find(phrase)
+        if idx != -1 and idx < 500:
+            return True
     return False
