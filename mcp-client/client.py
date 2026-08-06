@@ -186,6 +186,30 @@ def result_text(result: Any) -> str:
     return "\n".join(parts) if parts else "(no content returned)"
 
 
+def result_display(result: Any) -> str:
+    """Renders an MCP CallToolResult for `--call`'s diagnostic output.
+
+    Unlike allotmint_research (see result_text), the four v0 tools' text
+    content is just a one-line confirmation ("AllotMint portfolio summary for
+    owner steve returned successfully") - the real data, the numbers a user
+    would actually want to see, lives in structuredContent instead. Preferring
+    structured content when present (mirrors research-agent/app/mcp_tools.py's
+    _result_to_text) is what makes `--call` useful for looking at what a v0
+    tool actually returns, rather than just its stub confirmation text.
+
+    Not used for `ask`/the REPL: allotmint_research also sets structuredContent
+    (duplicating the same data for machine consumers per
+    AllotMintResearchTool.java's javadoc), so unconditionally preferring it
+    there would replace the rendered prose answer with a raw JSON dump.
+    """
+    structured = getattr(result, "structured_content", None) or getattr(
+        result, "structuredContent", None
+    )
+    if structured:
+        return json.dumps(structured, indent=2, default=str)
+    return result_text(result)
+
+
 def result_is_error(result: Any) -> bool:
     return bool(getattr(result, "isError", False) or getattr(result, "is_error", False))
 
@@ -371,7 +395,7 @@ async def ask(session, question: str, owner: str | None, lookback_days: int | No
 
 async def call_tool(session, name: str, arguments: dict[str, Any]) -> str:
     result = await session.call_tool(name, arguments)
-    text = result_text(result)
+    text = result_display(result)
     return f"Error: {text}" if result_is_error(result) else text
 
 
@@ -425,7 +449,26 @@ async def run(args: argparse.Namespace) -> int:
         return 0
 
 
+def _fix_console_encoding() -> None:
+    """Forces stdout/stderr to UTF-8 so non-ASCII answer text prints correctly.
+
+    Answers routinely contain currency symbols (£) and typographic punctuation
+    from the LLM's own prose. Python's default stdout encoding on Windows
+    comes from locale.getpreferredencoding() (cp1252 here - the same mismatch
+    deps.py's _TEXT_KWARGS works around for subprocess output) rather than the
+    terminal's actual codepage, so those bytes land wrong even though every
+    character reaching this point is valid Unicode. reconfigure() is a no-op
+    when stdout is already UTF-8, and the attribute is absent when a test
+    harness has swapped in something other than a real TextIOWrapper - both
+    cases are safe to skip.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _fix_console_encoding()
     args = parse_args(argv)
 
     which = requested_dependencies(args)
