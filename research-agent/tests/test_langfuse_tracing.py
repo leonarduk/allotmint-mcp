@@ -12,8 +12,9 @@ to simulate a missing package.
 
 from __future__ import annotations
 
+import builtins
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -81,8 +82,8 @@ def test_new_langfuse_tracer_preserves_trace_id():
 
 def test_import_error_disables_tracer_gracefully(monkeypatch):
     """When the langfuse package is missing the tracer is disabled, not dead."""
-    # Simulate a missing langfuse module.
-    import builtins
+    # Remove any cached import so the monkeypatch on __import__ takes effect.
+    sys.modules.pop("langfuse", None)
 
     original_import = builtins.__import__
 
@@ -110,7 +111,7 @@ def test_enabled_is_true_when_langfuse_client_exists():
 
 
 def test_enabled_is_false_when_import_fails(monkeypatch):
-    import builtins
+    sys.modules.pop("langfuse", None)
 
     original_import = builtins.__import__
 
@@ -126,7 +127,7 @@ def test_enabled_is_false_when_import_fails(monkeypatch):
 
 
 def test_trace_url_is_none_when_disabled(monkeypatch):
-    import builtins
+    sys.modules.pop("langfuse", None)
 
     original_import = builtins.__import__
 
@@ -148,7 +149,7 @@ def test_trace_url_is_none_when_disabled(monkeypatch):
 
 def test_all_methods_are_no_ops_when_disabled(monkeypatch):
     """Calling any tracer method while disabled must not raise."""
-    import builtins
+    sys.modules.pop("langfuse", None)
 
     original_import = builtins.__import__
 
@@ -267,7 +268,7 @@ def test_tool_call_failure_is_recorded():
 # ---------------------------------------------------------------------------
 
 
-def test_request_start_survives_langfuse_api_failure(monkeypatch):
+def test_request_start_survives_langfuse_api_failure():
     """If the Langfuse client raises, the method logs and returns — no crash."""
     tracer = LangfuseTracer("trace-safe", _settings())
 
@@ -318,7 +319,7 @@ def test_flush_is_idempotent():
 
 
 def test_flush_does_nothing_when_disabled(monkeypatch):
-    import builtins
+    sys.modules.pop("langfuse", None)
 
     original_import = builtins.__import__
 
