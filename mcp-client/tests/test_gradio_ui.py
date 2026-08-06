@@ -18,38 +18,7 @@ import pytest
 
 import client as client_module
 import gradio_ui
-
-
-def _content(text: str) -> SimpleNamespace:
-    return SimpleNamespace(text=text)
-
-
-def _result(text: str, is_error: bool = False) -> SimpleNamespace:
-    return SimpleNamespace(content=[_content(text)], isError=is_error)
-
-
-class FakeSession:
-    def __init__(self, result=None, tools=None):
-        self.result = result
-        self.tools = tools if tools is not None else [
-            SimpleNamespace(name=n, description="") for n in client_module.REQUIRED_TOOLS
-        ]
-        self.calls: list[tuple[str, dict]] = []
-
-    async def call_tool(self, name, arguments):
-        self.calls.append((name, arguments))
-        return self.result
-
-    async def list_tools(self):
-        return SimpleNamespace(tools=self.tools)
-
-
-def _fake_open_session(session: FakeSession):
-    @asynccontextmanager
-    async def open_session(url, timeout_seconds):
-        yield session
-
-    return open_session
+from tests._helpers import FakeSession, _content, _fake_open_session, _result
 
 
 # ------------------------------------------------------------------- ui_ask
@@ -57,7 +26,10 @@ def _fake_open_session(session: FakeSession):
 
 @pytest.mark.asyncio
 async def test_ui_ask_returns_the_answer(monkeypatch):
-    session = FakeSession(result=_result("Technology rose from 18% to 27% [1]."))
+    session = FakeSession(
+        result=_result("Technology rose from 18% to 27% [1]."),
+        required_tools=client_module.REQUIRED_TOOLS,
+    )
     monkeypatch.setattr(client_module, "open_session", _fake_open_session(session))
 
     async def healthy(research_url, timeout_seconds):
@@ -177,7 +149,10 @@ async def test_ui_list_tools_reports_connection_failures(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_ui_call_tool_passes_arguments_through(monkeypatch):
-    session = FakeSession(result=_result('{"status": "ok"}'))
+    session = FakeSession(
+        result=_result('{"status": "ok"}'),
+        required_tools=client_module.REQUIRED_TOOLS,
+    )
     monkeypatch.setattr(client_module, "open_session", _fake_open_session(session))
 
     output = await gradio_ui.ui_call_tool("allotmint_health", "{}", client_module.DEFAULT_MCP_URL, 180.0)
@@ -218,9 +193,26 @@ async def test_ui_call_tool_reports_connection_failures(monkeypatch):
 
 
 def test_build_app_returns_blocks_with_the_configured_urls():
-    demo = gradio_ui.build_app({"url": "http://example.invalid:8080/mcp", "research_url": "http://example.invalid:8100"})
+    url = "http://example.invalid:8080/mcp"
+    research_url = "http://example.invalid:8100"
+    demo = gradio_ui.build_app({"url": url, "research_url": research_url})
 
     assert isinstance(demo, gr.Blocks)
+
+    # Verify the configured URLs landed in the right Textbox components.
+    textboxes = [b for b in demo.blocks.values() if isinstance(b, gr.Textbox)]
+    url_boxes = [b for b in textboxes if b.label == "allotmint-mcp URL"]
+    research_boxes = [b for b in textboxes if b.label == "research-agent URL"]
+
+    # Every "allotmint-mcp URL" field (in Ask / List tools / Call tabs)
+    # should hold the configured URL.
+    assert len(url_boxes) >= 1
+    for box in url_boxes:
+        assert box.value == url
+
+    # The "research-agent URL" field in the Ask tab should hold the configured value.
+    assert len(research_boxes) == 1
+    assert research_boxes[0].value == research_url
 
 
 def test_parse_args_defaults():

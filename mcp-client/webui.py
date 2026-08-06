@@ -319,6 +319,8 @@ def main(argv: list[str] | None = None) -> int:
     if which:
         deps.ensure_running(args.url, args.research_url, args.start_timeout, which)
 
+    deps.log("webui.py is deprecated; prefer gradio_ui.py (issue #310)", level="WARNING")
+
     deps.log(f"web UI: serving on http://{args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
     return 0
