@@ -150,7 +150,7 @@ def _make_agent(model: Any, tools: ToolSession, settings: Settings):
             "account_type": account_type,
             "currency": currency,
         }
-        if action == "summary":
+        if action.lower() == "summary":
             args["include_history"] = include_history
         return await tools.call_tool("allotmint_portfolio", args)
 
