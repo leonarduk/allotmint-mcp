@@ -80,9 +80,11 @@ Every status line — from `--start-deps`, `stop_deps.py`, and the client's own 
 
 One specific check worth knowing about: `--start-mcp-server` warns (but doesn't refuse to start) if `target/allotmint-mcp-server.jar` is older than any file under `src/` or `pom.xml`. A stale jar starts up completely normally — it just silently lacks whatever was added since it was built, which otherwise only surfaces later as a confusing "missing required tool(s)" error from preflight. If you see that warning, rebuild first: `./mvnw package`.
 
-### Gotcha: multiple checkouts of this repo
+### Multiple checkouts of this repo
 
-`docker-compose.yml` hardcodes `container_name: allotmint-mcp-pgvector` (and `allotmint-mcp-research-agent`) — a real container name, global to the Docker daemon, not scoped per checkout. If you have more than one clone of this repo and start pgvector from each, only the *first* one actually owns that name; the second's `docker compose up -d pgvector` either no-ops against the wrong checkout's container or fails with `Conflict: container name already in use`, and — the more confusing failure mode — a `research-agent` started from the second checkout can end up on a *different* Docker network than that first container, so its internal `pgvector` hostname doesn't resolve at all ("failed to resolve host 'pgvector'") even though `docker ps` shows something answering on port 5432. If you hit either symptom, check which checkout actually owns the running container (`docker inspect allotmint-mcp-pgvector --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}'`) and stop it there before starting this checkout's own.
+`docker-compose.yml` no longer hardcodes container names — Compose derives per-project names automatically (e.g. `allotmint-mcp-pgvector-1`), so two checkouts on the same machine no longer collide. The fixed names `allotmint-mcp-pgvector` and `allotmint-mcp-research-agent` are gone; use `docker compose ps` to find the actual container names in your checkout.
+
+If you have old containers from before this change still registered under those hardcoded names, remove them first:`docker rm -f allotmint-mcp-pgvector allotmint-mcp-research-agent`.
 
 ### Stopping dependencies
 
