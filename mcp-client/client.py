@@ -24,6 +24,10 @@ Usage:
 
     # exercise a v0 tool directly
     python client.py --call allotmint_health --args "{}"
+
+    # start whatever isn't already running (pgvector, Ollama, the Java
+    # server, the research-agent sidecar), then ask a question
+    python client.py "..." --owner demo --start-deps
 """
 
 from __future__ import annotations
@@ -35,6 +39,8 @@ import json
 import sys
 from contextlib import asynccontextmanager
 from typing import Any
+
+import deps
 
 DEFAULT_MCP_URL = "http://localhost:8080/mcp"
 DEFAULT_RESEARCH_URL = "http://localhost:8100"
@@ -102,7 +108,54 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Skip the startup checks that verify the server and sidecar are ready before asking anything",
     )
+    parser.add_argument(
+        "--start-deps",
+        action="store_true",
+        help="Best-effort start pgvector, Ollama, the allotmint-mcp server, and the research-agent "
+        "sidecar if any aren't already running",
+    )
+    parser.add_argument(
+        "--start-pgvector", action="store_true", help="Start pgvector alone if it isn't already running"
+    )
+    parser.add_argument(
+        "--start-ollama", action="store_true", help="Start a local Ollama server if it isn't already running"
+    )
+    parser.add_argument(
+        "--start-mcp-server",
+        action="store_true",
+        help="Start the allotmint-mcp server if it isn't already running (requires a prebuilt jar)",
+    )
+    parser.add_argument(
+        "--start-research-agent",
+        action="store_true",
+        help="Start the research-agent sidecar if it isn't already running",
+    )
+    parser.add_argument(
+        "--start-timeout",
+        type=float,
+        default=deps.DEFAULT_START_TIMEOUT,
+        help=(
+            "Seconds to wait for a started dependency to become ready "
+            f"(default: {deps.DEFAULT_START_TIMEOUT}; a first-time research-agent image build may need more)"
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def requested_dependencies(args: argparse.Namespace) -> set[str]:
+    """Which of deps.ALL_DEPENDENCIES the given flags ask to start, if not already running."""
+    if args.start_deps:
+        return set(deps.ALL_DEPENDENCIES)
+    requested = set()
+    if args.start_pgvector:
+        requested.add("pgvector")
+    if args.start_ollama:
+        requested.add("ollama")
+    if args.start_mcp_server:
+        requested.add("mcp-server")
+    if args.start_research_agent:
+        requested.add("research-agent")
+    return requested
 
 
 def build_research_arguments(
@@ -374,6 +427,12 @@ async def run(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+
+    which = requested_dependencies(args)
+    if which:
+        for problem in deps.ensure_running(args.url, args.research_url, args.start_timeout, which):
+            print(f"Warning: {problem}", file=sys.stderr)
+
     try:
         return asyncio.run(run(args))
     except KeyboardInterrupt:

@@ -28,6 +28,8 @@ Everything `allotmint_research` itself needs, running first — see [`research-a
    ALLOTMINT_MCP_RESEARCH_ENABLED=true java -jar target/allotmint-mcp-server.jar --spring.profiles.active=http
    ```
 
+Pass `--start-deps` to have the client start whichever of these aren't already running, rather than doing all four by hand — see [Auto-starting dependencies](#auto-starting-dependencies) below.
+
 ## Install
 
 ```bash
@@ -50,6 +52,27 @@ research-agent ready: model=ollama:llama3.2, retrieval_enabled=True
 ```
 
 Pass `--skip-preflight` to bypass both checks (e.g. if `--research-url` isn't reachable from where this client runs but the server can still reach it itself).
+
+## Auto-starting dependencies
+
+`--start-deps` checks each of pgvector, Ollama, the `allotmint-mcp` server, and the `research-agent` sidecar, and starts whichever isn't already reachable — so a fresh checkout can go from nothing running to a first answer in one command:
+
+```bash
+python client.py "How has my tech exposure changed this year, and why?" --owner demo --start-deps
+```
+
+What each one does, in this order (matching [`research-agent/README.md`](../research-agent/README.md#run-it)):
+
+| Dependency | Already-running check | How it's started |
+|---|---|---|
+| pgvector | TCP `:5432` open | `docker compose up -d pgvector` |
+| Ollama | `GET :11434/api/tags` | `ollama serve` (most installs already run this as a service, so this is usually a no-op) |
+| `allotmint-mcp` server | TCP on `--url`'s host/port | `java -jar target/allotmint-mcp-server.jar --spring.profiles.active=http`, with `ALLOTMINT_MCP_RESEARCH_ENABLED=true` — **requires a prebuilt jar** (`./mvnw package`); this does not build one, since a Maven build is much slower than anything else here |
+| `research-agent` sidecar | `GET <research-url>/health` | `docker compose --profile research up -d research-agent` — a first run builds the image, which can take several minutes; pass a larger `--start-timeout` if it does |
+
+Started processes are left running in the background (not tied to this script's lifetime), with logs under `mcp-client/.dep-logs/`. Anything that's already running is left alone — every check is a plain reachability probe first, so re-running with `--start-deps` never restarts something that's already up.
+
+Use `--start-pgvector`, `--start-ollama`, `--start-mcp-server`, or `--start-research-agent` individually instead of `--start-deps` to auto-start only some of them (e.g. you already have Ollama and the Java server running in another terminal, and only want the sidecar brought up). `--start-timeout` (default 90s) controls how long each one is given to become reachable before it's reported as a problem rather than silently ignored — auto-starting is always best-effort: any dependency that can't be confirmed ready is printed as a warning, and the client still tries to proceed, so the usual preflight/connection errors explain what's still missing.
 
 ## Use
 
@@ -88,8 +111,11 @@ python client.py --call allotmint_health --args "{}"
 | `--list-tools` | | List the tools the server exposes, then exit |
 | `--call TOOL` | | Call an arbitrary tool instead of `allotmint_research` |
 | `--args JSON` | `{}` | Arguments for `--call` |
-| `--research-url` | `http://localhost:8100` | The sidecar's base URL, used only for the prerequisite health check |
+| `--research-url` | `http://localhost:8100` | The sidecar's base URL, used for the prerequisite health check and `--start-research-agent` |
 | `--skip-preflight` | | Skip the startup checks described above |
+| `--start-deps` | | Start pgvector, Ollama, the `allotmint-mcp` server, and the sidecar if any aren't already running |
+| `--start-pgvector` / `--start-ollama` / `--start-mcp-server` / `--start-research-agent` | | Start just one of them |
+| `--start-timeout` | `90` | Seconds to wait for a started dependency to become ready |
 
 ### `Unknown tool: invalid_tool_name`
 

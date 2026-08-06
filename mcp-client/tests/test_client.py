@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 import client as client_module
+import deps
 from client import (
     ask,
     build_research_arguments,
@@ -21,6 +22,7 @@ from client import (
     missing_required_tools,
     parse_args,
     preflight,
+    requested_dependencies,
     result_is_error,
     result_text,
 )
@@ -155,6 +157,44 @@ def test_parse_args_skip_preflight_and_research_url():
 
     assert args.skip_preflight is True
     assert args.research_url == "http://localhost:9100"
+
+
+def test_parse_args_start_flags_default_off():
+    args = parse_args([])
+
+    assert args.start_deps is False
+    assert args.start_pgvector is False
+    assert args.start_ollama is False
+    assert args.start_mcp_server is False
+    assert args.start_research_agent is False
+    assert args.start_timeout == deps.DEFAULT_START_TIMEOUT
+
+
+def test_parse_args_individual_start_flags():
+    args = parse_args(["--start-ollama", "--start-mcp-server", "--start-timeout", "30"])
+
+    assert args.start_ollama is True
+    assert args.start_mcp_server is True
+    assert args.start_pgvector is False
+    assert args.start_timeout == 30.0
+
+
+def test_requested_dependencies_start_deps_means_everything():
+    args = parse_args(["--start-deps"])
+
+    assert requested_dependencies(args) == set(deps.ALL_DEPENDENCIES)
+
+
+def test_requested_dependencies_defaults_to_nothing():
+    args = parse_args([])
+
+    assert requested_dependencies(args) == set()
+
+
+def test_requested_dependencies_combines_individual_flags():
+    args = parse_args(["--start-pgvector", "--start-research-agent"])
+
+    assert requested_dependencies(args) == {"pgvector", "research-agent"}
 
 
 def test_parse_args_one_shot_question_with_flags():

@@ -1,0 +1,223 @@
+"""Tests for the --start-deps auto-start logic.
+
+Every ensure_* function is exercised with tcp_open/http_ok/subprocess.run/
+spawn_background monkeypatched out - nothing here touches a real socket,
+Docker, Ollama, or Java. wait_until's own polling loop is real, but tests
+keep it fast by making the check succeed immediately or by using a timeout
+of 0.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+import deps
+
+
+def test_host_port_uses_the_url_when_present():
+    assert deps.host_port("http://localhost:9999/mcp", 8080) == ("localhost", 9999)
+
+
+def test_host_port_falls_back_to_the_default_port():
+    assert deps.host_port("http://example.com/mcp", 8080) == ("example.com", 8080)
+
+
+def test_wait_until_returns_true_immediately_when_already_ready():
+    assert deps.wait_until(lambda: True, timeout_seconds=0) is True
+
+
+def test_wait_until_returns_false_after_the_timeout(monkeypatch):
+    calls = []
+    monkeypatch.setattr(deps.time, "sleep", lambda seconds: calls.append(seconds))
+
+    assert deps.wait_until(lambda: False, timeout_seconds=0) is False
+
+
+def test_ensure_pgvector_is_a_noop_when_already_reachable(monkeypatch):
+    monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: True)
+
+    assert deps.ensure_pgvector(timeout_seconds=5) is None
+
+
+def test_ensure_pgvector_reports_missing_docker(monkeypatch):
+    monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: False)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: None)
+
+    problem = deps.ensure_pgvector(timeout_seconds=5)
+
+    assert problem is not None
+    assert "docker" in problem
+
+
+def test_ensure_pgvector_starts_it_and_waits(monkeypatch):
+    reachable = {"value": False}
+    monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: reachable["value"])
+    monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+
+    commands = []
+
+    class FakeCompletedProcess:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        reachable["value"] = True
+        return FakeCompletedProcess()
+
+    monkeypatch.setattr(deps.subprocess, "run", fake_run)
+
+    assert deps.ensure_pgvector(timeout_seconds=5) is None
+    assert commands == [["docker", "compose", "up", "-d", "pgvector"]]
+
+
+def test_ensure_pgvector_reports_a_failed_compose_command(monkeypatch):
+    monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: False)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+
+    class FakeCompletedProcess:
+        returncode = 1
+        stdout = ""
+        stderr = "no configuration file provided"
+
+    monkeypatch.setattr(deps.subprocess, "run", lambda command, **kwargs: FakeCompletedProcess())
+
+    problem = deps.ensure_pgvector(timeout_seconds=5)
+
+    assert problem is not None
+    assert "no configuration file provided" in problem
+
+
+def test_ensure_pgvector_reports_a_timeout_after_starting(monkeypatch):
+    monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: False)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+
+    class FakeCompletedProcess:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr(deps.subprocess, "run", lambda command, **kwargs: FakeCompletedProcess())
+    monkeypatch.setattr(deps, "wait_until", lambda check, timeout_seconds, interval=2.0: False)
+
+    problem = deps.ensure_pgvector(timeout_seconds=0)
+
+    assert problem is not None
+    assert ":5432" in problem
+
+
+def test_ensure_ollama_is_a_noop_when_already_reachable(monkeypatch):
+    monkeypatch.setattr(deps, "http_ok", lambda url, timeout=2.0: True)
+
+    assert deps.ensure_ollama(timeout_seconds=5) is None
+
+
+def test_ensure_ollama_reports_missing_binary(monkeypatch):
+    monkeypatch.setattr(deps, "http_ok", lambda url, timeout=2.0: False)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: None)
+
+    problem = deps.ensure_ollama(timeout_seconds=5)
+
+    assert problem is not None
+    assert "ollama" in problem
+
+
+def test_ensure_ollama_spawns_and_waits(monkeypatch):
+    monkeypatch.setattr(deps, "http_ok", lambda url, timeout=2.0: False)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/local/bin/ollama")
+    spawned = []
+    monkeypatch.setattr(
+        deps, "spawn_background", lambda command, **kwargs: spawned.append(command) or Path("x.log")
+    )
+    monkeypatch.setattr(deps, "wait_until", lambda check, timeout_seconds, interval=2.0: True)
+
+    assert deps.ensure_ollama(timeout_seconds=5) is None
+    assert spawned == [["ollama", "serve"]]
+
+
+def test_ensure_mcp_server_is_a_noop_when_already_reachable(monkeypatch):
+    monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: True)
+
+    assert deps.ensure_mcp_server("http://localhost:8080/mcp", timeout_seconds=5) is None
+
+
+def test_ensure_mcp_server_reports_a_missing_jar(monkeypatch, tmp_path):
+    monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: False)
+    monkeypatch.setattr(deps, "REPO_ROOT", tmp_path)
+
+    problem = deps.ensure_mcp_server("http://localhost:8080/mcp", timeout_seconds=5)
+
+    assert problem is not None
+    assert "mvnw package" in problem
+
+
+def test_ensure_mcp_server_starts_it_with_research_enabled(monkeypatch, tmp_path):
+    jar = tmp_path / "target" / "allotmint-mcp-server.jar"
+    jar.parent.mkdir(parents=True)
+    jar.write_text("not a real jar")
+    monkeypatch.setattr(deps, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: False)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/java")
+    spawned = []
+    monkeypatch.setattr(
+        deps,
+        "spawn_background",
+        lambda command, **kwargs: spawned.append((command, kwargs)) or Path("x.log"),
+    )
+    monkeypatch.setattr(deps, "wait_until", lambda check, timeout_seconds, interval=2.0: True)
+
+    assert deps.ensure_mcp_server("http://localhost:8080/mcp", timeout_seconds=5) is None
+    assert len(spawned) == 1
+    command, kwargs = spawned[0]
+    assert command == ["java", "-jar", str(jar), "--spring.profiles.active=http"]
+    assert kwargs["env"]["ALLOTMINT_MCP_RESEARCH_ENABLED"] == "true"
+
+
+def test_ensure_research_agent_is_a_noop_when_already_reachable(monkeypatch):
+    monkeypatch.setattr(deps, "http_ok", lambda url, timeout=2.0: True)
+
+    assert deps.ensure_research_agent("http://localhost:8100", timeout_seconds=5) is None
+
+
+def test_ensure_research_agent_starts_the_compose_profile(monkeypatch):
+    monkeypatch.setattr(deps, "http_ok", lambda url, timeout=2.0: False)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+
+    class FakeCompletedProcess:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return FakeCompletedProcess()
+
+    monkeypatch.setattr(deps.subprocess, "run", fake_run)
+    monkeypatch.setattr(deps, "wait_until", lambda check, timeout_seconds, interval=2.0: True)
+
+    assert deps.ensure_research_agent("http://localhost:8100", timeout_seconds=5) is None
+    assert commands == [["docker", "compose", "--profile", "research", "up", "-d", "research-agent"]]
+
+
+def test_ensure_running_only_runs_requested_steps_in_order(monkeypatch):
+    calls = []
+    monkeypatch.setitem(deps._STEPS, "pgvector", lambda mcp, research, timeout: calls.append("pgvector") or None)
+    monkeypatch.setitem(deps._STEPS, "ollama", lambda mcp, research, timeout: calls.append("ollama") or None)
+    monkeypatch.setitem(
+        deps._STEPS, "mcp-server", lambda mcp, research, timeout: calls.append("mcp-server") or "not ready"
+    )
+    monkeypatch.setitem(
+        deps._STEPS, "research-agent", lambda mcp, research, timeout: calls.append("research-agent") or None
+    )
+
+    problems = deps.ensure_running(
+        "http://localhost:8080/mcp", "http://localhost:8100", 5.0, {"ollama", "mcp-server"}
+    )
+
+    assert calls == ["ollama", "mcp-server"]
+    assert problems == ["mcp-server: not ready"]
