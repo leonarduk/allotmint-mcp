@@ -70,9 +70,20 @@ What each one does, in this order (matching [`research-agent/README.md`](../rese
 | `allotmint-mcp` server | TCP on `--url`'s host/port | `java -jar target/allotmint-mcp-server.jar --spring.profiles.active=http`, with `ALLOTMINT_MCP_RESEARCH_ENABLED=true` — **requires a prebuilt jar** (`./mvnw package`); this does not build one, since a Maven build is much slower than anything else here |
 | `research-agent` sidecar | `GET <research-url>/health` | `docker compose --profile research up -d research-agent` — a first run builds the image, which can take several minutes; pass a larger `--start-timeout` if it does |
 
-Started processes are left running in the background (not tied to this script's lifetime), with logs under `mcp-client/.dep-logs/`. Anything that's already running is left alone — every check is a plain reachability probe first, so re-running with `--start-deps` never restarts something that's already up.
+Started processes are left running in the background (not tied to this script's lifetime), with logs under `mcp-client/logs/`. Anything that's already running is left alone — every check is a plain reachability probe first, so re-running with `--start-deps` never restarts something that's already up.
 
 Use `--start-pgvector`, `--start-ollama`, `--start-mcp-server`, or `--start-research-agent` individually instead of `--start-deps` to auto-start only some of them (e.g. you already have Ollama and the Java server running in another terminal, and only want the sidecar brought up). `--start-timeout` (default 90s) controls how long each one is given to become reachable before it's reported as a problem rather than silently ignored — auto-starting is always best-effort: any dependency that can't be confirmed ready is printed as a warning, and the client still tries to proceed, so the usual preflight/connection errors explain what's still missing.
+
+### Stopping dependencies
+
+`stop_deps.py` is the counterpart to `--start-deps`:
+
+```bash
+python stop_deps.py                        # stop everything
+python stop_deps.py --ollama --mcp-server   # stop just these
+```
+
+pgvector and the research-agent sidecar are stopped with `docker compose stop` (reversible — the containers and pgvector's data volume stay in place for next time, `docker compose up -d` brings them straight back). Ollama and the `allotmint-mcp` server are only stopped if a prior `--start-deps` run started them — tracked via the PID files `spawn_background` writes to `mcp-client/logs/`. Anything else already listening on those ports (Ollama running as a system service, an `allotmint-mcp` you started by hand in another terminal) is deliberately left alone, and reported as still running rather than silently skipped or force-killed.
 
 ## Use
 

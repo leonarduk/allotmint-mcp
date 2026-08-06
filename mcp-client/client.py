@@ -42,8 +42,8 @@ from typing import Any
 
 import deps
 
-DEFAULT_MCP_URL = "http://localhost:8080/mcp"
-DEFAULT_RESEARCH_URL = "http://localhost:8100"
+DEFAULT_MCP_URL = deps.DEFAULT_MCP_URL
+DEFAULT_RESEARCH_URL = deps.DEFAULT_RESEARCH_URL
 RESEARCH_TOOL = "allotmint_research"
 V0_TOOLS = ("allotmint_portfolio", "allotmint_instrument", "allotmint_market", "allotmint_health")
 REQUIRED_TOOLS = (RESEARCH_TOOL,) + V0_TOOLS
@@ -430,8 +430,7 @@ def main(argv: list[str] | None = None) -> int:
 
     which = requested_dependencies(args)
     if which:
-        for problem in deps.ensure_running(args.url, args.research_url, args.start_timeout, which):
-            print(f"Warning: {problem}", file=sys.stderr)
+        deps.ensure_running(args.url, args.research_url, args.start_timeout, which)
 
     try:
         return asyncio.run(run(args))

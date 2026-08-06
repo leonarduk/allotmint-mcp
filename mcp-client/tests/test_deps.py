@@ -80,15 +80,13 @@ def test_ensure_pgvector_reports_a_failed_compose_command(monkeypatch):
 
     class FakeCompletedProcess:
         returncode = 1
-        stdout = ""
-        stderr = "no configuration file provided"
 
     monkeypatch.setattr(deps.subprocess, "run", lambda command, **kwargs: FakeCompletedProcess())
 
     problem = deps.ensure_pgvector(timeout_seconds=5)
 
     assert problem is not None
-    assert "no configuration file provided" in problem
+    assert "exited 1" in problem
 
 
 def test_ensure_pgvector_reports_a_timeout_after_starting(monkeypatch):
@@ -221,3 +219,135 @@ def test_ensure_running_only_runs_requested_steps_in_order(monkeypatch):
 
     assert calls == ["ollama", "mcp-server"]
     assert problems == ["mcp-server: not ready"]
+
+
+def test_spawn_background_writes_a_log_and_a_pid_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(deps, "LOG_DIR", tmp_path)
+
+    class FakeProcess:
+        pid = 4321
+
+    monkeypatch.setattr(deps.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+
+    log_path = deps.spawn_background(["true"], log_name="thing")
+
+    assert log_path == tmp_path / "thing.log"
+    assert log_path.exists()
+    assert (tmp_path / "thing.pid").read_text() == "4321"
+
+
+def test_terminate_pid_on_posix_sends_sigterm(monkeypatch):
+    if deps.os.name == "nt":
+        pytest.skip("POSIX-only path")
+    sent = []
+    monkeypatch.setattr(deps.os, "kill", lambda pid, sig: sent.append((pid, sig)))
+
+    assert deps.terminate_pid(1234) is True
+    assert sent == [(1234, deps.signal.SIGTERM)]
+
+
+def test_terminate_pid_on_posix_reports_an_already_gone_process(monkeypatch):
+    if deps.os.name == "nt":
+        pytest.skip("POSIX-only path")
+
+    def _raise(pid, sig):
+        raise ProcessLookupError()
+
+    monkeypatch.setattr(deps.os, "kill", _raise)
+
+    assert deps.terminate_pid(1234) is False
+
+
+def test_stop_via_pid_file_stops_a_process_this_script_started(monkeypatch, tmp_path):
+    monkeypatch.setattr(deps, "LOG_DIR", tmp_path)
+    (tmp_path / "ollama.pid").write_text("999")
+    terminated = []
+    monkeypatch.setattr(deps, "terminate_pid", lambda pid: terminated.append(pid) or True)
+
+    problem = deps._stop_via_pid_file("ollama", still_running=True)
+
+    assert problem is None
+    assert terminated == [999]
+    assert not (tmp_path / "ollama.pid").exists()
+
+
+def test_stop_via_pid_file_leaves_an_externally_started_process_alone(monkeypatch, tmp_path):
+    monkeypatch.setattr(deps, "LOG_DIR", tmp_path)
+
+    problem = deps._stop_via_pid_file("ollama", still_running=True)
+
+    assert problem is not None
+    assert "wasn't started by this script" in problem
+
+
+def test_stop_via_pid_file_is_a_noop_when_nothing_is_running(monkeypatch, tmp_path):
+    monkeypatch.setattr(deps, "LOG_DIR", tmp_path)
+
+    assert deps._stop_via_pid_file("ollama", still_running=False) is None
+
+
+def test_stop_pgvector_is_a_noop_when_not_reachable(monkeypatch):
+    monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: False)
+
+    assert deps.stop_pgvector() is None
+
+
+def test_stop_pgvector_runs_docker_compose_stop(monkeypatch):
+    monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: True)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+
+    class FakeCompletedProcess:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return FakeCompletedProcess()
+
+    monkeypatch.setattr(deps.subprocess, "run", fake_run)
+
+    assert deps.stop_pgvector() is None
+    assert commands == [["docker", "compose", "stop", "pgvector"]]
+
+
+def test_stop_research_agent_runs_the_compose_profile_stop(monkeypatch):
+    monkeypatch.setattr(deps, "http_ok", lambda url, timeout=2.0: True)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+
+    class FakeCompletedProcess:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return FakeCompletedProcess()
+
+    monkeypatch.setattr(deps.subprocess, "run", fake_run)
+
+    assert deps.stop_research_agent("http://localhost:8100") is None
+    assert commands == [["docker", "compose", "--profile", "research", "stop", "research-agent"]]
+
+
+def test_stop_running_only_runs_requested_steps_in_reverse_order(monkeypatch):
+    calls = []
+    monkeypatch.setitem(deps._STOP_STEPS, "pgvector", lambda mcp, research: calls.append("pgvector") or None)
+    monkeypatch.setitem(deps._STOP_STEPS, "ollama", lambda mcp, research: calls.append("ollama") or None)
+    monkeypatch.setitem(
+        deps._STOP_STEPS, "mcp-server", lambda mcp, research: calls.append("mcp-server") or "still up"
+    )
+    monkeypatch.setitem(
+        deps._STOP_STEPS, "research-agent", lambda mcp, research: calls.append("research-agent") or None
+    )
+
+    problems = deps.stop_running(
+        "http://localhost:8080/mcp", "http://localhost:8100", {"pgvector", "mcp-server"}
+    )
+
+    assert calls == ["mcp-server", "pgvector"]
+    assert problems == ["mcp-server: still up"]
