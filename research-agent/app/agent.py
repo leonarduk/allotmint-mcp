@@ -357,20 +357,21 @@ async def run_research(
     answer = strip_reasoning(str(result.output))
 
     # Extract cumulative token usage from the pydantic_ai result.
+    # `result.usage()` returns a RunUsage (pydantic BaseModel) with
+    # input_tokens / output_tokens at the top level.  cost is Decimal|None.
     agent_usage: dict[str, int] | None = None
     try:
-        usage_list = result.usage()
-        if usage_list:
-            total_input = sum(
-                getattr(u, "request_tokens", 0) or 0 for u in usage_list
-            )
-            total_output = sum(
-                getattr(u, "response_tokens", 0) or 0 for u in usage_list
-            )
-            if total_input > 0 or total_output > 0:
-                agent_usage = {"input": total_input, "output": total_output}
+        run_usage = result.usage()
+        total_input = getattr(run_usage, "input_tokens", 0) or 0
+        total_output = getattr(run_usage, "output_tokens", 0) or 0
+        if total_input > 0 or total_output > 0:
+            agent_usage = {"input": total_input, "output": total_output}
+            # Include total for Langfuse UI cost calculation when available.
+            total = getattr(run_usage, "total_tokens", 0) or 0
+            if total > 0:
+                agent_usage["total"] = total
     except Exception:
-        pass
+        log.debug("Failed to extract token usage from pydantic_ai result", exc_info=True)
 
     if trace_logger is not None:
         trace_logger.agent_end(
@@ -440,7 +441,6 @@ async def run_research(
             document_count=len(documents),
             warnings=warnings,
         )
-        langfuse_tracer.flush()
 
     return AskResponse(
         question=request.question,

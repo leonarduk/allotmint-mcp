@@ -28,15 +28,18 @@ class LangfuseTracer:
 
     def __init__(self, trace_id: str, settings: Any) -> None:
         self.trace_id: str = trace_id
-        self._settings: Any = settings
         self._langfuse: Any = None
         self._trace: Any = None
         self._active_spans: dict[str, Any] = {}
-        self._tool_span_counter: dict[str, int] = {}
+        self._tool_spans: dict[str, list[Any]] = {}
 
         try:
             from langfuse import Langfuse  # type: ignore[import]
+        except ImportError:
+            log.warning("langfuse package not installed; observability disabled")
+            return
 
+        try:
             self._langfuse = Langfuse(
                 public_key=settings.langfuse_public_key,
                 secret_key=settings.langfuse_secret_key,
@@ -49,6 +52,16 @@ class LangfuseTracer:
     @property
     def enabled(self) -> bool:
         return self._langfuse is not None
+
+    @property
+    def trace_url(self) -> str | None:
+        """URL to view this trace in the Langfuse UI, or None."""
+        if not self.enabled:
+            return None
+        try:
+            return self._langfuse.get_trace_url(trace_id=self.trace_id)
+        except Exception:
+            return None
 
     # -- request lifecycle --------------------------------------------------
 
@@ -173,15 +186,11 @@ class LangfuseTracer:
         if not self.enabled or self._trace is None:
             return
         try:
-            # Use a counter so repeated calls of the same tool produce distinct
-            # span names in the Langfuse UI.
-            idx = self._tool_span_counter.get(tool, 0) + 1
-            self._tool_span_counter[tool] = idx
-            span_key = f"tool_{tool}_{idx}"
-            self._active_spans[span_key] = self._trace.span(
+            span = self._trace.span(
                 name=f"tool_call.{tool}",
                 input={"tool": tool, "arguments": arguments},
             )
+            self._tool_spans.setdefault(tool, []).append(span)
         except Exception as exc:
             log.warning("Langfuse tool span start failed: %s", exc)
 
@@ -191,16 +200,10 @@ class LangfuseTracer:
         result_length: int,
         success: bool,
     ) -> None:
-        # Find the oldest active span for this tool and end it.
-        prefix = f"tool_{tool}_"
-        matching = sorted(
-            (k for k in self._active_spans if k.startswith(prefix)),
-            key=lambda k: int(k.rsplit("_", 1)[1]),
-        )
-        if not matching:
+        stack = self._tool_spans.get(tool, [])
+        if not stack:
             return
-        span_key = matching[0]
-        span = self._active_spans.pop(span_key)
+        span = stack.pop(0)
         try:
             span.end(
                 output={

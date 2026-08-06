@@ -68,7 +68,12 @@ async def ask(request: AskRequest) -> AskResponse:
     trace_id = trace_logger.trace_id if trace_logger is not None else str(uuid.uuid4())
     lf_tracer = new_langfuse_tracer(trace_id, settings)
     try:
-        return await run_research(request, settings, trace_logger=trace_logger, langfuse_tracer=lf_tracer)
+        response = await run_research(request, settings, trace_logger=trace_logger, langfuse_tracer=lf_tracer)
+        if lf_tracer is not None and lf_tracer.enabled:
+            trace_url = lf_tracer.trace_url
+            if trace_url:
+                log.info("Langfuse trace: %s", trace_url)
+        return response
     except UnsupportedProvider as exc:
         # Misconfiguration, not a failed question - say so in a way the MCP
         # tool's error message can pass straight to whoever has to fix it.
@@ -76,6 +81,9 @@ async def ask(request: AskRequest) -> AskResponse:
     except Exception as exc:  # noqa: BLE001 - the boundary; nothing above catches
         log.exception("Research run failed")
         raise HTTPException(status_code=502, detail=f"research run failed: {exc}") from exc
+    finally:
+        if lf_tracer is not None:
+            lf_tracer.flush()
 
 
 @app.get("/research/trace/{trace_id}")
