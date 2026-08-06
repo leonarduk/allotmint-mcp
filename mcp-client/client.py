@@ -121,6 +121,27 @@ def result_is_error(result: Any) -> bool:
     return bool(getattr(result, "isError", False) or getattr(result, "is_error", False))
 
 
+try:
+    _EXCEPTION_GROUP: type | tuple[type, ...] = BaseExceptionGroup  # type: ignore[name-defined]
+except NameError:  # pragma: no cover - only reachable before Python 3.11
+    _EXCEPTION_GROUP = ()
+
+
+def format_exception(exc: BaseException) -> str:
+    """Renders an exception for display, unwrapping anyio TaskGroup noise.
+
+    The MCP SDK's streamable-HTTP transport runs its read/write loops in an
+    anyio TaskGroup, so a connection failure (server not running, wrong port,
+    ...) surfaces as an ExceptionGroup whose own message is just "unhandled
+    errors in a TaskGroup (1 sub-exception)" - true but useless. The actual
+    cause is one level inside it.
+    """
+    if isinstance(exc, _EXCEPTION_GROUP):
+        leaves = [format_exception(sub) for sub in exc.exceptions]  # type: ignore[attr-defined]
+        return "; ".join(leaves) if leaves else str(exc)
+    return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+
+
 def _streamable_http_client():
     """Returns the SDK's streamable-HTTP transport under whichever name it has.
 
@@ -202,7 +223,7 @@ async def repl(session, owner: str | None, lookback_days: int | None) -> None:
         try:
             print(await ask(session, question, owner, lookback_days))
         except Exception as exc:  # noqa: BLE001 - a REPL should survive one bad turn
-            print(f"Error: {exc}")
+            print(f"Error: {format_exception(exc)}")
         print()
 
 
@@ -237,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         return 130
     except Exception as exc:  # noqa: BLE001 - top-level CLI boundary
-        print(f"Error: {exc}", file=sys.stderr)
+        print(f"Error: {format_exception(exc)}", file=sys.stderr)
         return 1
 
 

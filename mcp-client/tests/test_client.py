@@ -16,6 +16,7 @@ from client import (
     ask,
     build_research_arguments,
     call_tool,
+    format_exception,
     list_tools,
     parse_args,
     result_is_error,
@@ -169,3 +170,34 @@ def test_parse_args_call_with_json_args():
 
     assert args.call == "allotmint_health"
     assert args.args == '{"action": "check"}'
+
+
+def test_format_exception_includes_type_and_message():
+    assert format_exception(ValueError("bad owner")) == "ValueError: bad owner"
+
+
+def test_format_exception_falls_back_to_type_name_when_message_is_empty():
+    assert format_exception(RuntimeError()) == "RuntimeError"
+
+
+def test_format_exception_unwraps_a_taskgroup_style_exception_group():
+    group = ExceptionGroup(
+        "unhandled errors in a TaskGroup",
+        [ConnectionRefusedError("[Errno 61] Connection refused")],
+    )
+
+    assert format_exception(group) == (
+        "ConnectionRefusedError: [Errno 61] Connection refused"
+    )
+
+
+def test_format_exception_unwraps_nested_and_multiple_sub_exceptions():
+    group = ExceptionGroup(
+        "unhandled errors in a TaskGroup",
+        [
+            ValueError("first"),
+            ExceptionGroup("nested", [TimeoutError("second")]),
+        ],
+    )
+
+    assert format_exception(group) == "ValueError: first; TimeoutError: second"
