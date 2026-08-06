@@ -144,16 +144,15 @@ def _make_agent(model: Any, tools: ToolSession, settings: Settings):
         include_history: bool = False,
     ) -> str:
         """Read one owner's portfolio. action: summary, exposure, or holdings."""
-        return await tools.call_tool(
-            "allotmint_portfolio",
-            {
-                "action": action,
-                "owner": owner,
-                "account_type": account_type,
-                "currency": currency,
-                "include_history": include_history,
-            },
-        )
+        args: dict[str, object] = {
+            "action": action,
+            "owner": owner,
+            "account_type": account_type,
+            "currency": currency,
+        }
+        if action == "summary":
+            args["include_history"] = include_history
+        return await tools.call_tool("allotmint_portfolio", args)
 
     @agent.tool_plain
     async def allotmint_instrument(

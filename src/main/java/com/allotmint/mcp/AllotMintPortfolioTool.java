@@ -61,7 +61,9 @@ final class AllotMintPortfolioTool {
                 "Reads one owner's AllotMint portfolio. owner is required; call GET /owners "
                     + "through the AllotMint API to discover valid owner slugs. Actions: summary, "
                     + "exposure, or holdings. Optional account_type and currency filters are "
-                    + "applied client-side.")
+                    + "applied client-side. For summary, set include_history=true to receive "
+                    + "the full performance.history array (omitted by default to keep the payload "
+                    + "compact for small models).")
             .build();
 
     return McpServerFeatures.SyncToolSpecification.builder()
@@ -350,6 +352,12 @@ final class AllotMintPortfolioTool {
     Object value = values.get(key);
     if (value instanceof Boolean bool) {
       return bool;
+    }
+    if (value instanceof String text) {
+      return "true".equalsIgnoreCase(text.trim());
+    }
+    if (value instanceof Number number) {
+      return number.intValue() != 0;
     }
     return false;
   }
