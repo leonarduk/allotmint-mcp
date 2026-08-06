@@ -9,11 +9,101 @@ of 0.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
 import deps
+
+
+def test_log_writes_a_timestamped_line_to_the_log_file(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(deps, "LOG_DIR", tmp_path)
+
+    deps.log("pgvector: already reachable on :5432")
+
+    captured = capsys.readouterr()
+    assert "pgvector: already reachable on :5432" in captured.out
+    assert captured.err == ""
+    log_file = tmp_path / "mcp-client.log"
+    assert log_file.exists()
+    content = log_file.read_text()
+    assert "pgvector: already reachable on :5432" in content
+    assert "INFO" in content
+
+
+def test_log_sends_warning_and_error_to_stderr(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(deps, "LOG_DIR", tmp_path)
+
+    deps.log("something's off", level="WARNING")
+    deps.log("something broke", level="ERROR")
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "something's off" in captured.err
+    assert "something broke" in captured.err
+
+
+def test_log_appends_across_calls_instead_of_overwriting(monkeypatch, tmp_path):
+    monkeypatch.setattr(deps, "LOG_DIR", tmp_path)
+
+    deps.log("first")
+    deps.log("second")
+
+    content = (tmp_path / "mcp-client.log").read_text()
+    assert "first" in content
+    assert "second" in content
+
+
+def test_jar_is_stale_when_a_source_file_is_newer(tmp_path, monkeypatch):
+    monkeypatch.setattr(deps, "REPO_ROOT", tmp_path)
+    jar = tmp_path / "target" / "allotmint-mcp-server.jar"
+    jar.parent.mkdir(parents=True)
+    jar.write_text("jar")
+    os.utime(jar, (1000, 1000))
+
+    src = tmp_path / "src" / "main" / "java" / "Thing.java"
+    src.parent.mkdir(parents=True)
+    src.write_text("class Thing {}")
+    os.utime(src, (2000, 2000))
+
+    assert deps._jar_is_stale(jar) is True
+
+
+def test_jar_is_not_stale_when_built_after_all_source(tmp_path, monkeypatch):
+    monkeypatch.setattr(deps, "REPO_ROOT", tmp_path)
+    src = tmp_path / "src" / "main" / "java" / "Thing.java"
+    src.parent.mkdir(parents=True)
+    src.write_text("class Thing {}")
+    os.utime(src, (1000, 1000))
+
+    jar = tmp_path / "target" / "allotmint-mcp-server.jar"
+    jar.parent.mkdir(parents=True)
+    jar.write_text("jar")
+    os.utime(jar, (2000, 2000))
+
+    assert deps._jar_is_stale(jar) is False
+
+
+def test_ensure_mcp_server_warns_but_still_starts_a_stale_jar(monkeypatch, tmp_path):
+    jar = tmp_path / "target" / "allotmint-mcp-server.jar"
+    jar.parent.mkdir(parents=True)
+    jar.write_text("not a real jar")
+    monkeypatch.setattr(deps, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: False)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/java")
+    monkeypatch.setattr(deps, "_jar_is_stale", lambda jar_path: True)
+    monkeypatch.setattr(deps, "spawn_background", lambda command, **kwargs: Path("x.log"))
+    monkeypatch.setattr(deps, "wait_until", lambda check, timeout_seconds, interval=2.0: True)
+    warnings = []
+    monkeypatch.setattr(
+        deps, "log", lambda message, level="INFO": warnings.append((level, message))
+    )
+
+    problem = deps.ensure_mcp_server("http://localhost:8080/mcp", timeout_seconds=5)
+
+    assert problem is None
+    assert any(level == "WARNING" and "older than source" in message for level, message in warnings)
 
 
 def test_host_port_uses_the_url_when_present():
@@ -199,7 +289,9 @@ def test_ensure_research_agent_starts_the_compose_profile(monkeypatch):
     monkeypatch.setattr(deps, "wait_until", lambda check, timeout_seconds, interval=2.0: True)
 
     assert deps.ensure_research_agent("http://localhost:8100", timeout_seconds=5) is None
-    assert commands == [["docker", "compose", "--profile", "research", "up", "-d", "research-agent"]]
+    assert commands == [
+        ["docker", "compose", "--profile", "research", "up", "-d", "--no-deps", "research-agent"]
+    ]
 
 
 def test_ensure_running_only_runs_requested_steps_in_order(monkeypatch):

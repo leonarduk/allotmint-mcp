@@ -14,6 +14,7 @@ and are no-ops when it's already there.
 
 from __future__ import annotations
 
+import datetime
 import os
 import shutil
 import signal
@@ -32,6 +33,32 @@ DEFAULT_START_TIMEOUT = 90.0
 DEFAULT_MCP_URL = "http://localhost:8080/mcp"
 DEFAULT_RESEARCH_URL = "http://localhost:8100"
 ALL_DEPENDENCIES = ("pgvector", "ollama", "mcp-server", "research-agent")
+
+# subprocess.run(..., text=True) decodes with locale.getpreferredencoding() -
+# cp1252 on Windows - which crashes on the UTF-8 box-drawing/checkmark bytes
+# docker's own progress output uses. errors="replace" keeps a crashed decode
+# from masking whatever the command actually reported.
+_TEXT_KWARGS = {"text": True, "encoding": "utf-8", "errors": "replace"}
+
+
+def log(message: str, *, level: str = "INFO") -> None:
+    """Prints one timestamped line and appends it to logs/mcp-client.log.
+
+    Every status/progress/warning message in this module goes through here
+    instead of bare print() - a run that looked hung or failed confusingly
+    (both have happened) can be reconstructed afterwards from the log file:
+    what ran, in what order, and how long each step actually took between
+    timestamps. WARNING/ERROR go to stderr so shell redirection still
+    separates them from normal output; everything else goes to stdout.
+
+    LOG_DIR is read fresh on every call (not captured into a module-level
+    constant) so a test that monkeypatches it redirects this too.
+    """
+    line = f"[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] {level:<7} {message}"
+    print(line, file=sys.stderr if level in ("WARNING", "ERROR") else sys.stdout)
+    LOG_DIR.mkdir(exist_ok=True)
+    with open(LOG_DIR / "mcp-client.log", "a", encoding="utf-8") as f:
+        f.write(line + "\n")
 
 
 def tcp_open(host: str, port: int, timeout: float = 1.5) -> bool:
@@ -75,13 +102,22 @@ def spawn_background(
 ) -> Path:
     """Launches `command` detached from this process; returns its log file path.
 
-    Also records the child's PID next to the log (`<log_name>.pid`) - the only
-    way a later, separate `stop_deps.py` invocation can find and stop it,
-    since a spawned process outlives this one.
+    Writes a timestamped header with the exact command and cwd before the
+    child's own output, and appends (not overwrites) across runs - so opening
+    the log later answers "what was actually run, when" instead of just
+    showing whatever the process happened to print. Also records the child's
+    PID next to the log (`<log_name>.pid`) - the only way a later, separate
+    `stop_deps.py` invocation can find and stop it, since a spawned process
+    outlives this one.
     """
     LOG_DIR.mkdir(exist_ok=True)
     log_path = LOG_DIR / f"{log_name}.log"
-    log_file = open(log_path, "w", encoding="utf-8")  # noqa: SIM115 - handed to Popen, outlives this function
+    log_file = open(log_path, "a", encoding="utf-8")  # noqa: SIM115 - handed to Popen, outlives this function
+    log_file.write(
+        f"\n=== {datetime.datetime.now():%Y-%m-%d %H:%M:%S} starting: {' '.join(command)}"
+        f" (cwd={cwd or Path.cwd()}) ===\n"
+    )
+    log_file.flush()
     creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     process = subprocess.Popen(
         command,
@@ -94,6 +130,7 @@ def spawn_background(
         start_new_session=(os.name != "nt"),
     )
     (LOG_DIR / f"{log_name}.pid").write_text(str(process.pid), encoding="utf-8")
+    log(f"{log_name}: started pid {process.pid}, output -> {log_path}")
     return log_path
 
 
@@ -104,11 +141,12 @@ def ensure_pgvector(timeout_seconds: float) -> str | None:
     human-readable problem description.
     """
     if tcp_open("localhost", 5432):
+        log("pgvector: already reachable on :5432")
         return None
     if shutil.which("docker") is None:
         return "not reachable on :5432 and 'docker' isn't on PATH - start it yourself (docker compose up -d pgvector)"
 
-    print("Starting pgvector (docker compose up -d pgvector)...")
+    log("pgvector: starting (docker compose up -d pgvector)...")
     result = subprocess.run(["docker", "compose", "up", "-d", "pgvector"], cwd=REPO_ROOT)
     if result.returncode != 0:
         return f"docker compose up -d pgvector exited {result.returncode} - see the output above"
@@ -125,15 +163,35 @@ def ensure_ollama(timeout_seconds: float) -> str | None:
     """
     url = "http://localhost:11434/api/tags"
     if http_ok(url):
+        log("ollama: already reachable on :11434")
         return None
     if shutil.which("ollama") is None:
         return "not reachable on :11434 and 'ollama' isn't on PATH - install it or start it yourself"
 
-    print("Starting Ollama (ollama serve)...")
+    log("ollama: starting (ollama serve)...")
     spawn_background(["ollama", "serve"], log_name="ollama")
     if not wait_until(lambda: http_ok(url), timeout_seconds):
         return "'ollama serve' started but :11434 never became reachable - check mcp-client/logs/ollama.log"
     return None
+
+
+def _jar_is_stale(jar: Path) -> bool:
+    """True if pom.xml or any file under src/ is newer than the built jar.
+
+    This is exactly the failure mode that motivated this check, found by
+    actually running this tool: a jar built before allotmint_research was
+    merged starts up completely normally and looks healthy - the fact it's
+    missing that tool only surfaces minutes later, several layers deep, as a
+    "missing required tool(s)" error from preflight. A coarse mtime
+    comparison catches it immediately, at the moment it's about to be
+    started, instead of after everything downstream has already run.
+    """
+    jar_mtime = jar.stat().st_mtime
+    candidates = [REPO_ROOT / "pom.xml"]
+    src_dir = REPO_ROOT / "src"
+    if src_dir.is_dir():
+        candidates.extend(src_dir.rglob("*"))
+    return any(path.is_file() and path.stat().st_mtime > jar_mtime for path in candidates)
 
 
 def ensure_mcp_server(mcp_url: str, timeout_seconds: float) -> str | None:
@@ -145,6 +203,7 @@ def ensure_mcp_server(mcp_url: str, timeout_seconds: float) -> str | None:
     """
     host, port = host_port(mcp_url, 8080)
     if tcp_open(host, port):
+        log(f"allotmint-mcp: already reachable on {host}:{port}")
         return None
 
     jar = REPO_ROOT / "target" / "allotmint-mcp-server.jar"
@@ -153,7 +212,17 @@ def ensure_mcp_server(mcp_url: str, timeout_seconds: float) -> str | None:
     if shutil.which("java") is None:
         return f"not reachable on {host}:{port} and 'java' isn't on PATH"
 
-    print("Starting allotmint-mcp (java -jar target/allotmint-mcp-server.jar --spring.profiles.active=http)...")
+    if _jar_is_stale(jar):
+        log(
+            f"{jar} is older than source changes under src/ or pom.xml - it may be missing "
+            "recent tools or fixes (this is exactly how a jar built before allotmint_research "
+            "was merged behaves: it starts fine, just without the tool). Rebuild with "
+            "'./mvnw package' if allotmint_research (or anything else recent) turns out to be "
+            "missing.",
+            level="WARNING",
+        )
+
+    log("allotmint-mcp: starting (java -jar target/allotmint-mcp-server.jar --spring.profiles.active=http)...")
     env = {**os.environ, "ALLOTMINT_MCP_RESEARCH_ENABLED": "true"}
     spawn_background(
         ["java", "-jar", str(jar), "--spring.profiles.active=http"],
@@ -177,18 +246,25 @@ def ensure_research_agent(research_url: str, timeout_seconds: float) -> str | No
     """
     health_url = f"{research_url.rstrip('/')}/health"
     if http_ok(health_url):
+        log(f"research-agent: already reachable at {research_url}")
         return None
     if shutil.which("docker") is None:
         return f"not reachable at {research_url} and 'docker' isn't on PATH"
 
-    print(
-        "Starting research-agent (docker compose --profile research up -d research-agent)...\n"
-        "  First run builds the image (installs sentence-transformers/PyTorch) - this can take "
-        "several minutes with no output in between. It has NOT hung; docker's own build/pull "
-        "progress prints below."
+    log("research-agent: starting (docker compose --profile research up -d research-agent)...")
+    log(
+        "research-agent: a first run builds the image (installs sentence-transformers/PyTorch) - "
+        "this can take several minutes with no output in between. It has NOT hung; docker's own "
+        "build/pull progress prints below."
     )
+    # --no-deps: pgvector is already confirmed reachable by ensure_pgvector before this ever
+    # runs. Without it, compose also tries to manage the pgvector dependency itself here - and
+    # if a pgvector container with this name already exists from a different compose project
+    # context (e.g. started standalone, or from another checkout), compose tries to recreate it
+    # and fails with "Conflict: container name already in use" instead of just leaving it alone.
     result = subprocess.run(
-        ["docker", "compose", "--profile", "research", "up", "-d", "research-agent"], cwd=REPO_ROOT
+        ["docker", "compose", "--profile", "research", "up", "-d", "--no-deps", "research-agent"],
+        cwd=REPO_ROOT,
     )
     if result.returncode != 0:
         return f"docker compose up -d research-agent exited {result.returncode} - see the output above"
@@ -226,7 +302,7 @@ def ensure_running(mcp_url: str, research_url: str, timeout_seconds: float, whic
             continue
         problem = _STEPS[name](mcp_url, research_url, timeout_seconds)
         if problem:
-            print(f"Warning: {name}: {problem}", file=sys.stderr)
+            log(f"{name}: {problem}", level="WARNING")
             problems.append(f"{name}: {problem}")
     return problems
 
@@ -241,7 +317,7 @@ def terminate_pid(pid: int) -> bool:
     """
     if os.name == "nt":
         result = subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True
+            ["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, **_TEXT_KWARGS
         )
         return result.returncode == 0
     try:
@@ -268,6 +344,7 @@ def _stop_via_pid_file(log_name: str, still_running: bool) -> str | None:
     pid = int(pid_file.read_text().strip())
     terminate_pid(pid)
     pid_file.unlink(missing_ok=True)
+    log(f"{log_name}: stopped pid {pid}")
     return None
 
 
@@ -278,10 +355,11 @@ def stop_pgvector() -> str | None:
     if shutil.which("docker") is None:
         return "reachable on :5432 but 'docker' isn't on PATH - stop it yourself"
     result = subprocess.run(
-        ["docker", "compose", "stop", "pgvector"], cwd=REPO_ROOT, capture_output=True, text=True
+        ["docker", "compose", "stop", "pgvector"], cwd=REPO_ROOT, capture_output=True, **_TEXT_KWARGS
     )
     if result.returncode != 0:
         return f"docker compose stop pgvector failed: {(result.stderr or result.stdout).strip()}"
+    log("pgvector: stopped")
     return None
 
 
@@ -307,10 +385,11 @@ def stop_research_agent(research_url: str) -> str | None:
         ["docker", "compose", "--profile", "research", "stop", "research-agent"],
         cwd=REPO_ROOT,
         capture_output=True,
-        text=True,
+        **_TEXT_KWARGS,
     )
     if result.returncode != 0:
         return f"docker compose stop research-agent failed: {(result.stderr or result.stdout).strip()}"
+    log("research-agent: stopped")
     return None
 
 

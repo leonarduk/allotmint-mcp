@@ -354,8 +354,8 @@ async def preflight(session, research_url: str, timeout_seconds: float) -> list[
             "Is it running (cd research-agent && uvicorn app.main:app --port 8100)?"
         ]
 
-    print(
-        "research-agent ready: model={model}, retrieval_enabled={retrieval_enabled}".format(
+    deps.log(
+        "preflight: research-agent ready: model={model}, retrieval_enabled={retrieval_enabled}".format(
             model=health.get("model", "?"), retrieval_enabled=health.get("retrieval_enabled", "?")
         )
     )
@@ -388,7 +388,7 @@ async def repl(session, owner: str | None, lookback_days: int | None) -> None:
         try:
             print(await ask(session, question, owner, lookback_days))
         except Exception as exc:  # noqa: BLE001 - a REPL should survive one bad turn
-            print(f"Error: {format_exception(exc)}")
+            deps.log(f"ask failed: {format_exception(exc)}", level="ERROR")
         print()
 
 
@@ -414,7 +414,7 @@ async def run(args: argparse.Namespace) -> int:
             problems = await preflight(session, args.research_url, args.timeout)
             if problems:
                 for problem in problems:
-                    print(f"Error: {problem}", file=sys.stderr)
+                    deps.log(f"preflight: {problem}", level="ERROR")
                 return 1
 
         if args.question:
@@ -437,7 +437,7 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         return 130
     except Exception as exc:  # noqa: BLE001 - top-level CLI boundary
-        print(f"Error: {format_exception(exc)}", file=sys.stderr)
+        deps.log(f"fatal: {format_exception(exc)}", level="ERROR")
         return 1
 
 

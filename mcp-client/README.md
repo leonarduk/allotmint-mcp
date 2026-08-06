@@ -74,6 +74,16 @@ Started processes are left running in the background (not tied to this script's 
 
 Use `--start-pgvector`, `--start-ollama`, `--start-mcp-server`, or `--start-research-agent` individually instead of `--start-deps` to auto-start only some of them (e.g. you already have Ollama and the Java server running in another terminal, and only want the sidecar brought up). `--start-timeout` (default 90s) controls how long each one is given to become reachable before it's reported as a problem rather than silently ignored — auto-starting is always best-effort: any dependency that can't be confirmed ready is printed as a warning, and the client still tries to proceed, so the usual preflight/connection errors explain what's still missing.
 
+### Logs
+
+Every status line — from `--start-deps`, `stop_deps.py`, and the client's own preflight/errors — is timestamped and appended to `mcp-client/logs/mcp-client.log`, in addition to being printed. A confusing run (did it hang? what actually happened, in what order?) can be reconstructed from that file afterwards rather than relying on whatever scrolled past in the terminal. Each spawned process also gets its own log (`logs/allotmint-mcp.log`, `logs/ollama.log`), with a header recording exactly which command was run and when, appended across restarts rather than overwritten — so if a server "started" but never became reachable, the log almost always says why.
+
+One specific check worth knowing about: `--start-mcp-server` warns (but doesn't refuse to start) if `target/allotmint-mcp-server.jar` is older than any file under `src/` or `pom.xml`. A stale jar starts up completely normally — it just silently lacks whatever was added since it was built, which otherwise only surfaces later as a confusing "missing required tool(s)" error from preflight. If you see that warning, rebuild first: `./mvnw package`.
+
+### Gotcha: multiple checkouts of this repo
+
+`docker-compose.yml` hardcodes `container_name: allotmint-mcp-pgvector` (and `allotmint-mcp-research-agent`) — a real container name, global to the Docker daemon, not scoped per checkout. If you have more than one clone of this repo and start pgvector from each, only the *first* one actually owns that name; the second's `docker compose up -d pgvector` either no-ops against the wrong checkout's container or fails with `Conflict: container name already in use`, and — the more confusing failure mode — a `research-agent` started from the second checkout can end up on a *different* Docker network than that first container, so its internal `pgvector` hostname doesn't resolve at all ("failed to resolve host 'pgvector'") even though `docker ps` shows something answering on port 5432. If you hit either symptom, check which checkout actually owns the running container (`docker inspect allotmint-mcp-pgvector --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}'`) and stop it there before starting this checkout's own.
+
 ### Stopping dependencies
 
 `stop_deps.py` is the counterpart to `--start-deps`:
