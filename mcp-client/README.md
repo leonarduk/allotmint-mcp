@@ -151,8 +151,8 @@ python webui.py
 Then open [http://localhost:8600](http://localhost:8600). The page has three panels, one per CLI mode:
 
 - **Ask allotmint_research** — question, owner, lookback days, plus an *Advanced* section for the allotmint-mcp/research-agent URLs, timeout, and skipping preflight — mirrors `python client.py "..." --owner ...`.
-- **List tools** — mirrors `--list-tools`.
-- **Call a tool directly** — tool name plus a JSON arguments box — mirrors `--call TOOL --args JSON`.
+- **List tools** — connects to the configured allotmint-mcp URL (with its own URL and timeout fields) and lists the tools it exposes — mirrors `--list-tools`.
+- **Call a tool directly** — tool name, JSON arguments, URL, and timeout — mirrors `--call TOOL --args JSON`.
 
 Preflight runs by default before a question is asked, same as the CLI, and reports the same problems (missing tool registration, unreachable sidecar) instead of a raw error.
 

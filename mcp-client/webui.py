@@ -114,7 +114,7 @@ def render_index() -> str:
     """
     defaults_json = json.dumps(
         {"url": DEFAULTS["url"], "researchUrl": DEFAULTS["research_url"]}
-    )
+    ).replace("</", "<\\/")  # defend against literal </script> in URL strings
     return (
         _INDEX_TEMPLATE.replace("__URL__", escape(DEFAULTS["url"]))
         .replace("__RESEARCH_URL__", escape(DEFAULTS["research_url"]))
