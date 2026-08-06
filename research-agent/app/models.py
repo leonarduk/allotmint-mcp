@@ -74,3 +74,4 @@ class AskResponse(BaseModel):
     grounded: bool = False
     warnings: list[str] = Field(default_factory=list)
     model: str = ""
+    trace_id: str | None = None

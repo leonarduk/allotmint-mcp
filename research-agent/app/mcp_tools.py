@@ -43,6 +43,7 @@ class ToolSession:
     settings: Settings
     session: Any
     calls: list[ToolCallRecord] = field(default_factory=list)
+    trace_logger: Any | None = None
 
     @property
     def call_count(self) -> int:
@@ -74,6 +75,9 @@ class ToolSession:
         cleaned = {k: v for k, v in arguments.items() if v is not None}
         log.info("agent -> %s(%s)", name, cleaned)
 
+        if self.trace_logger is not None:
+            self.trace_logger.tool_call_start(name, cleaned)
+
         try:
             result = await self.session.call_tool(name, cleaned)
         except Exception as exc:  # noqa: BLE001 - surfaced to the model, not swallowed
@@ -81,12 +85,16 @@ class ToolSession:
             self.calls.append(
                 ToolCallRecord(tool=name, arguments=cleaned, result_excerpt=text[:MAX_EXCERPT_CHARS])
             )
+            if self.trace_logger is not None:
+                self.trace_logger.tool_call_end(name, len(text), success=False)
             return text
 
         text = _result_to_text(result)
         self.calls.append(
             ToolCallRecord(tool=name, arguments=cleaned, result_excerpt=text[:MAX_EXCERPT_CHARS])
         )
+        if self.trace_logger is not None:
+            self.trace_logger.tool_call_end(name, len(text), success=True)
         return text
 
 
@@ -140,7 +148,9 @@ def _timeout_value(annotation: Any, seconds: float) -> Any:
 
 
 @asynccontextmanager
-async def open_session(settings: Settings):
+async def open_session(
+    settings: Settings, trace_logger: Any | None = None
+):
     """Opens an MCP session against the allotmint-mcp server for one request.
 
     A session per request rather than a shared long-lived one: request volume
@@ -171,4 +181,6 @@ async def open_session(settings: Settings):
         read, write = streams[0], streams[1]
         async with ClientSession(read, write, **session_kwargs) as session:
             await session.initialize()
-            yield ToolSession(settings=settings, session=session)
+            yield ToolSession(
+                settings=settings, session=session, trace_logger=trace_logger
+            )

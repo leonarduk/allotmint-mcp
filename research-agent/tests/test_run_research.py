@@ -71,8 +71,8 @@ def patched(monkeypatch, settings):
     fake_session = _FakeMcpSession()
 
     @contextlib.asynccontextmanager
-    async def fake_open_session(_settings):
-        yield ToolSession(settings=_settings, session=fake_session)
+    async def fake_open_session(_settings, trace_logger=None):
+        yield ToolSession(settings=_settings, session=fake_session, trace_logger=trace_logger)
 
     monkeypatch.setattr(agent_module, "open_session", fake_open_session)
     return fake_session
