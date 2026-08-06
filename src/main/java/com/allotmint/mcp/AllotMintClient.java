@@ -67,7 +67,7 @@ class AllotMintClient {
               .body(OpenApiDocument.class);
       String version = doc == null ? null : doc.info().version();
       return new AllotMintHealthStatus(true, version, baseUrl);
-    } catch (RestClientException e) {
+    } catch (RestClientException | AllotMintApiException e) {
       log.warn("AllotMint backend at {} is unreachable: {}", baseUrl, e.getMessage());
       return new AllotMintHealthStatus(false, null, baseUrl);
     }

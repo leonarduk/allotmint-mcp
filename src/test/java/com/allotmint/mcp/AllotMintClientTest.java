@@ -30,14 +30,26 @@ class AllotMintClientTest {
   }
 
   @Test
-  void mapsUnauthorizedResponseToClearAuthError() {
+  void reportsUnreachableWhenBackendReturnsUnauthorized() {
     RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
     AllotMintClient client = new AllotMintClient(builder.build(), BASE_URL);
 
     server.expect(requestTo(BASE_URL + "/openapi.json")).andRespond(withUnauthorizedRequest());
 
-    assertThatThrownBy(client::health)
+    assertThat(client.health()).isEqualTo(new AllotMintHealthStatus(false, null, BASE_URL));
+    server.verify();
+  }
+
+  @Test
+  void mapsUnauthorizedResponseToClearAuthErrorOnDataCalls() {
+    RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+    MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+    AllotMintClient client = new AllotMintClient(builder.build(), BASE_URL);
+
+    server.expect(requestTo(BASE_URL + "/portfolio/demo")).andRespond(withUnauthorizedRequest());
+
+    assertThatThrownBy(() -> client.portfolio("demo"))
         .isInstanceOf(AllotMintApiException.class)
         .hasMessage(AllotMintClient.AUTH_ERROR_MESSAGE);
     server.verify();
