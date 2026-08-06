@@ -239,7 +239,7 @@ def test_ensure_mcp_server_reports_a_missing_jar(monkeypatch, tmp_path):
     problem = deps.ensure_mcp_server("http://localhost:8080/mcp", timeout_seconds=5)
 
     assert problem is not None
-    assert "mvnw package" in problem
+    assert "./mvnw.cmd package -DskipTests" in problem
 
 
 def test_ensure_mcp_server_starts_it_with_research_enabled(monkeypatch, tmp_path):

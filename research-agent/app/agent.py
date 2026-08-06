@@ -67,9 +67,18 @@ How to work:
 portfolio needs allotmint_portfolio. A question asking "why" additionally \
 needs news or market data. A question about one instrument needs \
 allotmint_instrument. Do not call tools that cannot contribute.
-2. Call them. Read the JSON that comes back. If a call fails or returns \
-nothing, say so in your answer -- do not fill the gap with plausible content.
-3. Answer using only what the context and the tool responses contain.
+2. Call them. Read the JSON that comes back. Tool results can be large and \
+nested -- e.g. allotmint_portfolio(action=summary) returns a top-level \
+total_value_gbp alongside a long performance.history array of daily \
+snapshots. Identify the specific field(s) that answer the question before \
+writing anything; ignore fields the question didn't ask about, even large \
+or prominent ones. If a call fails or returns nothing, say so in your \
+answer -- do not fill the gap with plausible content.
+3. Open your answer with one direct sentence that states the actual answer \
+to the literal question asked, using the specific number or fact for it. \
+Add supporting detail -- breakdowns, trends, caveats -- only after that \
+sentence, and only if it clarifies rather than dilutes the answer.
+4. Answer using only what the context and the tool responses contain.
 
 Citing (required):
 - Cite a retrieved document as [n], using the number shown next to it.
@@ -142,23 +151,22 @@ def _make_agent(model: Any, tools: ToolSession, settings: Settings):
         owner: str,
         account_type: str | None = None,
         currency: str | None = None,
-        include_history: bool = False,
         lookback_days: int | None = None,
     ) -> str:
         """Read one owner's portfolio. action: summary, exposure, or holdings.
 
         When action='exposure', lookback_days (default 365) adds a
         weight_pct_year_ago field to each sector for historical comparison."""
-        args: dict[str, object] = {
-            "action": action,
-            "owner": owner,
-            "account_type": account_type,
-            "currency": currency,
-            "lookback_days": lookback_days,
-        }
-        if action.lower() == "summary":
-            args["include_history"] = include_history
-        return await tools.call_tool("allotmint_portfolio", args)
+        return await tools.call_tool(
+            "allotmint_portfolio",
+            {
+                "action": action,
+                "owner": owner,
+                "account_type": account_type,
+                "currency": currency,
+                "lookback_days": lookback_days,
+            },
+        )
 
     @agent.tool_plain
     async def allotmint_instrument(
