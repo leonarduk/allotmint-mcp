@@ -74,11 +74,11 @@ _OUT_OF_SCOPE_ARG_PATTERNS = [
     (re.compile(r"\beval\b", re.IGNORECASE), "code execution verb"),
     (re.compile(r"\bsudo\b", re.IGNORECASE), "privilege escalation"),
     # Credential keywords — match as standalone words anywhere in args.
-    # Uses \b boundaries to avoid matching "auth_token_refresh" or
-    # "password_reset" as partial matches; will match "admin password"
-    # or "query=token" as legitimate concerns.
+    # Uses \b boundaries to avoid matching "password_reset" as a partial
+    # match; will match "admin password" as a legitimate concern.
+    # Only `password` — `token` is too common in legitimate financial
+    # queries (tokenised assets, auth token names, etc.).
     (re.compile(r"\bpassword\b", re.IGNORECASE), "credential keyword"),
-    (re.compile(r"\btoken\b", re.IGNORECASE), "credential keyword"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -227,12 +227,22 @@ def _question_looks_tool_dependent(question: str) -> bool:
     portfolio_signals = [
         "my portfolio", "my exposure", "my holdings", "my account",
         "our portfolio", "our exposure", "my position", "what do i hold",
-        "what am i invested in", "how much of", "what is my",
+        "what am i invested in", "how much of",
+    ]
+    # "what is my" is only a signal when followed by an investment term.
+    # "What is my risk tolerance?" can be answered from retrieval;
+    # "What is my tech allocation?" needs a tool call.
+    my_signals = [
+        "what is my portfolio", "what is my exposure", "what is my position",
+        "what is my allocation", "what is my weight",
     ]
     market_signals = [
         "right now", "current price", "current value", "live price",
     ]
     for signal in portfolio_signals:
+        if signal in lower:
+            return True
+    for signal in my_signals:
         if signal in lower:
             return True
     for signal in market_signals:
@@ -244,9 +254,9 @@ def _question_looks_tool_dependent(question: str) -> bool:
 def _is_refusal(answer: str) -> bool:
     """Detects whether the answer is the model declining to answer.
 
-    Checks refusal phrases in the first ~500 chars — long answers that start
-    with a refusal and then narrate at length are still refusals, but a long
-    factual answer that happens to contain "I cannot" deep inside is not.
+    Scans the full answer for refusal phrases regardless of length.
+    The phrases are specific enough ("I cannot determine", "unable to",
+    etc.) that they do not appear in legitimate factual answers.
     """
     lower = answer.lower().strip()
     refusal_phrases = [
@@ -257,7 +267,6 @@ def _is_refusal(answer: str) -> bool:
         "could not determine", "couldn't determine",
     ]
     for phrase in refusal_phrases:
-        idx = lower.find(phrase)
-        if idx != -1 and idx < 500:
+        if phrase in lower:
             return True
     return False

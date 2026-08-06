@@ -465,15 +465,18 @@ async def _fake_search(question, settings, owner=None, lookback_days=365):
 async def _run_one_case(
     case: EvalCase,
     settings: Settings,
-    monkeypatch,
 ) -> EvalCaseResult:
-    """Runs one eval case and returns its result."""
+    """Runs one eval case and returns its result.
+
+    `agent_module.build_model`, `agent_module.search`, and
+    `agent_module.open_session` must already be patched by the caller.
+    """
     started = time.monotonic()
 
-    # Build scripted model for this case
+    # Build and inject the scripted model for this specific case.
     turns = _turns_for_case(case)
     model = _scripted_model(*turns)
-    monkeypatch.setattr(agent_module, "build_model", lambda _settings: model)
+    agent_module.build_model = lambda _settings, _model=model: _model  # type: ignore[assignment]
 
     try:
         response = await agent_module.run_research(
@@ -507,33 +510,34 @@ async def _run_set(
     cases: list[EvalCase],
     set_name: str,
     settings: Settings,
-    monkeypatch,
 ) -> EvalRunReport:
-    """Runs a full eval set and returns the aggregate report."""
+    """Runs a full eval set and returns the aggregate report.
+
+    Uses `unittest.mock.patch.object` as context managers — no pytest
+    dependency outside tests.
+    """
+    from unittest.mock import patch
+
     report = EvalRunReport(set_name=set_name)
     fake_session = FakeMcpSession()
 
-    # Patch retrieval
-    monkeypatch.setattr(agent_module, "search", _fake_search)
-
-    # Patch MCP session
     @contextlib.asynccontextmanager
     async def fake_open_session(_settings):
         yield ToolSession(settings=_settings, session=fake_session)
 
-    monkeypatch.setattr(agent_module, "open_session", fake_open_session)
-
-    for case in cases:
-        fake_session.received.clear()
-        result = await _run_one_case(case, settings, monkeypatch)
-        report.results.append(result)
-        report.total += 1
-        if result.passed:
-            report.passed += 1
-        elif result.skipped:
-            report.skipped += 1
-        else:
-            report.failed += 1
+    with patch.object(agent_module, "search", _fake_search), \
+         patch.object(agent_module, "open_session", fake_open_session):
+        for case in cases:
+            fake_session.received.clear()
+            result = await _run_one_case(case, settings)
+            report.results.append(result)
+            report.total += 1
+            if result.passed:
+                report.passed += 1
+            elif result.skipped:
+                report.skipped += 1
+            else:
+                report.failed += 1
 
     return report
 
@@ -632,10 +636,6 @@ async def main() -> int:
 
     eval_dir = _SELF.parent / "eval"
 
-    import pytest
-
-    monkeypatch = pytest.MonkeyPatch()
-
     exit_code = 0
     reports: list[EvalRunReport] = []
 
@@ -643,7 +643,7 @@ async def main() -> int:
         reg_path = eval_dir / "regression.yaml"
         if reg_path.exists():
             cases = _load_cases(reg_path)
-            report = await _run_set(cases, "regression", settings, monkeypatch)
+            report = await _run_set(cases, "regression", settings)
             reports.append(report)
             _print_report(report, args.verbose)
             if report.failed > 0:
@@ -655,7 +655,7 @@ async def main() -> int:
         adv_path = eval_dir / "adversarial.yaml"
         if adv_path.exists():
             cases = _load_cases(adv_path)
-            report = await _run_set(cases, "adversarial", settings, monkeypatch)
+            report = await _run_set(cases, "adversarial", settings)
             reports.append(report)
             _print_report(report, args.verbose)
             if report.failed > 0:

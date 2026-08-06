@@ -367,7 +367,7 @@ def test_is_refusal_detects_cannot_answer():
 
 
 def test_is_refusal_detects_long_refusal():
-    """A long refusal that exceeds 500 chars but starts with a refusal should still match."""
+    """A refusal that exceeds 500 chars (full-length explanation) should still match."""
     long_refusal = (
         "I cannot determine your portfolio exposure because no owner slug "
         "was supplied. Please provide an owner identifier so I can look up "
@@ -400,6 +400,12 @@ def test_question_does_not_look_tool_dependent():
     assert not _question_looks_tool_dependent("What is a stock?")
     assert not _question_looks_tool_dependent("Explain sector diversification.")
     assert not _question_looks_tool_dependent("What does key_findings.md say about bonds?")
+    # "What is my X" without a portfolio term should not trigger
+    assert not _question_looks_tool_dependent("What is my risk tolerance?")
+    assert not _question_looks_tool_dependent("What is my investment philosophy?")
+    # But "What is my X" with a portfolio term should
+    assert _question_looks_tool_dependent("What is my portfolio worth?")
+    assert _question_looks_tool_dependent("What is my exposure to tech?")
 
 
 # ---------------------------------------------------------------------------
