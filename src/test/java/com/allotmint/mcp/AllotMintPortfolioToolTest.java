@@ -68,15 +68,72 @@ class AllotMintPortfolioToolTest {
         List.of(Map.of("sector", "Technology", "market_value_gbp", 1000.0));
     when(client.portfolioSectors("steve")).thenReturn(sectors);
     when(client.portfolio("steve")).thenReturn(portfolio());
+    // Historical endpoint is not available: graceful fallback.
+    when(client.portfolioSectors("steve", 365))
+        .thenThrow(new AllotMintApiException(404, "not found"));
 
     Map<String, Object> structured =
         structured(call(Map.of("action", "exposure", "owner", "steve")));
 
-    assertThat(structured.get("sectors")).isSameAs(sectors);
+    assertThat(structured.get("sectors")).isEqualTo(sectors);
     assertThat((List<?>) structured.get("asset_classes")).hasSize(2);
     assertThat((List<?>) structured.get("currencies")).hasSize(2);
     verify(client).portfolioSectors("steve");
     verify(client).portfolio("steve");
+  }
+
+  @Test
+  void exposureEnrichesSectorsWithYearAgoWeightsWhenLookbackProvided() {
+    List<Map<String, Object>> current =
+        List.of(
+            Map.of("sector", "Technology", "contribution_pct", 27.0),
+            Map.of("sector", "Financials", "contribution_pct", 15.5));
+    List<Map<String, Object>> historical =
+        List.of(
+            Map.of("sector", "technology", "contribution_pct", 18.0),
+            Map.of("sector", "financials", "contribution_pct", 17.0));
+    when(client.portfolioSectors("steve")).thenReturn(current);
+    when(client.portfolioSectors("steve", 90)).thenReturn(historical);
+    when(client.portfolio("steve")).thenReturn(portfolio());
+
+    Map<String, Object> structured =
+        structured(
+            call(Map.of("action", "exposure", "owner", "steve", "lookback_days", 90)));
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> sectors =
+        (List<Map<String, Object>>) structured.get("sectors");
+    assertThat(sectors).hasSize(2);
+    assertThat(sectors.get(0))
+        .containsEntry("sector", "Technology")
+        .containsEntry("weight_pct_year_ago", new BigDecimal("18.0"));
+    assertThat(sectors.get(1))
+        .containsEntry("sector", "Financials")
+        .containsEntry("weight_pct_year_ago", new BigDecimal("17.0"));
+    verify(client).portfolioSectors("steve", 90);
+  }
+
+  @Test
+  void exposureOmitsYearAgoWhenHistoricalSectorNameDoesNotMatch() {
+    List<Map<String, Object>> current =
+        List.of(Map.of("sector", "Technology", "contribution_pct", 27.0));
+    List<Map<String, Object>> historical =
+        List.of(Map.of("sector", "Healthcare", "contribution_pct", 12.0));
+    when(client.portfolioSectors("steve")).thenReturn(current);
+    when(client.portfolioSectors("steve", 180)).thenReturn(historical);
+    when(client.portfolio("steve")).thenReturn(portfolio());
+
+    Map<String, Object> structured =
+        structured(
+            call(Map.of("action", "exposure", "owner", "steve", "lookback_days", 180)));
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> sectors =
+        (List<Map<String, Object>>) structured.get("sectors");
+    assertThat(sectors).hasSize(1);
+    assertThat(sectors.get(0))
+        .containsEntry("sector", "Technology")
+        .doesNotContainKey("weight_pct_year_ago");
   }
 
   @Test

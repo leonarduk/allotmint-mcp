@@ -18,8 +18,11 @@ final class AllotMintPortfolioTool {
   static final String OWNER = "owner";
   static final String ACCOUNT_TYPE = "account_type";
   static final String CURRENCY = "currency";
+  static final String LOOKBACK_DAYS = "lookback_days";
 
   private static final List<String> ACTIONS = List.of("summary", "exposure", "holdings");
+  private static final int DEFAULT_LOOKBACK_DAYS = 365;
+  private static final int MAX_LOOKBACK_DAYS = 3650;
 
   private AllotMintPortfolioTool() {}
 
@@ -34,6 +37,17 @@ final class AllotMintPortfolioTool {
             "description", "Owner slug returned by GET /owners"));
     properties.put(ACCOUNT_TYPE, Map.of("type", "string", "minLength", 1));
     properties.put(CURRENCY, Map.of("type", "string", "minLength", 1));
+    properties.put(
+        LOOKBACK_DAYS,
+        Map.of(
+            "type", "integer",
+            "minimum", 1,
+            "maximum", MAX_LOOKBACK_DAYS,
+            "description",
+            "Days to look back for historical sector-weight comparison. "
+                + "When set, each sector in the exposure response includes a "
+                + "weight_pct_lookback field with the weight from that many days ago. "
+                + "Defaults to 365 (year-ago comparison) when omitted."));
 
     Map<String, Object> inputSchema =
         Map.of(
@@ -75,12 +89,13 @@ final class AllotMintPortfolioTool {
 
     String accountType = optionalString(arguments, ACCOUNT_TYPE);
     String currency = optionalString(arguments, CURRENCY);
+    int lookbackDays = parseLookbackDays(arguments);
 
     try {
       Map<String, Object> structured =
           switch (action.toLowerCase(Locale.ROOT)) {
             case "summary" -> summary(client, owner, accountType, currency);
-            case "exposure" -> exposure(client, owner, accountType, currency);
+            case "exposure" -> exposure(client, owner, accountType, currency, lookbackDays);
             case "holdings" -> holdings(client, owner, accountType, currency);
             default -> throw new IllegalStateException("validated action became invalid");
           };
@@ -135,7 +150,11 @@ final class AllotMintPortfolioTool {
   }
 
   private static Map<String, Object> exposure(
-      AllotMintClient client, String owner, String accountType, String currency) {
+      AllotMintClient client,
+      String owner,
+      String accountType,
+      String currency,
+      int lookbackDays) {
     // The sector endpoint is authoritative. Asset-class and currency endpoints do not exist, so
     // those two breakdowns are derived from the portfolio response.
     List<Map<String, Object>> backendSectors = client.portfolioSectors(owner);
@@ -147,6 +166,16 @@ final class AllotMintPortfolioTool {
         accountType == null && currency == null
             ? backendSectors
             : aggregate(filteredHoldings, "sector", "Unknown");
+
+    // Enrich with historical comparison when lookback is requested.
+    if (lookbackDays > 0) {
+      try {
+        List<Map<String, Object>> historical = client.portfolioSectors(owner, lookbackDays);
+        sectors = enrichWithHistoricalWeights(sectors, historical);
+      } catch (AllotMintApiException | RestClientException e) {
+        // Graceful fallback: omit year-ago data rather than failing the call.
+      }
+    }
 
     Map<String, Object> result = baseResult("exposure", owner, accountType, currency);
     result.put("as_of", portfolio.get("as_of"));
@@ -316,6 +345,52 @@ final class AllotMintPortfolioTool {
       return null;
     }
     return text.trim();
+  }
+
+  private static int parseLookbackDays(Map<String, Object> arguments) {
+    Object raw = arguments.get(LOOKBACK_DAYS);
+    if (raw instanceof Number num) {
+      int value = num.intValue();
+      if (value > 0) {
+        return Math.min(value, MAX_LOOKBACK_DAYS);
+      }
+    }
+    return DEFAULT_LOOKBACK_DAYS;
+  }
+
+  /**
+   * Merges historical sector weights from a lookback snapshot into the current sector list. Each
+   * current sector gets a {@code weight_pct_year_ago} field when the historical snapshot contains a
+   * matching sector name (case-insensitive). Sectors present only in one snapshot are returned
+   * unchanged. Original maps are not mutated: the returned list contains new maps.
+   */
+  private static List<Map<String, Object>> enrichWithHistoricalWeights(
+      List<Map<String, Object>> sectors, List<Map<String, Object>> historical) {
+    Map<String, BigDecimal> historicalWeights = new LinkedHashMap<>();
+    for (Map<String, Object> row : historical) {
+      String name = optionalString(row, "sector");
+      if (name != null) {
+        BigDecimal weight = decimal(row.get("contribution_pct"));
+        if (BigDecimal.ZERO.compareTo(weight) == 0) {
+          weight = decimal(row.get("weight_pct"));
+        }
+        historicalWeights.put(name.toLowerCase(Locale.ROOT), weight);
+      }
+    }
+
+    List<Map<String, Object>> enriched = new ArrayList<>();
+    for (Map<String, Object> row : sectors) {
+      Map<String, Object> enrichedRow = new LinkedHashMap<>(row);
+      String name = optionalString(row, "sector");
+      if (name != null) {
+        BigDecimal histWeight = historicalWeights.get(name.toLowerCase(Locale.ROOT));
+        if (histWeight != null) {
+          enrichedRow.put("weight_pct_year_ago", histWeight);
+        }
+      }
+      enriched.add(enrichedRow);
+    }
+    return enriched;
   }
 
   private static McpSchema.CallToolResult error(String message) {

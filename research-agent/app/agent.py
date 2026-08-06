@@ -141,8 +141,12 @@ def _make_agent(model: Any, tools: ToolSession, settings: Settings):
         owner: str,
         account_type: str | None = None,
         currency: str | None = None,
+        lookback_days: int | None = None,
     ) -> str:
-        """Read one owner's portfolio. action: summary, exposure, or holdings."""
+        """Read one owner's portfolio. action: summary, exposure, or holdings.
+
+        When action='exposure', lookback_days (default 365) adds a
+        weight_pct_year_ago field to each sector for historical comparison."""
         return await tools.call_tool(
             "allotmint_portfolio",
             {
@@ -150,6 +154,7 @@ def _make_agent(model: Any, tools: ToolSession, settings: Settings):
                 "owner": owner,
                 "account_type": account_type,
                 "currency": currency,
+                "lookback_days": lookback_days,
             },
         )
 
