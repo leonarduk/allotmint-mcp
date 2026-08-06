@@ -208,7 +208,11 @@ def ensure_mcp_server(mcp_url: str, timeout_seconds: float) -> str | None:
 
     jar = REPO_ROOT / "target" / "allotmint-mcp-server.jar"
     if not jar.exists():
-        return f"not reachable on {host}:{port} and {jar} doesn't exist - build it first with './mvnw package'"
+        return (
+            f"not reachable on {host}:{port} and {jar} doesn't exist - build it first. "
+            f"Run this from the repo root (not mcp-client/):\n"
+            f"    ./mvnw.cmd package -DskipTests"
+        )
     if shutil.which("java") is None:
         return f"not reachable on {host}:{port} and 'java' isn't on PATH"
 

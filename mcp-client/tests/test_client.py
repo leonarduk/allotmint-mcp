@@ -7,6 +7,7 @@ the mcp SDK's own responsibility, not this client's.
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -23,6 +24,7 @@ from client import (
     parse_args,
     preflight,
     requested_dependencies,
+    result_display,
     result_is_error,
     result_text,
 )
@@ -70,6 +72,32 @@ def test_result_text_joins_text_content_blocks():
 def test_result_text_handles_no_content():
     assert result_text(SimpleNamespace(content=[])) == "(no content returned)"
     assert result_text(SimpleNamespace()) == "(no content returned)"
+
+
+def test_result_display_prefers_structured_content_over_stub_text():
+    result = SimpleNamespace(
+        content=[_content("AllotMint portfolio summary for owner steve returned successfully")],
+        structuredContent={"total_value_gbp": 625156.28},
+    )
+    assert result_display(result) == json.dumps({"total_value_gbp": 625156.28}, indent=2, default=str)
+
+
+def test_result_display_falls_back_to_text_without_structured_content():
+    result = SimpleNamespace(content=[_content("line one"), _content("line two")])
+    assert result_display(result) == "line one\nline two"
+
+
+def test_result_text_ignores_structured_content_even_when_present():
+    """allotmint_research sets structuredContent alongside its rendered prose
+
+    (AllotMintResearchTool.java) - ask/the REPL must keep showing the prose,
+    not the raw JSON duplicate, unlike result_display's --call path.
+    """
+    result = SimpleNamespace(
+        content=[_content("Your portfolio is worth £625,156.28 [1].")],
+        structuredContent={"answer": "Your portfolio is worth £625,156.28 [1]."},
+    )
+    assert result_text(result) == "Your portfolio is worth £625,156.28 [1]."
 
 
 def test_result_is_error_checks_both_field_spellings():
