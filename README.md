@@ -82,7 +82,7 @@ On Windows, use an escaped absolute path, for example:
 }
 ```
 
-Restart Claude Desktop after saving the configuration. The `echo` tool is available as a transport smoke test; the four AllotMint tools are documented below.
+Restart Claude Desktop after saving the configuration. The `echo` tool is available as a transport smoke test; the four AllotMint tools are documented below, along with the opt-in `allotmint_research` tool.
 
 ## Authentication
 
@@ -224,6 +224,59 @@ Returns one owner's summary, exposure breakdown, or flat holdings list.
 ```
 
 Get valid `owner` slugs from the AllotMint backend's `GET /owners` endpoint. `account_type` and `currency` are optional case-insensitive client-side filters.
+
+### `allotmint_research` (opt-in)
+
+Answers a compound natural-language question by retrieving relevant embedded context and chaining the four read-only tools above as the question requires, returning a grounded answer whose `[n]` markers cite the retrieved documents and tool calls behind it.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["ask"]
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lookback_days": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3650,
+      "default": 365
+    }
+  },
+  "required": ["action", "question"],
+  "additionalProperties": false
+}
+```
+
+Unlike the tools above, this one is **off by default** and needs two things running alongside the server:
+
+- the [research agent sidecar](research-agent/README.md), which runs the agent loop (Python, Pydantic AI);
+- the HTTP transport, because the agent reaches the four v0 tools as an MCP client of this server's own `/mcp` endpoint. Both transports can run at once, so a stdio client still works.
+
+```bash
+export ALLOTMINT_MCP_RESEARCH_ENABLED=true
+java -jar target/allotmint-mcp-server.jar --spring.profiles.active=http
+```
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ALLOTMINT_MCP_RESEARCH_ENABLED` | `false` | Registers the tool |
+| `ALLOTMINT_RESEARCH_BASE_URL` | `http://localhost:8100` | The sidecar |
+| `ALLOTMINT_RESEARCH_CONNECT_TIMEOUT_SECONDS` | `5` | |
+| `ALLOTMINT_RESEARCH_READ_TIMEOUT_SECONDS` | `180` | One call is a whole agent loop, often against a local model |
+
+The sidecar's own configuration — which LLM, which retrieval store — is documented in [research-agent/README.md](research-agent/README.md). Its defaults run at no cost: a local Ollama model and locally-computed embeddings, no API key. Enabling this tool is what introduces the server's first LLM dependency, which is why it is opt-in.
+
+The tool stays read-only: the sidecar allowlists exactly the four v0 tool names, so no write path is reachable through it, and `allotmint_research` is excluded from that allowlist so the agent cannot recurse into itself. An answer with no retrieved context and no tool calls behind it is returned as an error, not as prose.
 
 ## Build and quality gates
 

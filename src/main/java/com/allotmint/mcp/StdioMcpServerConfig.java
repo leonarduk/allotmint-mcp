@@ -27,8 +27,10 @@ class StdioMcpServerConfig {
   McpSyncServer stdioMcpSyncServer(
       McpJsonMapper jsonMapper,
       AllotMintClient allotMintClient,
+      ResearchAgentClient researchAgentClient,
       @Value("${allotmint.mcp.files.enabled:false}") boolean filesEnabled,
-      @Value("${allotmint.mcp.files.root:}") String filesRoot) {
+      @Value("${allotmint.mcp.files.root:}") String filesRoot,
+      @Value("${allotmint.mcp.research.enabled:false}") boolean researchEnabled) {
     StdioServerTransportProvider transportProvider = new StdioServerTransportProvider(jsonMapper);
 
     List<McpServerFeatures.SyncToolSpecification> tools = new ArrayList<>();
@@ -40,6 +42,9 @@ class StdioMcpServerConfig {
 
     if (filesEnabled) {
       tools.add(AllotMintFilesTool.specification(Path.of(filesRoot)));
+    }
+    if (researchEnabled) {
+      tools.add(AllotMintResearchTool.specification(researchAgentClient));
     }
 
     return McpServer.sync(transportProvider)

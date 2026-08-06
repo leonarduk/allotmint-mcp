@@ -46,8 +46,10 @@ class McpServerConfig {
   McpSyncServer httpMcpSyncServer(
       WebMvcStreamableServerTransportProvider transportProvider,
       AllotMintClient allotMintClient,
+      ResearchAgentClient researchAgentClient,
       @Value("${allotmint.mcp.files.enabled:false}") boolean filesEnabled,
-      @Value("${allotmint.mcp.files.root:}") String filesRoot) {
+      @Value("${allotmint.mcp.files.root:}") String filesRoot,
+      @Value("${allotmint.mcp.research.enabled:false}") boolean researchEnabled) {
     List<McpServerFeatures.SyncToolSpecification> tools = new ArrayList<>();
     tools.add(EchoTool.specification());
     tools.add(AllotMintHealthTool.specification(allotMintClient));
@@ -57,6 +59,9 @@ class McpServerConfig {
 
     if (filesEnabled) {
       tools.add(AllotMintFilesTool.specification(Path.of(filesRoot)));
+    }
+    if (researchEnabled) {
+      tools.add(AllotMintResearchTool.specification(researchAgentClient));
     }
 
     return McpServer.sync(transportProvider)
