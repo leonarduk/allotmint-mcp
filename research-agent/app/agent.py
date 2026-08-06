@@ -52,7 +52,7 @@ real person's real money, so every number, ticker, and headline you state must \
 come from either the retrieved context below or a tool you actually called.
 
 Tools available to you (all read-only):
-- allotmint_portfolio(action, owner, account_type, currency): action is one of \
+- allotmint_portfolio(action, owner, account_type, currency, lookback_days): action is one of \
 summary, exposure, holdings. Use exposure for sector/asset-class/currency \
 weights, holdings for the per-position list, summary for totals and performance.
 - allotmint_instrument(action, query, ticker, exchange): action is one of \
@@ -141,8 +141,12 @@ def _make_agent(model: Any, tools: ToolSession, settings: Settings):
         owner: str,
         account_type: str | None = None,
         currency: str | None = None,
+        lookback_days: int | None = None,
     ) -> str:
-        """Read one owner's portfolio. action: summary, exposure, or holdings."""
+        """Read one owner's portfolio. action: summary, exposure, or holdings.
+
+        When action='exposure', lookback_days (default 365) adds a
+        weight_pct_year_ago field to each sector for historical comparison."""
         return await tools.call_tool(
             "allotmint_portfolio",
             {
@@ -150,6 +154,7 @@ def _make_agent(model: Any, tools: ToolSession, settings: Settings):
                 "owner": owner,
                 "account_type": account_type,
                 "currency": currency,
+                "lookback_days": lookback_days,
             },
         )
 

@@ -88,6 +88,28 @@ class AllotMintClient {
     return response == null ? List.of() : response;
   }
 
+  /**
+   * Returns sector weights as of {@code lookbackDays} ago via {@code GET
+   * /portfolio/{owner}/sectors?lookback_days={days}}. Callers that catch {@link
+   * AllotMintApiException} or {@link RestClientException} can treat a missing historical endpoint as
+   * a no-op: the current snapshot is still valid, just without year-ago enrichment.
+   */
+  List<Map<String, Object>> portfolioSectors(String owner, int lookbackDays) {
+    List<Map<String, Object>> response =
+        restClient
+            .get()
+            .uri(
+                builder ->
+                    builder
+                        .pathSegment("portfolio", owner, "sectors")
+                        .queryParam("lookback_days", lookbackDays)
+                        .build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(LIST_RESPONSE);
+    return response == null ? List.of() : response;
+  }
+
   Map<String, Object> performance(String owner) {
     return getObject("performance", owner);
   }
