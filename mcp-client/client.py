@@ -108,6 +108,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Skip the startup checks that verify the server and sidecar are ready before asking anything",
     )
+    add_start_deps_args(parser)
+    return parser.parse_args(argv)
+
+
+def add_start_deps_args(parser: argparse.ArgumentParser) -> None:
+    """Adds the --start-deps family of arguments to *parser*, for reuse across entrypoints.
+
+    Both client.py and webui.py call this so the flags stay in one place; each
+    entrypoint's own parse_args() still adds its own entrypoint-specific args.
+    """
     parser.add_argument(
         "--start-deps",
         action="store_true",
@@ -139,7 +149,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"(default: {deps.DEFAULT_START_TIMEOUT}; a first-time research-agent image build may need more)"
         ),
     )
-    return parser.parse_args(argv)
 
 
 def requested_dependencies(args: argparse.Namespace) -> set[str]:
