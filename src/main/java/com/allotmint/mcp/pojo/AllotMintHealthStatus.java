@@ -1,9 +1,7 @@
 package com.allotmint.mcp.pojo;
 
-import com.allotmint.mcp.client.AllotMintClient;
-
 /**
- * Result of an {@link AllotMintClient#health()} call.
+ * Result of an {@link com.allotmint.mcp.client.AllotMintClient#health()} call.
  *
  * @param reachable whether the backend responded successfully
  * @param version backend version string, if the backend reports one
