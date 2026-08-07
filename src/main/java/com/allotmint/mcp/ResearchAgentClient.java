@@ -1,5 +1,7 @@
 package com.allotmint.mcp;
 
+import com.allotmint.mcp.error.AllotMintApiException;
+import com.allotmint.mcp.pojo.ResearchAnswer;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -22,19 +24,19 @@ import org.springframework.web.client.RestClient;
  * backend, rather than an in-JVM Python runtime. This class is deliberately the mirror image of
  * {@link AllotMintClient} so there is one interop story in this codebase, not two.
  */
-class ResearchAgentClient {
+public class ResearchAgentClient {
 
   private static final Logger log = LoggerFactory.getLogger(ResearchAgentClient.class);
 
   private final RestClient restClient;
   private final String baseUrl;
 
-  ResearchAgentClient(RestClient researchAgentRestClient, String baseUrl) {
+  public ResearchAgentClient(RestClient researchAgentRestClient, String baseUrl) {
     this.restClient = researchAgentRestClient;
     this.baseUrl = baseUrl;
   }
 
-  String baseUrl() {
+  public String baseUrl() {
     return baseUrl;
   }
 
@@ -47,7 +49,7 @@ class ResearchAgentClient {
    * @return the agent's grounded answer with its citations
    * @throws AllotMintApiException if the sidecar answers 4xx/5xx
    */
-  ResearchAnswer ask(String question, String owner, int lookbackDays) {
+  public ResearchAnswer ask(String question, String owner, int lookbackDays) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("question", question);
     if (owner != null) {

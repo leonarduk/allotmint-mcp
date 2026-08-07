@@ -289,6 +289,20 @@ def _mcp_error_class():
     return getattr(exceptions, "MCPError", None) or getattr(exceptions, "McpError")
 
 
+def _make_mcp_error(error_cls, code: int, message: str):
+    """Construct an MCP error, compatible with both old and new SDK constructors.
+
+    Newer SDK:  McpError(ErrorData(code=..., message=...))
+    Older SDK:  MCPError(code=..., message=...)
+    """
+    try:
+        from mcp.types import ErrorData
+
+        return error_cls(ErrorData(code=code, message=message))
+    except TypeError:
+        return error_cls(code=code, message=message)
+
+
 def test_format_exception_appends_mcp_error_data():
     error_cls = _mcp_error_class()
 
@@ -296,7 +310,7 @@ def test_format_exception_appends_mcp_error_data():
     # to "Unknown tool: invalid_tool_name" no matter what was actually
     # requested (io.modelcontextprotocol.sdk:mcp-core McpAsyncServer bug) - the
     # real tool name only shows up in `data`.
-    error = error_cls(code=-32602, message="Unknown tool: invalid_tool_name")
+    error = _make_mcp_error(error_cls, -32602, "Unknown tool: invalid_tool_name")
     error.error.data = "Tool not found: allotmint_research"
 
     assert format_exception(error) == (
@@ -308,7 +322,7 @@ def test_format_exception_appends_mcp_error_data():
 def test_format_exception_skips_the_parenthetical_when_mcp_error_has_no_data():
     error_cls = _mcp_error_class()
 
-    error = error_cls(code=-32602, message="Something else went wrong")
+    error = _make_mcp_error(error_cls, -32602, "Something else went wrong")
 
     assert format_exception(error) == f"{error_cls.__name__}: Something else went wrong"
 
