@@ -79,3 +79,27 @@ jobs:
       - name: Test
         working-directory: mcp-client
         run: python -m pytest -q
+
+  dev-tools:
+    # Verify the shared cicaid-devtools package installs and its console
+    # scripts are functional. This catches a broken release wheel, missing
+    # asset, or import error before a developer hits it locally.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install cicaid-devtools
+        run: pip install -r scripts/requirements-dev.txt
+
+      - name: Verify console scripts are importable
+        run: |
+          cicaid --help
+          sync-issues --help
+          commit-and-push --help
+          publish-pr --help
+          run-ci-checks --list

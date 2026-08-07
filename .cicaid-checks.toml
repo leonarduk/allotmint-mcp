@@ -1,5 +1,12 @@
 # Local check list for `run-ci-checks` (from the cicaid-devtools package).
 # Mirrors the credential-free parts of .github/workflows/build.yml.
+#
+# NOTE: The "build" check runs `./mvnw verify`, which includes OWASP
+# dependency-check.  That step needs an NVD_API_KEY for the National
+# Vulnerability Database feed.  In CI the key is a repository secret;
+# for local runs, set NVD_API_KEY in your environment or the check will
+# proceed with a slower, rate-limited download.  See
+# https://github.com/jeremylong/DependencyCheck?tab=readme-ov-file#nvd-api-key
 
 [[checks]]
 name = "build"
