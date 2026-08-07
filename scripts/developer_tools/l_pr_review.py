@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # Add .github/scripts (for review_common) and the local lib/ dir (for
 # llm_common) to sys.path so this works both as an importable module and
@@ -83,10 +87,10 @@ def fetch_pr_details(owner: str, repo: str, pr_id: int) -> dict:
         )
         return json.loads(result.stdout)
     except FileNotFoundError as exc:
-        print(f"ERROR: gh CLI not found. Is GitHub CLI installed? {exc}", file=sys.stderr)
+        logger.error(f"ERROR: gh CLI not found. Is GitHub CLI installed? {exc}")
         raise SystemExit(1) from exc
     except subprocess.CalledProcessError as exc:
-        print(f"ERROR: Failed to fetch PR #{pr_id}: {exc.stderr}", file=sys.stderr)
+        logger.error(f"ERROR: Failed to fetch PR #{pr_id}: {exc.stderr}")
         raise SystemExit(1) from exc
 
 
@@ -102,10 +106,10 @@ def fetch_pr_diff(owner: str, repo: str, pr_id: int) -> str:
         )
         return filter_binary_files(result.stdout)
     except FileNotFoundError as exc:
-        print(f"ERROR: gh CLI not found. Is GitHub CLI installed? {exc}", file=sys.stderr)
+        logger.error(f"ERROR: gh CLI not found. Is GitHub CLI installed? {exc}")
         raise SystemExit(1) from exc
     except subprocess.CalledProcessError as exc:
-        print(f"ERROR: Failed to fetch diff for PR #{pr_id}: {exc.stderr}", file=sys.stderr)
+        logger.error(f"ERROR: Failed to fetch diff for PR #{pr_id}: {exc.stderr}")
         raise SystemExit(1) from exc
 
 
@@ -168,16 +172,16 @@ def main() -> int:
         if args.repo:
             parts = args.repo.split("/")
             if len(parts) != 2:
-                print(f"ERROR: Invalid repo format '{args.repo}'. Use owner/repo.", file=sys.stderr)
+                logger.error(f"ERROR: Invalid repo format '{args.repo}'. Use owner/repo.")
                 return 1
             owner, repo = parts
         else:
             owner, repo = get_repo_info()
     except ValueError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: {exc}")
         return 1
 
-    print(f"INFO: Reviewing PR #{args.pr_id} from {owner}/{repo}", file=sys.stderr)
+    logger.info(f"INFO: Reviewing PR #{args.pr_id} from {owner}/{repo}")
 
     # Fetch PR details
     pr_details = fetch_pr_details(owner, repo, args.pr_id)
@@ -192,9 +196,10 @@ def main() -> int:
     original_diff_len = len(diff)
     diff, was_truncated = truncate_diff(diff)
     if was_truncated:
-        print(
-            f"INFO: Truncated diff from {original_diff_len} to {len(diff)} characters",
-            file=sys.stderr,
+        logger.info(
+            "Truncated diff from %s to %s characters",
+            original_diff_len,
+            len(diff),
         )
 
     if not diff.strip():
@@ -202,7 +207,7 @@ def main() -> int:
 
     # Build prompt and fetch review
     prompt = build_prompt(pr_title, diff, issue_body, discussion="", verified_facts="")
-    print(f"INFO: Using {describe_model_source(args.model_source)}", file=sys.stderr)
+    logger.info(f"INFO: Using {describe_model_source(args.model_source)}")
     review = fetch_review(args.model_source, prompt)
 
     return finalize_review(review, "ERROR: Model returned an empty review")

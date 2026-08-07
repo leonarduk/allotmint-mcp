@@ -7,7 +7,11 @@ handling stay identical across both reviewers.
 """
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 import os
 import sys
 from typing import Any
@@ -74,12 +78,11 @@ def extract_deepseek_review(data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         reasoning = message.get("reasoning_content") or ""
         finish_reason = choice.get("finish_reason")
         if reasoning:
-            print(
-                "WARNING: DeepSeek response contained only reasoning_content "
+            logger.warning(
+                "DeepSeek response contained only reasoning_content "
                 f"({len(reasoning)} chars, finish_reason={finish_reason!r}) and no "
                 "final content - the model likely ran out of max_tokens while "
-                "thinking. Consider raising DEEPSEEK_MAX_TOKENS.",
-                file=sys.stderr,
+                "thinking. Consider raising DEEPSEEK_MAX_TOKENS."
             )
 
     return review, {}

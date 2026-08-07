@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import subprocess
@@ -19,6 +20,9 @@ from lib.ollama_common import (
     get_ollama_model,
     validate_ollama_connection,
 )
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -74,8 +78,7 @@ def fetch_issue_from_github(
 
     Returns: (title, body) tuple.
     """
-    if verbose:
-        print(f"[DEBUG] Fetching issue #{issue_id} from {owner}/{repo}...", file=sys.stderr)
+    logger.debug("Fetching issue #%d from %s/%s...", issue_id, owner, repo)
 
     url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_id}"
     headers = {"Accept": "application/vnd.github.v3+json"}
@@ -86,10 +89,9 @@ def fetch_issue_from_github(
         resp = requests.get(url, headers=headers, timeout=10)
         resp.raise_for_status()
     except requests.RequestException as exc:
-        print(f"ERROR: Failed to fetch issue #{issue_id}: {exc}", file=sys.stderr)
-        print(
-            "Tip: If GitHub API is unreachable, use -f <file> to load a local " "markdown file instead.",
-            file=sys.stderr,
+        logger.error("Failed to fetch issue #%d: %s", issue_id, exc)
+        logger.error(
+            "Tip: If GitHub API is unreachable, use -f <file> to load a local markdown file instead."
         )
         sys.exit(1)
 
@@ -98,11 +100,10 @@ def fetch_issue_from_github(
     body = issue.get("body", "")
 
     if not title:
-        print(f"ERROR: Issue #{issue_id} has no title", file=sys.stderr)
+        logger.error("Issue #%d has no title", issue_id)
         sys.exit(1)
 
-    if verbose:
-        print(f"[DEBUG] Fetched issue: {title}", file=sys.stderr)
+    logger.debug("Fetched issue: %s", title)
 
     return title, body
 
@@ -113,24 +114,22 @@ def load_issue_from_file(file_path: str, verbose: bool = False) -> tuple[str, st
     File format: first line is title, rest is body.
     Returns: (title, body) tuple.
     """
-    if verbose:
-        print(f"[DEBUG] Loading issue from file: {file_path}", file=sys.stderr)
+    logger.debug("Loading issue from file: %s", file_path)
 
     try:
         content = Path(file_path).read_text(encoding="utf-8")
     except FileNotFoundError:
-        print(f"ERROR: File not found: {file_path}", file=sys.stderr)
+        logger.error("File not found: %s", file_path)
         sys.exit(1)
     except OSError as exc:
-        print(f"ERROR: Failed to read file {file_path}: {exc}", file=sys.stderr)
+        logger.error("Failed to read file %s: %s", file_path, exc)
         sys.exit(1)
 
     lines = content.strip().split("\n", 1)
     title = lines[0].strip()
     body = lines[1].strip() if len(lines) > 1 else ""
 
-    if verbose:
-        print(f"[DEBUG] Loaded issue: {title}", file=sys.stderr)
+    logger.debug("Loaded issue: %s", title)
 
     return title, body
 
@@ -174,8 +173,7 @@ def parse_issue_body(body: str, verbose: bool = False) -> dict[str, str]:
         elif section_title in ("failure looks like", "failure_looks_like"):
             sections["failure"] = section_content
 
-    if verbose:
-        print(f"[DEBUG] Parsed sections: {list(sections.keys())}", file=sys.stderr)
+    logger.debug("Parsed sections: %s", list(sections.keys()))
 
     return sections
 
@@ -222,17 +220,8 @@ def extract_file_paths_from_issue(
     """
     paths = []
 
-    # Match common path patterns: src/foo.ts, backend/app.py, etc. Paths are
-    # also allowed right after '[', '(', or '`' so markdown link syntax like
-    # "[backend/app.py](https://...)" and the repo's own "Files Affected"
-    # template convention "- `backend/app.py`" (the standard format produced
-    # by every issue template in this repo) are both recognized, not just
-    # bare paths -- a backtick-wrapped bullet was previously never matched at
-    # all, silently producing zero extracted files for a well-formed issue.
-    # Longer extensions must be listed before their prefixes (tsx before ts,
-    # jsx before js) -- regex alternation takes the first match, so "ts"
-    # would otherwise win over "tsx" and truncate the captured path.
-    pattern = r"(?:^|[\s\[\(`])([a-zA-Z0-9._/\-]+\.(?:tsx|ts|py|jsx|js|css|md|yaml|yml|json))"
+    # Match common path patterns
+    pattern = r"(?:^|[\s\[\(\`])([a-zA-Z0-9._/\-]+\.(?:tsx|ts|py|jsx|js|css|md|yaml|yml|json))"
     matches = re.finditer(pattern, issue_body, re.MULTILINE)
 
     for match in matches:
@@ -241,8 +230,7 @@ def extract_file_paths_from_issue(
             continue
         if Path(path).exists():
             paths.append(path)
-            if verbose:
-                print(f"[DEBUG] Found file reference: {path}", file=sys.stderr)
+            logger.debug("Found file reference: %s", path)
 
     return list(set(paths))  # deduplicate
 
@@ -259,8 +247,7 @@ def suggest_files_with_ollama(
 
     Returns: list of suggested file paths.
     """
-    if verbose:
-        print(f"[DEBUG] Calling Ollama ({model}) to suggest files...", file=sys.stderr)
+    logger.debug("Calling Ollama (%s) to suggest files...", model)
 
     extracted_summary = ", ".join(extracted_paths) if extracted_paths else "none"
     prompt = f"""You are a code analysis assistant. Based on the GitHub issue below, identify
@@ -282,11 +269,7 @@ Do not include test files or lock files. Be concise."""
         response = fetch_ollama_review(endpoint, model, prompt)
     except SystemExit:
         # Ollama failed; return what we extracted
-        if verbose:
-            print(
-                "[DEBUG] Ollama query failed; using extracted paths only",
-                file=sys.stderr,
-            )
+        logger.debug("Ollama query failed; using extracted paths only")
         return extracted_paths
 
     # Parse JSON response
@@ -302,20 +285,12 @@ Do not include test files or lock files. Be concise."""
                 existing = [
                     p for p in suggested if isinstance(p, str) and is_safe_relative_path(p) and Path(p).exists()
                 ]
-                if verbose:
-                    print(
-                        f"[DEBUG] Ollama suggested {len(existing)} files: {existing}",
-                        file=sys.stderr,
-                    )
+                logger.debug("Ollama suggested %d files: %s", len(existing), existing)
                 return existing
     except (json.JSONDecodeError, ValueError):
         pass
 
-    if verbose:
-        print(
-            "[DEBUG] Could not parse Ollama response as JSON; using extracted paths",
-            file=sys.stderr,
-        )
+    logger.debug("Could not parse Ollama response as JSON; using extracted paths")
     return extracted_paths
 
 
@@ -336,21 +311,15 @@ def resolve_files_to_edit(
     if files_affected:
         section_paths = extract_file_paths_from_issue(files_affected, verbose)
         if section_paths:
-            if verbose:
-                print(f"[DEBUG] Using Files Affected paths: {section_paths}", file=sys.stderr)
+            logger.debug("Using Files Affected paths: %s", section_paths)
             return section_paths
 
     extracted_paths = extract_file_paths_from_issue(body, verbose)
     if extracted_paths:
-        if verbose:
-            print(f"[DEBUG] Using extracted paths: {extracted_paths}", file=sys.stderr)
+        logger.debug("Using extracted paths: %s", extracted_paths)
         return extracted_paths
 
-    if verbose:
-        print(
-            "[DEBUG] No files extracted from issue; asking Ollama to suggest...",
-            file=sys.stderr,
-        )
+    logger.debug("No files extracted from issue; asking Ollama to suggest...")
     return suggest_files_with_ollama(title, body, extracted_paths, endpoint, model, verbose)
 
 
@@ -379,18 +348,12 @@ def load_graphify_analysis(
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        if verbose:
-            print(f"[DEBUG] Could not read graphify analysis: {exc}", file=sys.stderr)
+        logger.debug("Could not read graphify analysis: %s", exc)
         return None
 
 
 def graphify_hint_for_files(files: list[str], analysis: dict | None) -> str:
-    """Build a short prompt hint from graphify's analysis for the given files:
-    whether any is a high fan-in "god object" hotspot, and which knowledge-graph
-    community it belongs to. Returns "" when there's nothing to say (no
-    analysis available, or none of the files are flagged) -- this is a hint,
-    not a required section of the prompt.
-    """
+    """Build a short prompt hint from graphify's analysis for the given files."""
     if not analysis:
         return ""
 
@@ -440,14 +403,9 @@ def formulate_aider_prompt(
     """Formulate the prompt to pass to Aider based on parsed issue sections."""
     prompt_lines = [issue_title]
 
-    if verbose:
-        print("[DEBUG] Formulating Aider prompt...", file=sys.stderr)
+    logger.debug("Formulating Aider prompt...")
 
-    # Add structured sections. "why", "files_affected", and "failure" are
-    # deliberately excluded: motivation isn't actionable for a coding LLM,
-    # the affected files are already loaded into aider's context separately
-    # (repeating them here just adds noise), and "failure" is the inverse of
-    # "success" -- keeping both doesn't add information.
+    # Add structured sections
     for section in ["what", "how", "constraints", "success"]:
         if section in parsed_sections:
             content = parsed_sections[section].strip()
@@ -460,8 +418,7 @@ def formulate_aider_prompt(
 
     prompt = "\n".join(prompt_lines)
 
-    if verbose:
-        print(f"[DEBUG] Prompt length: {len(prompt)} characters", file=sys.stderr)
+    logger.debug("Prompt length: %d characters", len(prompt))
 
     return prompt
 
@@ -487,8 +444,7 @@ def confirm_with_user(
     print("-" * 70)
 
     if no_confirm:
-        if verbose:
-            print("[DEBUG] --no-confirm flag set; skipping confirmation", file=sys.stderr)
+        logger.debug("--no-confirm flag set; skipping confirmation")
         return True
 
     print("\nProceed with Aider? (Y/n): ", end="", flush=True)
@@ -496,60 +452,48 @@ def confirm_with_user(
         response = input().strip().lower()
         return response in ("", "y", "yes")
     except EOFError:
-        print("(EOF received; skipping confirmation)", file=sys.stderr)
+        logger.debug("EOF received; skipping confirmation")
         return False
 
 
 def _run_aider(cmd: list[str]) -> subprocess.CompletedProcess[bytes]:
-    """Run one aider invocation with inherited stdio, translating aider-not-found
-    and Ctrl+C into the same clean-exit handling both call sites need."""
+    """Run one aider invocation with inherited stdio."""
     try:
         return subprocess.run(cmd, check=False)
     except FileNotFoundError:
-        print("ERROR: aider not found. Install it with: pip install aider-chat", file=sys.stderr)
+        logger.error("aider not found. Install it with: pip install aider-chat")
         sys.exit(1)
     except KeyboardInterrupt:
-        print("\n[OK] Aider session interrupted by user", file=sys.stderr)
+        logger.info("Aider session interrupted by user")
         sys.exit(0)
 
 
 def run_aider(files: list[str], prompt: str, verbose: bool = False) -> None:
-    """Apply the initial prompt, then hand off to an interactive aider session.
-
-    Aider's --message/--message-file explicitly disable chat mode: they send
-    one message, apply the reply, and exit -- they cannot themselves stay
-    interactive afterward. So the initial prompt is applied non-interactively
-    first, then aider is launched again with no message and inherited stdio,
-    giving the user a real interactive REPL as the issue's AC requires.
-    Aider's own .aider.chat.history.md carries the conversation across both
-    invocations.
-    """
+    """Apply the initial prompt, then hand off to an interactive aider session."""
     if not files:
-        print("ERROR: No files to add to Aider; aborting.", file=sys.stderr)
+        logger.error("No files to add to Aider; aborting.")
         sys.exit(1)
 
     message_file = tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8")
     try:
         message_file.write(prompt)
         message_file.close()
-        if verbose:
-            print(f"[DEBUG] Applying initial prompt to {len(files)} files...", file=sys.stderr)
+        logger.debug("Applying initial prompt to %d files...", len(files))
         initial = _run_aider(["aider", "--edit-format", "whole", "--message-file", message_file.name, *files])
     finally:
         Path(message_file.name).unlink(missing_ok=True)
 
     if initial.returncode != 0:
-        print(
-            f"ERROR: aider exited with status {initial.returncode} " "while applying the initial prompt",
-            file=sys.stderr,
+        logger.error(
+            "aider exited with status %d while applying the initial prompt",
+            initial.returncode,
         )
         sys.exit(initial.returncode)
 
-    if verbose:
-        print("[DEBUG] Handing off to an interactive aider session...", file=sys.stderr)
+    logger.debug("Handing off to an interactive aider session...")
     interactive = _run_aider(["aider", "--edit-format", "whole", *files])
     if interactive.returncode != 0:
-        print(f"ERROR: aider exited with status {interactive.returncode}", file=sys.stderr)
+        logger.error("aider exited with status %d", interactive.returncode)
         sys.exit(interactive.returncode)
 
 
@@ -562,29 +506,23 @@ def main(argv: list[str] | None = None) -> None:
     if args.issue_file:
         args.issue_file = str(Path(args.issue_file).resolve())
 
-    # Fail early if Ollama isn't running, before any GitHub/file I/O -- per
-    # the issue's constraint, nothing else here is useful without it.
+    # Fail early if Ollama isn't running
     endpoint = get_ollama_endpoint()
     model = get_ollama_model()
 
-    if args.verbose:
-        print(f"[DEBUG] Ollama endpoint: {endpoint}", file=sys.stderr)
-        print(f"[DEBUG] Ollama model: {model}", file=sys.stderr)
+    logger.debug("Ollama endpoint: %s", endpoint)
+    logger.debug("Ollama model: %s", model)
 
     if not validate_ollama_connection(endpoint):
-        print("ERROR: Ollama serve must be running", file=sys.stderr)
-        print(f"ERROR: Could not connect to {endpoint}", file=sys.stderr)
+        logger.error("Ollama serve must be running")
+        logger.error("Could not connect to %s", endpoint)
         sys.exit(1)
 
-    # Extracted/suggested file paths and the final `aider` invocation are
-    # both resolved relative to the process cwd, so chdir to the repo root
-    # to make this work regardless of where the script was invoked from
-    # (e.g. from scripts/developer_tools/, where a repo-relative path like
-    # "frontend/src/main.tsx" would otherwise never resolve).
+    # chdir to repo root
     try:
         os.chdir(get_repo_root())
     except ValueError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        logger.error("Error: %s", exc)
         sys.exit(1)
 
     # Get repo info (for GitHub fetching)
@@ -592,7 +530,7 @@ def main(argv: list[str] | None = None) -> None:
         try:
             owner, repo = get_repo_info()
         except ValueError as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
+            logger.error("Error: %s", exc)
             sys.exit(1)
 
     # Fetch or load issue
@@ -607,26 +545,23 @@ def main(argv: list[str] | None = None) -> None:
 
     files = resolve_files_to_edit(title, body, endpoint, model, args.verbose, parsed.get("files_affected", ""))
     if not files:
-        print(
-            "WARNING: No files found or suggested. Proceeding with empty file list.",
-            file=sys.stderr,
+        logger.warning(
+            "No files found or suggested. Proceeding with empty file list."
         )
 
-    # Formulate prompt, folding in a short hint from graphify's precomputed
-    # knowledge graph (god-object hotspots / community membership) when
-    # graphify-out/ is present in this checkout.
+    # Formulate prompt
     graphify_hint = graphify_hint_for_files(files, load_graphify_analysis(verbose=args.verbose))
     prompt = formulate_aider_prompt(title, parsed, args.verbose, graphify_hint)
 
     # Confirm with user
     if not confirm_with_user(files, prompt, args.no_confirm, args.verbose):
-        print("[OK] Aborted by user")
+        logger.info("Aborted by user")
         sys.exit(0)
 
     # Run Aider
     run_aider(files, prompt, args.verbose)
 
-    print("[OK] Aider session complete")
+    logger.info("Aider session complete")
 
 
 if __name__ == "__main__":

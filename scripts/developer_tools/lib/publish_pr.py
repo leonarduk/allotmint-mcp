@@ -1,7 +1,11 @@
 """CLI tool to publish a PR from the current branch with optional Ollama assistance."""
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 import argparse
 import os
 import re
@@ -51,7 +55,7 @@ def get_current_branch() -> str:
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as exc:
-        print(f"Failed to get current branch: {exc}", file=sys.stderr)
+        logger.error(f"Failed to get current branch: {exc}")
         sys.exit(1)
 
 
@@ -150,7 +154,7 @@ def stage_and_commit(files: Optional[list[str]], message: str, branch: str, defa
             # Auto-detect changed files in the branch
             files = get_changed_files(branch, default_branch)
             if not files:
-                print("No changed files found in branch. Nothing to commit.", file=sys.stderr)
+                logger.error("No changed files found in branch. Nothing to commit.")
                 return False
 
         # Stage specified files
@@ -160,7 +164,7 @@ def stage_and_commit(files: Optional[list[str]], message: str, branch: str, defa
         subprocess.run(["git", "commit", "-m", message], check=True)
         return True
     except subprocess.CalledProcessError as exc:
-        print(f"Failed to commit: {exc}", file=sys.stderr)
+        logger.error(f"Failed to commit: {exc}")
         return False
 
 
@@ -203,7 +207,7 @@ def push_to_remote(branch: str) -> bool:
         subprocess.run(["git", "push", "-u", "origin", branch], check=True)
         return True
     except subprocess.CalledProcessError as exc:
-        print(f"Failed to push: {exc}", file=sys.stderr)
+        logger.error(f"Failed to push: {exc}")
         return False
 
 
@@ -215,7 +219,7 @@ def fetch_issue(owner: str, repo: str, issue_id: int) -> Optional[dict]:
         resp.raise_for_status()
         return resp.json()
     except requests.RequestException as exc:
-        print(f"Failed to fetch issue #{issue_id}: {exc}", file=sys.stderr)
+        logger.error(f"Failed to fetch issue #{issue_id}: {exc}")
         return None
 
 
@@ -287,7 +291,7 @@ Issue body:
 Generate only the sections above, no preamble."""
 
     ollama_url = get_ollama_server_url()
-    print(f"Waiting for Ollama ({model}) to generate the PR body, this can take up to 60s...")
+    logger.info(f"Waiting for Ollama ({model}) to generate the PR body, this can take up to 60s...")
     try:
         resp = requests.post(
             f"{ollama_url}/api/generate",
@@ -303,7 +307,7 @@ Generate only the sections above, no preamble."""
             data = resp.json()
             return data.get("response", "").strip()
     except requests.RequestException as exc:
-        print(f"Ollama generation failed: {exc}", file=sys.stderr)
+        logger.error(f"Ollama generation failed: {exc}")
     return None
 
 
@@ -366,7 +370,7 @@ def create_pr(
     """Create a PR and return the URL, or the existing PR's URL if one is already open."""
     existing_pr_url = find_existing_pr(owner, repo, branch)
     if existing_pr_url:
-        print(f"PR already exists for branch '{branch}': {existing_pr_url}")
+        logger.info(f"PR already exists for branch '{branch}': {existing_pr_url}")
         return existing_pr_url
 
     body_file = None
@@ -409,10 +413,10 @@ def create_pr(
                 return match.group(0)
             return result.stdout.strip()
         else:
-            print(f"Failed to create PR: {result.stderr}", file=sys.stderr)
+            logger.error(f"Failed to create PR: {result.stderr}")
             return None
     except Exception as exc:
-        print(f"Error creating PR: {exc}", file=sys.stderr)
+        logger.error(f"Error creating PR: {exc}")
         return None
     finally:
         if body_file:
@@ -430,16 +434,14 @@ def check_gh_available() -> None:
             check=False,
         )
     except FileNotFoundError:
-        print(
-            "Error: GitHub CLI (gh) is not installed. " "Install from https://cli.github.com/",
-            file=sys.stderr,
+        logger.error(
+            "GitHub CLI (gh) is not installed. Install from https://cli.github.com/"
         )
         sys.exit(1)
 
     if result.returncode != 0:
-        print(
-            "Error: GitHub CLI (gh) is not authenticated. " "Run 'gh auth login'.",
-            file=sys.stderr,
+        logger.error(
+            "GitHub CLI (gh) is not authenticated. Run 'gh auth login'."
         )
         sys.exit(1)
 
@@ -483,79 +485,79 @@ def main() -> None:
         git_root = result.stdout.strip()
         os.chdir(git_root)
     except subprocess.CalledProcessError:
-        print("Error: Could not determine git root directory", file=sys.stderr)
+        logger.error("Error: Could not determine git root directory")
         sys.exit(1)
 
     # Get repo info
     try:
         owner, repo = get_repo_info()
     except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        logger.error(f"Error: {exc}")
         sys.exit(1)
 
-    print(f"Using repository: {owner}/{repo}")
+    logger.info(f"Using repository: {owner}/{repo}")
 
     # Get current branch
     branch = get_current_branch()
-    print(f"Current branch: {branch}")
+    logger.info(f"Current branch: {branch}")
 
     # Extract issue ID
     issue_id = extract_issue_id(branch)
     if not issue_id:
-        print(f"Error: Could not extract issue ID from branch name '{branch}'", file=sys.stderr)
-        print("Branch name should match pattern: fix/issue-NNNN-* or feat/issue-NNNN-*", file=sys.stderr)
+        logger.error(f"Error: Could not extract issue ID from branch name '{branch}'")
+        logger.error("Branch name should match pattern: fix/issue-NNNN-* or feat/issue-NNNN-*")
         sys.exit(1)
 
-    print(f"Issue ID: #{issue_id}")
+    logger.info(f"Issue ID: #{issue_id}")
 
     # Fetch issue
-    print(f"Fetching issue #{issue_id}...")
+    logger.info(f"Fetching issue #{issue_id}...")
     issue = fetch_issue(owner, repo, issue_id)
     if not issue:
         sys.exit(1)
 
     issue_title = issue.get("title", "")
     issue_body = issue.get("body", "")
-    print(f"Issue title: {issue_title}")
+    logger.info(f"Issue title: {issue_title}")
 
     # Get default branch
     default_branch = get_default_branch(owner, repo)
-    print(f"Target branch: {default_branch}")
+    logger.info(f"Target branch: {default_branch}")
 
     # Check if branch is ahead of main
     if not branch_is_ahead_of_main(branch=branch, default_branch=default_branch):
-        print(f"Error: Branch '{branch}' is not ahead of '{default_branch}'", file=sys.stderr)
+        logger.error(f"Error: Branch '{branch}' is not ahead of '{default_branch}'")
         sys.exit(1)
 
     # Stage and commit
-    print("Staging and committing changes...")
+    logger.info("Staging and committing changes...")
     if check_working_tree_clean():
-        print("Working tree is already clean. No new changes to commit.")
+        logger.info("Working tree is already clean. No new changes to commit.")
     else:
         commit_msg = args.message or f"Work on issue #{issue_id}"
         if stage_and_commit(args.files, commit_msg, branch, default_branch):
-            print(f"Committed: {commit_msg}")
+            logger.info(f"Committed: {commit_msg}")
         else:
-            print("No changes to commit, but continuing with PR creation...")
+            logger.info("No changes to commit, but continuing with PR creation...")
 
     # Push to remote
-    print("Pushing to remote...")
+    logger.info("Pushing to remote...")
     if not push_to_remote(branch):
         sys.exit(1)
 
     # Generate PR body
-    print("Generating PR body...")
+    logger.info("Generating PR body...")
     pr_body = None
     if not args.no_ollama:
-        print("Checking for Ollama...")
+        logger.info("Checking for Ollama...")
         if is_ollama_running():
-            print("Ollama is running. Generating PR body...")
+            logger.info("Ollama is running. Generating PR body...")
             model = args.model or get_ollama_model()
             pr_body = generate_pr_body_with_ollama(issue_title, issue_body, model)
             if pr_body:
-                print("Generated PR body with Ollama")
+                logger.info("Generated PR body with Ollama")
         else:
-            print("Ollama not available. Using placeholder PR body.")
+            logger.info("Ollama not available. Using placeholder PR body.")
 
     if not pr_body:
         pr_body = create_placeholder_pr_body(issue_id, issue_title, issue_body)
@@ -566,14 +568,14 @@ def main() -> None:
 
     # Create PR
     check_gh_available()
-    print("Creating PR...")
+    logger.info("Creating PR...")
     pr_url = create_pr(owner, repo, branch, default_branch, f"[Issue #{issue_id}] {issue_title}", pr_body)
 
     if pr_url:
-        print("\n✓ PR created successfully!")
-        print(f"  {pr_url}")
+        logger.info("\n✓ PR created successfully!")
+        logger.info(f"  {pr_url}")
     else:
-        print("Failed to create PR", file=sys.stderr)
+        logger.error("Failed to create PR")
         sys.exit(1)
 
 

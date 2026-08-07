@@ -11,12 +11,16 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import logging
 import os
 import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # Add the local lib/ dir (for github_repo/llm_common) to sys.path so this
 # works both as an importable module and when invoked directly, where the
@@ -166,7 +170,7 @@ def fetch_issue(owner: str, repo: str, number: int) -> dict:
         check=False,
     )
     if result.returncode != 0:
-        print(f"ERROR: Failed to fetch issue #{number}: {result.stderr.strip()}", file=sys.stderr)
+        logger.error(f"ERROR: Failed to fetch issue #{number}: {result.stderr.strip()}")
         raise SystemExit(1)
 
     import json
@@ -366,13 +370,13 @@ def run_review(
 
     if not validate_model_source(model_source):
         return None
-    print(f"INFO: Reviewing with {describe_model_source(model_source)}...", file=sys.stderr)
+    logger.info(f"INFO: Reviewing with {describe_model_source(model_source)}...")
     response = fetch_review(model_source, prompt)
 
     if verbose:
-        print(f"[VERBOSE] Model response:\n{response}", file=sys.stderr)
+        logger.debug(f"[VERBOSE] Model response:\n{response}")
     if not response.strip():
-        print("ERROR: Model returned an empty response.", file=sys.stderr)
+        logger.error("ERROR: Model returned an empty response.")
         return None
     return response
 
@@ -409,7 +413,7 @@ def print_diff(old_title: str, old_body: str, new_title: str, new_body: str) -> 
 def update_issue(owner: str, repo: str, number: int, title: str, body: str, dry_run: bool) -> bool:
     """Update the issue's title/body on GitHub via `gh issue edit`. Returns success."""
     if dry_run:
-        print(f"[DRY RUN] Would update issue #{number} with the title/body above.")
+        logger.info(f"[DRY RUN] Would update issue #{number} with the title/body above.")
         return True
 
     body_path: str | None = None
@@ -443,9 +447,9 @@ def update_issue(owner: str, repo: str, number: int, title: str, body: str, dry_
             os.unlink(body_path)
 
     if result.returncode != 0:
-        print(f"ERROR: Failed to update issue #{number}: {result.stderr.strip()}", file=sys.stderr)
+        logger.error(f"ERROR: Failed to update issue #{number}: {result.stderr.strip()}")
         return False
-    print(f"[OK] Updated issue #{number}.")
+    logger.info(f"[OK] Updated issue #{number}.")
     return True
 
 
@@ -484,7 +488,7 @@ def files_affected_is_unresolved(body: str) -> bool:
 def post_unresolved_files_comment(owner: str, repo: str, number: int, dry_run: bool) -> bool:
     """Post a comment flagging that Files Affected couldn't be resolved. Returns success."""
     if dry_run:
-        print(f"[DRY RUN] Would comment on issue #{number} that Files Affected is unresolved.")
+        logger.info(f"[DRY RUN] Would comment on issue #{number} that Files Affected is unresolved.")
         return True
 
     result = subprocess.run(
@@ -504,12 +508,13 @@ def post_unresolved_files_comment(owner: str, repo: str, number: int, dry_run: b
         check=False,
     )
     if result.returncode != 0:
-        print(
-            f"ERROR: Failed to comment on issue #{number}: {result.stderr.strip()}",
-            file=sys.stderr,
+        logger.error(
+            "Failed to comment on issue #%s: %s",
+            number,
+            result.stderr.strip(),
         )
         return False
-    print(f"[OK] Commented on issue #{number} about unresolved files.")
+    logger.info(f"[OK] Commented on issue #{number} about unresolved files.")
     return True
 
 
@@ -522,7 +527,7 @@ def prompt_for_issue_number() -> int:
     try:
         return int(raw)
     except ValueError:
-        print(f"Invalid issue number: {raw!r}", file=sys.stderr)
+        logger.error(f"Invalid issue number: {raw!r}")
         raise SystemExit(1) from None
 
 
@@ -581,18 +586,18 @@ def main() -> int:
     try:
         owner, repo = get_repo_info()
     except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        logger.error(f"Error: {exc}")
         return 1
 
     issue_id = args.issue_id if args.issue_id is not None else prompt_for_issue_number()
     model_source = args.model or prompt_for_model_source()
 
-    print(f"INFO: Fetching issue #{issue_id} from {owner}/{repo}...", file=sys.stderr)
+    logger.info(f"INFO: Fetching issue #{issue_id} from {owner}/{repo}...")
     issue = fetch_issue(owner, repo, issue_id)
     title = issue.get("title", "")
     body = issue.get("body") or ""
     if issue.get("state") == "CLOSED":
-        print(f"WARNING: Issue #{issue_id} is closed.", file=sys.stderr)
+        logger.warning(f"WARNING: Issue #{issue_id} is closed.")
 
     required_sections = load_template_sections()
     feedback: str | None = None
@@ -614,11 +619,10 @@ def main() -> int:
         new_body = apply_known_file_paths(new_body, file_hints)
 
         if looks_like_content_loss(body, new_body):
-            print(
-                "ERROR: The revised body is far shorter than the original issue; refusing to "
+            logger.error(
+                "The revised body is far shorter than the original issue; refusing to "
                 "propose a change that may have dropped details. Re-run with --verbose to "
-                "inspect the raw model response.",
-                file=sys.stderr,
+                "inspect the raw model response."
             )
             return 1
 
@@ -626,18 +630,18 @@ def main() -> int:
 
         missing = missing_sections(new_body, required_sections)
         if missing:
-            print(
-                f"WARNING: Proposed body is still missing required sections: {', '.join(missing)}",
-                file=sys.stderr,
+            logger.warning(
+                "Proposed body is still missing required sections: %s",
+                ', '.join(missing),
             )
 
         unresolved_files = files_affected_is_unresolved(new_body)
         if unresolved_files:
-            print(
-                f"WARNING: Could not confidently identify which files issue #{issue_id} "
-                "affects; it cannot be reliably auto-implemented until a human investigates. "
-                "A comment noting this will be added to the issue.",
-                file=sys.stderr,
+            logger.warning(
+                "Could not confidently identify which files issue #%s affects; it cannot be "
+                "reliably auto-implemented until a human investigates. A comment noting this "
+                "will be added to the issue.",
+                issue_id,
             )
 
         if new_title == title and new_body.rstrip() == body.rstrip():
@@ -650,9 +654,9 @@ def main() -> int:
         if action == "apply":
             break
         if action == "abort":
-            print("Aborted; issue left unchanged.", file=sys.stderr)
+            logger.error("Aborted; issue left unchanged.")
             return 0
-        print("INFO: Re-reviewing with your feedback...", file=sys.stderr)
+        logger.info("INFO: Re-reviewing with your feedback...")
 
     if not update_issue(owner, repo, issue_id, new_title, new_body, args.dry_run):
         return 1

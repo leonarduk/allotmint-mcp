@@ -10,12 +10,16 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import logging
 import os
 import subprocess
 import sys
 from argparse import Namespace
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # Add .github/scripts (for review_common) and the local lib/ dir (for
 # llm_common) to sys.path so this works both as an importable module and
@@ -51,7 +55,7 @@ def get_git_root() -> str:
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as exc:
-        print(f"ERROR: Not a git repository or git command failed: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: Not a git repository or git command failed: {exc}")
         raise SystemExit(1) from exc
 
 def get_local_diff(target_branch: str = "main") -> str:
@@ -99,7 +103,7 @@ def get_local_diff(target_branch: str = "main") -> str:
 
         return diff
     except subprocess.CalledProcessError as exc:
-        print(f"ERROR: Failed to generate diff: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: Failed to generate diff: {exc}")
         raise SystemExit(1) from exc
 
 
@@ -153,14 +157,14 @@ def main() -> int:
     diff = get_diff(args, current_branch)
 
     if not diff.strip():
-        print("No changes found to review.", file=sys.stderr)
+        logger.error("No changes found to review.")
         return 0
 
     # Get repo info
     try:
         owner, repo = get_repo_info()
     except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        logger.error(f"Error: {exc}")
         sys.exit(1)
         
     # Build prompt and fetch review
@@ -168,7 +172,7 @@ def main() -> int:
     issue_id =extract_issue_id(current_branch)
     issue_body = fetch_issue(owner, repo, issue_id, token)
 
-    print(f"INFO: Using {describe_model_source(args.model_source)}", file=sys.stderr)
+    logger.info(f"INFO: Using {describe_model_source(args.model_source)}")
     prompt = build_prompt(
         pr_title=f"Local changes on {current_branch}",
         diff=diff,
@@ -179,7 +183,7 @@ def main() -> int:
     review = fetch_review(args.model_source, prompt)
 
     if not review.strip():
-        print("ERROR: Model returned an empty review", file=sys.stderr)
+        logger.error("ERROR: Model returned an empty review")
         return 1
 
     # Generate timestamp for report
@@ -203,16 +207,17 @@ def main() -> int:
 
 
 def get_diff(args: Namespace, current_branch: str) -> Any:
-    print(f"INFO: Comparing {current_branch} against {args.branch}...", file=sys.stderr)
+    logger.info(f"INFO: Comparing {current_branch} against {args.branch}...")
     diff = get_local_diff(args.branch)
 
     # Truncate diff if needed
     original_diff_len = len(diff)
     diff, was_truncated = truncate_diff(diff)
     if was_truncated:
-        print(
-            f"INFO: Truncated diff from {original_diff_len} to {len(diff)} characters",
-            file=sys.stderr,
+        logger.info(
+            "Truncated diff from %s to %s characters",
+            original_diff_len,
+            len(diff),
         )
     return diff
 
@@ -248,10 +253,10 @@ def save_review_to_file(args: Namespace, report: str) -> int:
 
     try:
         abs_path = save_report(report, output_path)
-        print(f"Review saved to: {abs_path}", file=sys.stderr)
+        logger.info(f"Review saved to: {abs_path}")
         return 0
     except OSError as exc:
-        print(f"ERROR: Failed to save report: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: Failed to save report: {exc}")
         return 1
 
 

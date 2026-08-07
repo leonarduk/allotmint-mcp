@@ -12,7 +12,10 @@ This module is stdlib-only so it can be imported by any script under
 """
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
 import re
 
 # Maps a recognised tier name to its GitHub label. Keys are matched

@@ -11,6 +11,10 @@ the same choice without re-implementing it (#5768).
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import os
 import sys
 from pathlib import Path
@@ -72,18 +76,16 @@ def validate_model_source(model_source: str) -> bool:
     if model_source == LOCAL:
         endpoint = get_ollama_endpoint()
         if not validate_ollama_connection(endpoint):
-            print(
-                f"ERROR: Ollama is not reachable at {endpoint}. "
-                "Start Ollama or set OLLAMA_ENDPOINT.",
-                file=sys.stderr,
+            logger.error(
+                "Ollama is not reachable at %s. Start Ollama or set OLLAMA_ENDPOINT.",
+                endpoint,
             )
             return False
         return True
 
     if not os.environ.get("DEEPSEEK_API_KEY"):
-        print(
-            "ERROR: DEEPSEEK_API_KEY is not set; cannot use the cloud model.",
-            file=sys.stderr,
+        logger.error(
+            "DEEPSEEK_API_KEY is not set; cannot use the cloud model."
         )
         return False
     return True

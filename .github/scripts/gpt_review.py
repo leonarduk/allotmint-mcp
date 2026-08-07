@@ -6,7 +6,11 @@ this repo's PR volume is low enough that the extra cost is negligible.
 """
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 import os
 from typing import Any
 
