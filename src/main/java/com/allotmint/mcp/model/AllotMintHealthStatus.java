@@ -1,4 +1,4 @@
-package com.allotmint.mcp.pojo;
+package com.allotmint.mcp.model;
 
 /**
  * Result of an {@link com.allotmint.mcp.client.AllotMintClient#health()} call.
