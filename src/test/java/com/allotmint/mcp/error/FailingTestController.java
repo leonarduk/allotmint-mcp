@@ -1,6 +1,5 @@
 package com.allotmint.mcp.error;
 
-import com.allotmint.mcp.GlobalExceptionHandlerTest;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;

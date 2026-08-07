@@ -26,7 +26,7 @@ import org.springframework.web.client.RestClientException;
 @Component
 public class AllotMintClient {
 
-  static final String AUTH_ERROR_MESSAGE =
+  public static final String AUTH_ERROR_MESSAGE =
       "Auth token missing or expired. Run 'allotmint-mcp login' or set"
           + " ALLOTMINT_MCP_AUTH_TOKEN.";
   private static final ParameterizedTypeReference<Map<String, Object>> OBJECT_MAP =
@@ -39,7 +39,7 @@ public class AllotMintClient {
   private final RestClient restClient;
   private final String baseUrl;
 
-  AllotMintClient(
+  public AllotMintClient(
       RestClient allotMintRestClient,
       @Value("${allotmint.api.base-url:http://localhost:8000}") String baseUrl) {
     this.restClient = allotMintRestClient;
