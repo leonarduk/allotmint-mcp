@@ -16,6 +16,7 @@ import requests
 from lib.github_repo import get_repo_info
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 def slugify(text: str) -> str:
     """Convert text to a URL-friendly slug.

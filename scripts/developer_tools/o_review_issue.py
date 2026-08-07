@@ -20,6 +20,7 @@ import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # Add the local lib/ dir (for github_repo/llm_common) to sys.path so this
 # works both as an importable module and when invoked directly, where the

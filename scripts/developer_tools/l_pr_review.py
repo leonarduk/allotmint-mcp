@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 # Add .github/scripts (for review_common) and the local lib/ dir (for
 # llm_common) to sys.path so this works both as an importable module and

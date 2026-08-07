@@ -3,16 +3,17 @@
 n_review_issue.py (#5721) introduced a LOCAL/CLOUD model-source switch that let
 a script fall back to a cloud model (DeepSeek) when a heavier review benefits
 from it. This module centralizes that switch -- the argparse wiring, the
-import logging
 interactive prompt, connection/credential validation, and the actual
 dispatch -- so every other developer_tools script that calls an LLM (issue
 creation, issue triage, local/PR review, commit-message generation) can offer
 the same choice without re-implementing it (#5768).
 """
 
+from __future__ import annotations
+
+import logging
 
 logger = logging.getLogger(__name__)
-from __future__ import annotations
 
 import os
 import sys

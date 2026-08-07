@@ -54,6 +54,7 @@ import time
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 REPO_OWNER = "leonarduk"
 REPO_NAME = "allotmint-mcp"

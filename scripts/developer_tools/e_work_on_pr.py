@@ -12,6 +12,7 @@ import requests
 from lib.github_repo import get_repo_info
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 def _auth_headers(token: str | None) -> dict:
     """Build GitHub API headers, including authentication when available."""

@@ -12,6 +12,7 @@ import logging
 
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 import argparse
 import os
 import subprocess
@@ -36,12 +37,12 @@ def refuse_if_main_branch(branch: str) -> None:
     """Exit with guidance if the current branch is the main branch."""
     if branch != MAIN_BRANCH:
         return
-        logger.error(
-            "Refusing to commit directly to '%s'.\n"
-            "Create or switch to a feature/bugfix branch first, e.g.:\n"
-            "    git checkout -b fix/<issue-number>-short-description",
-            MAIN_BRANCH,
-        )
+    logger.error(
+        "Refusing to commit directly to '%s'.\n"
+        "Create or switch to a feature/bugfix branch first, e.g.:\n"
+        "    git checkout -b fix/<issue-number>-short-description",
+        MAIN_BRANCH,
+    )
     raise SystemExit(1)
 
 

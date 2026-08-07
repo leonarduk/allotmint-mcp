@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 from github_repo import get_repo_info

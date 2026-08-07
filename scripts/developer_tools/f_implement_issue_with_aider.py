@@ -22,6 +22,7 @@ from lib.ollama_common import (
 )
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
