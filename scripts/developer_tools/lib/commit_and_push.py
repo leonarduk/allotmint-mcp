@@ -209,15 +209,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 def prompt_for_disposition() -> tuple[str, str | None]:
-    """Ask the user to apply, reject, or send feedback on a proposed revision.
+    """Ask the user to apply, reject, edit, or send feedback on a proposed revision.
 
-    Returns a ("apply" | "abort" | "retry", feedback) pair. Anything typed other than
-    a y/n answer is treated as feedback for another review round.
+    Returns a ("apply" | "abort" | "edit" | "retry", text) pair:
+    - "apply" → use the commit message as-is
+    - "abort" → cancel the commit
+    - "edit"  → text is the user's edited commit message
+    - "retry" → text is feedback for the model to regenerate
     """
     try:
         raw = input(
-            "Apply this comment to the commit? [Y/n, or type feedback to have the model try "
-            "again] "
+            "Apply this comment to the commit? [Y/n/e(dit), or type feedback to have the model "
+            "try again] "
         ).strip()
     except EOFError:
         return "abort", None
@@ -226,6 +229,19 @@ def prompt_for_disposition() -> tuple[str, str | None]:
         return "apply", None
     if lowered in ("n", "no"):
         return "abort", None
+    if lowered in ("e", "edit"):
+        try:
+            edited = input("Enter your edited commit message: ").strip()
+        except EOFError:
+            return "abort", None
+        if edited:
+            return "edit", edited
+        # Empty edit input – treat as retry with feedback instead
+        print(
+            "INFO: Empty edit; treating as retry. Type feedback or Ctrl+C to cancel.",
+            file=sys.stderr,
+        )
+        return "retry", raw
     return "retry", raw
 
 
@@ -257,6 +273,8 @@ def main() -> int:
         return 0
 
     message = create_commit_message(args, issue_id)
+    if message is None:
+        return 1
 
     if not commit_changes(message):
         return 1
@@ -272,7 +290,7 @@ def main() -> int:
     return 0
 
 
-def create_commit_message(args, issue_id) -> Any:
+def create_commit_message(args, issue_id) -> str | None:
     message = args.message
     if not message and not args.no_llm:
         if validate_model_source(args.model_source):
@@ -291,9 +309,12 @@ def create_commit_message(args, issue_id) -> Any:
                 action, feedback = prompt_for_disposition()
                 if action == "apply":
                     break
+                if action == "edit":
+                    message = feedback  # feedback contains the user-edited message
+                    break
                 if action == "abort":
                     print("Aborted; no agreed comment.", file=sys.stderr)
-                    raise ValueError("Aborted; no agreed comment.")
+                    return None
                 print("INFO: Re-generating with your feedback...", file=sys.stderr)
 
         else:
