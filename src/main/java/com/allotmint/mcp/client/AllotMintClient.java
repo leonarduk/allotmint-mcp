@@ -1,7 +1,7 @@
 package com.allotmint.mcp.client;
 
-import com.allotmint.mcp.error.AllotMintApiException;
-import com.allotmint.mcp.pojo.AllotMintHealthStatus;
+import com.allotmint.mcp.exception.AllotMintApiException;
+import com.allotmint.mcp.model.AllotMintHealthStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;

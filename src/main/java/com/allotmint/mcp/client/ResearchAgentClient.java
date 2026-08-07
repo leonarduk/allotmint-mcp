@@ -1,7 +1,7 @@
 package com.allotmint.mcp.client;
 
-import com.allotmint.mcp.error.AllotMintApiException;
-import com.allotmint.mcp.pojo.ResearchAnswer;
+import com.allotmint.mcp.exception.AllotMintApiException;
+import com.allotmint.mcp.model.ResearchAnswer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatusCode;

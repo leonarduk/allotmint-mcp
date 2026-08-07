@@ -1,8 +1,8 @@
 package com.allotmint.mcp.tool;
 
 import com.allotmint.mcp.client.ResearchAgentClient;
-import com.allotmint.mcp.error.AllotMintApiException;
-import com.allotmint.mcp.pojo.ResearchAnswer;
+import com.allotmint.mcp.exception.AllotMintApiException;
+import com.allotmint.mcp.model.ResearchAnswer;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.BeforeEach;

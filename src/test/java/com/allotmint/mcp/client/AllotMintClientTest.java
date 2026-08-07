@@ -1,7 +1,7 @@
 package com.allotmint.mcp.client;
 
-import com.allotmint.mcp.error.AllotMintApiException;
-import com.allotmint.mcp.pojo.AllotMintHealthStatus;
+import com.allotmint.mcp.exception.AllotMintApiException;
+import com.allotmint.mcp.model.AllotMintHealthStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;

@@ -1,7 +1,7 @@
 package com.allotmint.mcp.client;
 
-import com.allotmint.mcp.error.AllotMintApiException;
-import com.allotmint.mcp.pojo.ResearchAnswer;
+import com.allotmint.mcp.exception.AllotMintApiException;
+import com.allotmint.mcp.model.ResearchAnswer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;

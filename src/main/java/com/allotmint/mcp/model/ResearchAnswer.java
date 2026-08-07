@@ -1,4 +1,4 @@
-package com.allotmint.mcp.pojo;
+package com.allotmint.mcp.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;

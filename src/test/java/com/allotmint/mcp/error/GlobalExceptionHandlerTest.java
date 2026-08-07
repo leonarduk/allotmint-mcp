@@ -1,4 +1,4 @@
-package com.allotmint.mcp.error;
+package com.allotmint.mcp.exception;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

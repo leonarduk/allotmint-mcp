@@ -1,4 +1,4 @@
-package com.allotmint.mcp.error;
+package com.allotmint.mcp.exception;
 
 /**
  * Raised when the AllotMint backend returns a 4xx/5xx response, so callers (MCP tools) can surface

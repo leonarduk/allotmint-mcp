@@ -1,4 +1,4 @@
-package com.allotmint.mcp.error;
+package com.allotmint.mcp.exception;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;

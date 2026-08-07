@@ -1,7 +1,7 @@
 package com.allotmint.mcp.integration;
 
 import com.allotmint.mcp.client.AllotMintClient;
-import com.allotmint.mcp.pojo.AllotMintHealthStatus;
+import com.allotmint.mcp.model.AllotMintHealthStatus;
 import com.allotmint.mcp.tool.AllotMintHealthTool;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;

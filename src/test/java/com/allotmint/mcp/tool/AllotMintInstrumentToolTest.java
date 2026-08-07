@@ -1,7 +1,7 @@
 package com.allotmint.mcp.tool;
 
 import com.allotmint.mcp.client.AllotMintClient;
-import com.allotmint.mcp.error.AllotMintApiException;
+import com.allotmint.mcp.exception.AllotMintApiException;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.BeforeEach;

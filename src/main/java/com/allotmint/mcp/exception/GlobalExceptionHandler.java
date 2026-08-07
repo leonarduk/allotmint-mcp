@@ -1,5 +1,6 @@
-package com.allotmint.mcp.error;
+package com.allotmint.mcp.exception;
 
+import com.allotmint.mcp.model.ApiError;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,9 +29,9 @@ public class GlobalExceptionHandler {
   /**
    * {@code NoResourceFoundException} is thrown by Boot's default static-resource handler; {@code
    * NoHandlerFoundException} is what this app's own {@code @EnableWebMvc}-based HTTP config (see
-   * {@link McpServerConfig}) throws instead for an unmapped path, since {@code @EnableWebMvc} opts
-   * out of that default resource handler. Both mean the same thing to a client: nothing was found
-   * at this path.
+   * {@link com.allotmint.mcp.config.McpServerConfig}) throws instead for an unmapped path, since
+   * {@code @EnableWebMvc} opts out of that default resource handler. Both mean the same thing to a
+   * client: nothing was found at this path.
    */
   @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
   ResponseEntity<ApiError> handleNotFound(Exception ex) {
