@@ -6,8 +6,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpRequest;
@@ -23,6 +22,7 @@ import org.springframework.web.client.RestClientException;
  * here, rather than holding its own {@link RestClient}, so 4xx/5xx handling stays in one place (see
  * {@link AllotMintApiException}).
  */
+@Slf4j
 @Component
 public class AllotMintClient {
 
@@ -33,8 +33,6 @@ public class AllotMintClient {
       new ParameterizedTypeReference<>() {};
   private static final ParameterizedTypeReference<List<Map<String, Object>>> LIST_RESPONSE =
       new ParameterizedTypeReference<>() {};
-
-  private static final Logger log = LoggerFactory.getLogger(AllotMintClient.class);
 
   private final RestClient restClient;
   private final String baseUrl;

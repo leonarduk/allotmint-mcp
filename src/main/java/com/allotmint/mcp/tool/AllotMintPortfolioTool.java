@@ -11,11 +11,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.client.RestClientException;
 
 /** Read-only portfolio queries composed from the per-owner AllotMint endpoints. */
+@Slf4j
 public final class AllotMintPortfolioTool {
 
   static final String ACTION = "action";
@@ -24,8 +24,6 @@ public final class AllotMintPortfolioTool {
   static final String CURRENCY = "currency";
   static final String INCLUDE_HISTORY = "include_history";
   static final String LOOKBACK_DAYS = "lookback_days";
-
-  private static final Logger log = LoggerFactory.getLogger(AllotMintPortfolioTool.class);
 
   private static final List<String> ACTIONS = List.of("summary", "exposure", "holdings");
   private static final int DEFAULT_LOOKBACK_DAYS = 365;

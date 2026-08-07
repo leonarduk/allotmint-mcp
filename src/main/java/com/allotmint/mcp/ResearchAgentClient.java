@@ -6,8 +6,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -24,9 +23,8 @@ import org.springframework.web.client.RestClient;
  * backend, rather than an in-JVM Python runtime. This class is deliberately the mirror image of
  * {@link AllotMintClient} so there is one interop story in this codebase, not two.
  */
+@Slf4j
 public class ResearchAgentClient {
-
-  private static final Logger log = LoggerFactory.getLogger(ResearchAgentClient.class);
 
   private final RestClient restClient;
   private final String baseUrl;
