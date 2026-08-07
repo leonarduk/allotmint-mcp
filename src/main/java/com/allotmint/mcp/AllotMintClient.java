@@ -1,5 +1,7 @@
 package com.allotmint.mcp;
 
+import com.allotmint.mcp.error.AllotMintApiException;
+import com.allotmint.mcp.pojo.AllotMintHealthStatus;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -22,7 +24,7 @@ import org.springframework.web.client.RestClientException;
  * {@link AllotMintApiException}).
  */
 @Component
-class AllotMintClient {
+public class AllotMintClient {
 
   static final String AUTH_ERROR_MESSAGE =
       "Auth token missing or expired. Run 'allotmint-mcp login' or set"
@@ -56,7 +58,7 @@ class AllotMintClient {
    * connection refused, timeout, ...) is reported as {@code reachable=false} rather than thrown: a
    * health check's job is to describe backend state, not to fail the MCP tool call itself.
    */
-  AllotMintHealthStatus health() {
+  public AllotMintHealthStatus health() {
     try {
       OpenApiDocument doc =
           restClient
@@ -73,11 +75,11 @@ class AllotMintClient {
     }
   }
 
-  Map<String, Object> portfolio(String owner) {
+  public Map<String, Object> portfolio(String owner) {
     return getObject("portfolio", owner);
   }
 
-  List<Map<String, Object>> portfolioSectors(String owner) {
+  public List<Map<String, Object>> portfolioSectors(String owner) {
     List<Map<String, Object>> response =
         restClient
             .get()
@@ -91,10 +93,10 @@ class AllotMintClient {
   /**
    * Returns sector weights as of {@code lookbackDays} ago via {@code GET
    * /portfolio/{owner}/sectors?lookback_days={days}}. Callers that catch {@link
-   * AllotMintApiException} or {@link RestClientException} can treat a missing historical endpoint as
-   * a no-op: the current snapshot is still valid, just without year-ago enrichment.
+   * AllotMintApiException} or {@link RestClientException} can treat a missing historical endpoint
+   * as a no-op: the current snapshot is still valid, just without year-ago enrichment.
    */
-  List<Map<String, Object>> portfolioSectors(String owner, int lookbackDays) {
+  public List<Map<String, Object>> portfolioSectors(String owner, int lookbackDays) {
     List<Map<String, Object>> response =
         restClient
             .get()
@@ -110,7 +112,7 @@ class AllotMintClient {
     return response == null ? List.of() : response;
   }
 
-  Map<String, Object> performance(String owner) {
+  public Map<String, Object> performance(String owner) {
     return getObject("performance", owner);
   }
 
@@ -126,12 +128,12 @@ class AllotMintClient {
   }
 
   /** Returns the combined market overview from {@code /market/overview}. */
-  Map<String, Object> marketOverview() {
+  public Map<String, Object> marketOverview() {
     return getObjectMap("/market/overview");
   }
 
   /** Returns the standalone gainers and losers response from {@code /movers}. */
-  Map<String, Object> marketMovers() {
+  public Map<String, Object> marketMovers() {
     return getObjectMap("/movers");
   }
 
@@ -150,7 +152,7 @@ class AllotMintClient {
    * Matches instruments by ticker or name via {@code GET /instrument/search?q=...}. Returns a
    * (possibly empty) list of {@code {ticker, name, sector, region}} maps.
    */
-  List<Map<String, Object>> instrumentSearch(String query) {
+  public List<Map<String, Object>> instrumentSearch(String query) {
     List<Map<String, Object>> response =
         restClient
             .get()
@@ -168,7 +170,7 @@ class AllotMintClient {
    * /instrument?ticker=...&format=json}. Despite living at the router root, this is a per-ticker
    * detail endpoint, not portfolio-scoped.
    */
-  Map<String, Object> instrumentDetail(String ticker) {
+  public Map<String, Object> instrumentDetail(String ticker) {
     Map<String, Object> response =
         restClient
             .get()
@@ -189,7 +191,7 @@ class AllotMintClient {
    * Returns the latest quote for one ticker via {@code GET /api/quotes?symbols=...}. The backend
    * endpoint accepts a comma-separated list, but this client only ever requests a single symbol.
    */
-  List<Map<String, Object>> quotes(String ticker) {
+  public List<Map<String, Object>> quotes(String ticker) {
     List<Map<String, Object>> response =
         restClient
             .get()
@@ -205,7 +207,7 @@ class AllotMintClient {
   /**
    * Returns recent headlines for one ticker via {@code GET /news?ticker=...}, most recent first.
    */
-  List<Map<String, Object>> news(String ticker) {
+  public List<Map<String, Object>> news(String ticker) {
     List<Map<String, Object>> response =
         restClient
             .get()
