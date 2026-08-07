@@ -4,12 +4,13 @@ import com.allotmint.mcp.client.AllotMintClient;
 import com.allotmint.mcp.error.AllotMintApiException;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
+import org.springframework.web.client.RestClientException;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
-import org.springframework.web.client.RestClientException;
 
 /**
  * Instrument lookups composed from AllotMint's per-ticker endpoints: {@code search} matches

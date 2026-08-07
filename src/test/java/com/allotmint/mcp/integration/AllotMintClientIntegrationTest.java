@@ -1,17 +1,18 @@
 package com.allotmint.mcp.integration;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.allotmint.mcp.client.AllotMintClient;
 import com.allotmint.mcp.client.AllotMintClientTest;
 import com.allotmint.mcp.config.AllotMintClientConfig;
+import com.allotmint.mcp.config.AllotMintClientConfigTest;
 import com.allotmint.mcp.error.AllotMintApiException;
 import com.allotmint.mcp.pojo.AllotMintHealthStatus;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Exercises {@link AllotMintClient} against a real, AWS-deployed AllotMint backend - as opposed to

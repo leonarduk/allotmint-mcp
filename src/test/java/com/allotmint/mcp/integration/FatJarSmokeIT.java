@@ -1,7 +1,5 @@
 package com.allotmint.mcp.integration;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.allotmint.mcp.client.AllotMintClient;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
@@ -9,12 +7,15 @@ import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.modelcontextprotocol.client.transport.StdioClientTransport;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.spec.McpSchema;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Duration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Packaging smoke test: launches the actual fat JAR produced by the {@code

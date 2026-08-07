@@ -204,6 +204,10 @@
 				<configuration>
 					<java>
 						<googleJavaFormat/>
+						<removeUnusedImports/>
+						<importOrder>
+							<order>,javax,java,\#</order>
+						</importOrder>
 					</java>
 				</configuration>
 				<executions>

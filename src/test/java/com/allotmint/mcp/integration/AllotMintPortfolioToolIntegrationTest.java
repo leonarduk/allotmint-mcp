@@ -1,18 +1,19 @@
 package com.allotmint.mcp.integration;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
-
 import com.allotmint.mcp.client.AllotMintClient;
 import com.allotmint.mcp.pojo.AllotMintHealthStatus;
 import com.allotmint.mcp.tool.AllotMintPortfolioTool;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
-import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Exercises {@code allotmint_portfolio} against a real AllotMint backend with demo data.

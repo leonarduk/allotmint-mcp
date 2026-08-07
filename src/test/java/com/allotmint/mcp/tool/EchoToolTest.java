@@ -1,12 +1,13 @@
 package com.allotmint.mcp.tool;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
+import org.junit.jupiter.api.Test;
+
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 class EchoToolTest {
 

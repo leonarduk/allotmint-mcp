@@ -1,10 +1,10 @@
 package com.allotmint.mcp.config;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import io.modelcontextprotocol.json.McpJsonMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 class McpJsonConfigTest {
 
