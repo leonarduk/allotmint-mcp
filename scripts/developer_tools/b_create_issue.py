@@ -474,7 +474,7 @@ def confirm_and_create(
 
 def main() -> None:
     """Run the interactive issue-creation workflow."""
-    print("GitHub Issue Creator")
+    logger.info("GitHub Issue Creator")
     print("=" * 60)
 
     # Resolve repo info
@@ -484,7 +484,7 @@ def main() -> None:
         logger.error("%s", exc)
         sys.exit(1)
 
-    print(f"Target repository: {owner}/{repo}")
+    logger.info(f"Target repository: {owner}/{repo}")
 
     # Get token early so we fail fast if auth is missing
     token = get_github_token()

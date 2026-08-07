@@ -65,7 +65,7 @@ def extract_followups(review_text: str) -> list[str]:
         if not title or verdict_title_re.match(title):
             continue
         if _is_low_specificity(title):
-            logger.error(f"Skipping low-specificity follow-up: {title}")
+            logger.info(f"Skipping low-specificity follow-up: {title}")
             continue
         titles.append(title)
     return titles

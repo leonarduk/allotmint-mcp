@@ -291,7 +291,7 @@ Issue body:
 Generate only the sections above, no preamble."""
 
     ollama_url = get_ollama_server_url()
-    print(f"Waiting for Ollama ({model}) to generate the PR body, this can take up to 60s...")
+    logger.info(f"Waiting for Ollama ({model}) to generate the PR body, this can take up to 60s...")
     try:
         resp = requests.post(
             f"{ollama_url}/api/generate",
@@ -370,7 +370,7 @@ def create_pr(
     """Create a PR and return the URL, or the existing PR's URL if one is already open."""
     existing_pr_url = find_existing_pr(owner, repo, branch)
     if existing_pr_url:
-        print(f"PR already exists for branch '{branch}': {existing_pr_url}")
+        logger.info(f"PR already exists for branch '{branch}': {existing_pr_url}")
         return existing_pr_url
 
     body_file = None
@@ -495,11 +495,11 @@ def main() -> None:
         logger.error(f"Error: {exc}")
         sys.exit(1)
 
-    print(f"Using repository: {owner}/{repo}")
+    logger.info(f"Using repository: {owner}/{repo}")
 
     # Get current branch
     branch = get_current_branch()
-    print(f"Current branch: {branch}")
+    logger.info(f"Current branch: {branch}")
 
     # Extract issue ID
     issue_id = extract_issue_id(branch)
@@ -508,21 +508,21 @@ def main() -> None:
         logger.error("Branch name should match pattern: fix/issue-NNNN-* or feat/issue-NNNN-*")
         sys.exit(1)
 
-    print(f"Issue ID: #{issue_id}")
+    logger.info(f"Issue ID: #{issue_id}")
 
     # Fetch issue
-    print(f"Fetching issue #{issue_id}...")
+    logger.info(f"Fetching issue #{issue_id}...")
     issue = fetch_issue(owner, repo, issue_id)
     if not issue:
         sys.exit(1)
 
     issue_title = issue.get("title", "")
     issue_body = issue.get("body", "")
-    print(f"Issue title: {issue_title}")
+    logger.info(f"Issue title: {issue_title}")
 
     # Get default branch
     default_branch = get_default_branch(owner, repo)
-    print(f"Target branch: {default_branch}")
+    logger.info(f"Target branch: {default_branch}")
 
     # Check if branch is ahead of main
     if not branch_is_ahead_of_main(branch=branch, default_branch=default_branch):
@@ -530,34 +530,34 @@ def main() -> None:
         sys.exit(1)
 
     # Stage and commit
-    print("Staging and committing changes...")
+    logger.info("Staging and committing changes...")
     if check_working_tree_clean():
-        print("Working tree is already clean. No new changes to commit.")
+        logger.info("Working tree is already clean. No new changes to commit.")
     else:
         commit_msg = args.message or f"Work on issue #{issue_id}"
         if stage_and_commit(args.files, commit_msg, branch, default_branch):
-            print(f"Committed: {commit_msg}")
+            logger.info(f"Committed: {commit_msg}")
         else:
-            print("No changes to commit, but continuing with PR creation...")
+            logger.info("No changes to commit, but continuing with PR creation...")
 
     # Push to remote
-    print("Pushing to remote...")
+    logger.info("Pushing to remote...")
     if not push_to_remote(branch):
         sys.exit(1)
 
     # Generate PR body
-    print("Generating PR body...")
+    logger.info("Generating PR body...")
     pr_body = None
     if not args.no_ollama:
-        print("Checking for Ollama...")
+        logger.info("Checking for Ollama...")
         if is_ollama_running():
-            print("Ollama is running. Generating PR body...")
+            logger.info("Ollama is running. Generating PR body...")
             model = args.model or get_ollama_model()
             pr_body = generate_pr_body_with_ollama(issue_title, issue_body, model)
             if pr_body:
-                print("Generated PR body with Ollama")
+                logger.info("Generated PR body with Ollama")
         else:
-            print("Ollama not available. Using placeholder PR body.")
+            logger.info("Ollama not available. Using placeholder PR body.")
 
     if not pr_body:
         pr_body = create_placeholder_pr_body(issue_id, issue_title, issue_body)
@@ -568,12 +568,12 @@ def main() -> None:
 
     # Create PR
     check_gh_available()
-    print("Creating PR...")
+    logger.info("Creating PR...")
     pr_url = create_pr(owner, repo, branch, default_branch, f"[Issue #{issue_id}] {issue_title}", pr_body)
 
     if pr_url:
-        print("\n✓ PR created successfully!")
-        print(f"  {pr_url}")
+        logger.info("\n✓ PR created successfully!")
+        logger.info(f"  {pr_url}")
     else:
         logger.error("Failed to create PR")
         sys.exit(1)

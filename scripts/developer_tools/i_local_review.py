@@ -253,7 +253,7 @@ def save_review_to_file(args: Namespace, report: str) -> int:
 
     try:
         abs_path = save_report(report, output_path)
-        logger.error(f"Review saved to: {abs_path}")
+        logger.info(f"Review saved to: {abs_path}")
         return 0
     except OSError as exc:
         logger.error(f"ERROR: Failed to save report: {exc}")

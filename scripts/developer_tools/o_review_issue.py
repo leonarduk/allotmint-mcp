@@ -413,7 +413,7 @@ def print_diff(old_title: str, old_body: str, new_title: str, new_body: str) -> 
 def update_issue(owner: str, repo: str, number: int, title: str, body: str, dry_run: bool) -> bool:
     """Update the issue's title/body on GitHub via `gh issue edit`. Returns success."""
     if dry_run:
-        print(f"[DRY RUN] Would update issue #{number} with the title/body above.")
+        logger.info(f"[DRY RUN] Would update issue #{number} with the title/body above.")
         return True
 
     body_path: str | None = None
@@ -449,7 +449,7 @@ def update_issue(owner: str, repo: str, number: int, title: str, body: str, dry_
     if result.returncode != 0:
         logger.error(f"ERROR: Failed to update issue #{number}: {result.stderr.strip()}")
         return False
-    print(f"[OK] Updated issue #{number}.")
+    logger.info(f"[OK] Updated issue #{number}.")
     return True
 
 
@@ -488,7 +488,7 @@ def files_affected_is_unresolved(body: str) -> bool:
 def post_unresolved_files_comment(owner: str, repo: str, number: int, dry_run: bool) -> bool:
     """Post a comment flagging that Files Affected couldn't be resolved. Returns success."""
     if dry_run:
-        print(f"[DRY RUN] Would comment on issue #{number} that Files Affected is unresolved.")
+        logger.info(f"[DRY RUN] Would comment on issue #{number} that Files Affected is unresolved.")
         return True
 
     result = subprocess.run(
@@ -514,7 +514,7 @@ def post_unresolved_files_comment(owner: str, repo: str, number: int, dry_run: b
             result.stderr.strip(),
         )
         return False
-    print(f"[OK] Commented on issue #{number} about unresolved files.")
+    logger.info(f"[OK] Commented on issue #{number} about unresolved files.")
     return True
 
 

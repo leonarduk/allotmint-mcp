@@ -255,11 +255,11 @@ def process_pr(owner: str, repo: str, pr: PullRequest, dry_run: bool, labels: li
     an already-linked PR is not treated as a failure.
     """
     if has_linked_issue(pr.body):
-        print(f"SKIP: PR #{pr.number} ({pr.title}) -- already references an issue")
+        logger.info(f"SKIP: PR #{pr.number} ({pr.title}) -- already references an issue")
         return True
 
     prefix = "[DRY RUN] " if dry_run else ""
-    print(f"{prefix}PR #{pr.number} ({pr.title}) has no linked issue -- creating one")
+    logger.info(f"{prefix}PR #{pr.number} ({pr.title}) has no linked issue -- creating one")
     if dry_run:
         return True
 
@@ -267,11 +267,11 @@ def process_pr(owner: str, repo: str, pr: PullRequest, dry_run: bool, labels: li
     issue_number = create_issue(owner, repo, pr.title, issue_body, labels)
     if issue_number is None:
         return False
-    print(f"  Created issue #{issue_number}")
+    logger.info(f"  Created issue #{issue_number}")
 
     if not update_pr_body(owner, repo, pr, issue_number):
         return False
-    print(f"  Updated PR #{pr.number} body with 'Closes #{issue_number}'")
+    logger.info(f"  Updated PR #{pr.number} body with 'Closes #{issue_number}'")
     return True
 
 

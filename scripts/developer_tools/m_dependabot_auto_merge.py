@@ -300,7 +300,7 @@ def merge_and_delete(pr: PullRequest, dry_run: bool, admin: bool = False) -> boo
     override the up-to-date requirement.
     """
     prefix = "[DRY RUN] " if dry_run else ""
-    print(f"{prefix}Merging PR #{pr.number} ({pr.title}) and deleting branch '{pr.head_ref_name}'")
+    logger.info(f"{prefix}Merging PR #{pr.number} ({pr.title}) and deleting branch '{pr.head_ref_name}'")
     if dry_run:
         return True
 
@@ -334,7 +334,7 @@ def update_branch(pr: PullRequest, dry_run: bool) -> bool:
     reattempt the update on an already-updated branch.
     """
     prefix = "[DRY RUN] " if dry_run else ""
-    print(
+    logger.info(
         f"{prefix}PR #{pr.number} ({pr.title}) is green but behind main -- "
         "updating branch instead of merging now"
     )
@@ -356,18 +356,18 @@ def process_pr(pr: PullRequest, dry_run: bool, behind_strategy: str = "admin") -
     not treated as a failure.
     """
     if not checks_have_passed(pr.checks):
-        print(f"SKIP: PR #{pr.number} ({pr.title}) -- checks not all passed")
+        logger.info(f"SKIP: PR #{pr.number} ({pr.title}) -- checks not all passed")
         return True
     resolve_mergeability(pr)
     if not is_mergeable(pr):
-        print(
+        logger.info(
             f"SKIP: PR #{pr.number} ({pr.title}) -- not mergeable "
             f"(mergeable={pr.mergeable}, state={pr.mergeable_state})"
         )
         return True
     if pr.mergeable_state in ADMIN_OVERRIDE_STATES:
         if behind_strategy == "skip":
-            print(
+            logger.info(
                 f"SKIP: PR #{pr.number} ({pr.title}) -- state={pr.mergeable_state}, "
                 "--behind-strategy=skip"
             )
