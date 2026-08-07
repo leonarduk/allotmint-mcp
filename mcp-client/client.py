@@ -268,7 +268,13 @@ def format_exception(exc: BaseException) -> str:
 
     base = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
     if isinstance(exc, _mcp_error_types()):
-        data = getattr(exc, "data", None)
+        # Newer SDK: McpError wraps ErrorData; data lives on error.data
+        # Older SDK: data was a direct attribute on the exception
+        error_obj = getattr(exc, "error", None)
+        if error_obj is not None:
+            data = getattr(error_obj, "data", None)
+        else:
+            data = getattr(exc, "data", None)
         if data:
             return f"{base} ({data})"
     return base
