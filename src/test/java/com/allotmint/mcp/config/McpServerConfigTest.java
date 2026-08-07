@@ -1,9 +1,5 @@
 package com.allotmint.mcp.config;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import com.allotmint.mcp.client.AllotMintClient;
 import com.allotmint.mcp.client.ResearchAgentClient;
 import io.modelcontextprotocol.server.McpSyncServer;
@@ -11,6 +7,10 @@ import io.modelcontextprotocol.server.transport.WebMvcStreamableServerTransportP
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
 import org.springframework.web.servlet.function.RouterFunction;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class McpServerConfigTest {
 

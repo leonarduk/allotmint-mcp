@@ -2,15 +2,18 @@ package com.allotmint.mcp.config;
 
 import com.allotmint.mcp.client.AllotMintClient;
 import com.allotmint.mcp.client.ResearchAgentClient;
-import com.allotmint.mcp.tool.*;
+import com.allotmint.mcp.tool.AllotMintFilesTool;
+import com.allotmint.mcp.tool.AllotMintHealthTool;
+import com.allotmint.mcp.tool.AllotMintInstrumentTool;
+import com.allotmint.mcp.tool.AllotMintMarketTool;
+import com.allotmint.mcp.tool.AllotMintPortfolioTool;
+import com.allotmint.mcp.tool.AllotMintResearchTool;
+import com.allotmint.mcp.tool.EchoTool;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.WebMvcStreamableServerTransportProvider;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,6 +21,10 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.ServerResponse;
+
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * HTTP transport for the MCP server. Off by default: {@code java -jar app.jar} (how Claude Desktop

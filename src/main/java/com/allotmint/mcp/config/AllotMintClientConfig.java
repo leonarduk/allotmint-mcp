@@ -1,7 +1,6 @@
 package com.allotmint.mcp.config;
 
 import com.allotmint.mcp.client.AllotMintClient;
-import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -9,6 +8,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
+
+import java.time.Duration;
 
 /**
  * Wires the {@link RestClient} used by {@link AllotMintClient} to talk to the AllotMint backend.

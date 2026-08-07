@@ -3,6 +3,7 @@ package com.allotmint.mcp.tool;
 import com.allotmint.mcp.client.AllotMintClient;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
+
 import java.util.List;
 import java.util.Map;
 

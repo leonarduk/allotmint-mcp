@@ -4,6 +4,9 @@ import com.allotmint.mcp.client.AllotMintClient;
 import com.allotmint.mcp.error.AllotMintApiException;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.client.RestClientException;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -11,8 +14,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.client.RestClientException;
 
 /** Read-only portfolio queries composed from the per-owner AllotMint endpoints. */
 @Slf4j

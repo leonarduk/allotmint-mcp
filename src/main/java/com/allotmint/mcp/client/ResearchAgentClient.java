@@ -2,10 +2,6 @@ package com.allotmint.mcp.client;
 
 import com.allotmint.mcp.error.AllotMintApiException;
 import com.allotmint.mcp.pojo.ResearchAnswer;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatusCode;
@@ -13,6 +9,11 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestClient;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * HTTP client for the research agent sidecar - the Python process that runs the Pydantic AI agent

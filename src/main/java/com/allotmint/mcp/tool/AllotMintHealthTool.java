@@ -4,6 +4,7 @@ import com.allotmint.mcp.client.AllotMintClient;
 import com.allotmint.mcp.pojo.AllotMintHealthStatus;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

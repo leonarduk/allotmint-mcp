@@ -6,13 +6,14 @@ import com.allotmint.mcp.error.AllotMintApiException;
 import com.allotmint.mcp.pojo.ResearchAnswer;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
+import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClientException;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestClientException;
 
 /**
  * The {@code allotmint_research} tool: answers a compound natural-language question by running an

@@ -1,5 +1,17 @@
 package com.allotmint.mcp.tool;
 
+import com.allotmint.mcp.client.ResearchAgentClient;
+import com.allotmint.mcp.error.AllotMintApiException;
+import com.allotmint.mcp.pojo.ResearchAnswer;
+import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.spec.McpSchema;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.web.client.ResourceAccessException;
+
+import java.util.List;
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -8,17 +20,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import com.allotmint.mcp.client.ResearchAgentClient;
-import com.allotmint.mcp.error.AllotMintApiException;
-import com.allotmint.mcp.pojo.ResearchAnswer;
-import io.modelcontextprotocol.server.McpServerFeatures;
-import io.modelcontextprotocol.spec.McpSchema;
-import java.util.List;
-import java.util.Map;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.web.client.ResourceAccessException;
 
 class AllotMintResearchToolTest {
 
