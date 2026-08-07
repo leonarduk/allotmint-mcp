@@ -1,4 +1,4 @@
-package com.allotmint.mcp;
+package com.allotmint.mcp.client;
 
 import com.allotmint.mcp.error.AllotMintApiException;
 import com.allotmint.mcp.pojo.ResearchAnswer;

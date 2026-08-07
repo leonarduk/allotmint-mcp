@@ -2,7 +2,7 @@ package com.allotmint.mcp.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.allotmint.mcp.AllotMintClient;
+import com.allotmint.mcp.client.AllotMintClient;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.ServerParameters;

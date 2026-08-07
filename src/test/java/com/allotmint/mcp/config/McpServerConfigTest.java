@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.allotmint.mcp.AllotMintClient;
-import com.allotmint.mcp.ResearchAgentClient;
+import com.allotmint.mcp.client.AllotMintClient;
+import com.allotmint.mcp.client.ResearchAgentClient;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.WebMvcStreamableServerTransportProvider;
 import org.junit.jupiter.api.Test;

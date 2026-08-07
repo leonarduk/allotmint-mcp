@@ -3,8 +3,8 @@ package com.allotmint.mcp.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.allotmint.mcp.AllotMintClient;
-import com.allotmint.mcp.AllotMintClientTest;
+import com.allotmint.mcp.client.AllotMintClient;
+import com.allotmint.mcp.client.AllotMintClientTest;
 import com.allotmint.mcp.config.AllotMintClientConfig;
 import com.allotmint.mcp.error.AllotMintApiException;
 import com.allotmint.mcp.pojo.AllotMintHealthStatus;
