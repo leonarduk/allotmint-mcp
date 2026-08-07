@@ -1,6 +1,5 @@
 package com.allotmint.mcp.error;
 
-import com.allotmint.mcp.config.McpServerConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,8 +13,8 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  * Maps uncaught exceptions from the HTTP transport's annotated controllers to a consistent JSON
  * error body instead of Spring's default stack-trace/whitelabel responses. Only applies to
  * {@code @Controller}/{@code @RestController} beans; the MCP router function registered by {@link
- * McpServerConfig} handles its own protocol-level errors per the MCP spec and isn't routed through
- * this advice.
+ * com.allotmint.mcp.config.McpServerConfig} handles its own protocol-level errors per the MCP spec
+ * and isn't routed through this advice.
  */
 @Slf4j
 @RestControllerAdvice
