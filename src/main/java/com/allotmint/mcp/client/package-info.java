@@ -1,4 +1,2 @@
-/**
- * Client code
- */
+/** Client code */
 package com.allotmint.mcp.client;

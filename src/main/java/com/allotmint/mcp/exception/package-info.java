@@ -1,4 +1,2 @@
-/**
- exception types and error handling
- */
+/** exception types and error handling */
 package com.allotmint.mcp.exception;
