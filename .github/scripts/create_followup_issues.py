@@ -1,7 +1,10 @@
 """Create follow-up GitHub issues idempotently from a JSON list of titles."""
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
 import json
 import os
 import re
@@ -157,7 +160,7 @@ def _generate_body_via_llm(title: str, pr_number: str, review_text: str) -> str:
     provider = os.environ.get("FOLLOWUP_LLM_PROVIDER", "").strip().lower() or _DEFAULT_PROVIDER
     provider_config = _PROVIDERS.get(provider)
     if provider_config is None:
-        print(f"WARNING: unknown FOLLOWUP_LLM_PROVIDER '{provider}', using fallback body", file=sys.stderr)
+        logger.warning(f"WARNING: unknown FOLLOWUP_LLM_PROVIDER '{provider}', using fallback body")
         return _FALLBACK_BODY_TEMPLATE.format(pr_number=pr_number)
 
     api_key_env, call = provider_config
@@ -169,7 +172,7 @@ def _generate_body_via_llm(title: str, pr_number: str, review_text: str) -> str:
     try:
         return _sanitize_body(call(api_key, prompt))
     except (urllib.error.HTTPError, urllib.error.URLError, KeyError, IndexError, json.JSONDecodeError) as exc:
-        print(f"WARNING: failed to generate issue body via {provider}: {exc}", file=sys.stderr)
+        logger.warning(f"WARNING: failed to generate issue body via {provider}: {exc}")
         return _FALLBACK_BODY_TEMPLATE.format(pr_number=pr_number)
 
 
@@ -226,9 +229,8 @@ def create_issues(
 
 def main() -> int:
     if len(sys.argv) < 3 or len(sys.argv) > 4:
-        print(
-            f"Usage: {sys.argv[0]} <followups_json_file> <pr_number> [<review_file>]",
-            file=sys.stderr,
+        logger.error(
+            f"Usage: {sys.argv[0]} <followups_json_file> <pr_number> [<review_file>]"
         )
         return 1
     followups_file = sys.argv[1]
@@ -239,7 +241,7 @@ def main() -> int:
         with open(followups_file) as f:
             titles = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError) as exc:
-        print(f"ERROR reading {followups_file}: {exc}", file=sys.stderr)
+        logger.error(f"ERROR reading {followups_file}: {exc}")
         return 1
 
     review_text: str | None = None
@@ -247,9 +249,8 @@ def main() -> int:
         try:
             review_text = Path(review_file).read_text()
         except FileNotFoundError:
-            print(
-                f"WARNING: review file not found: {review_file} — using fallback body",
-                file=sys.stderr,
+            logger.warning(
+                f"WARNING: review file not found: {review_file} — using fallback body"
             )
 
     create_issues(titles, pr_number, review_text)

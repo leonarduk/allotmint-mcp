@@ -26,12 +26,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 from github_repo import get_repo_info
@@ -95,13 +98,13 @@ def fetch_open_prs(owner: str, repo: str) -> list[PullRequest]:
         ]
     )
     if result.returncode != 0:
-        print(f"ERROR: gh pr list failed: {result.stderr}", file=sys.stderr)
+        logger.error(f"ERROR: gh pr list failed: {result.stderr}")
         raise SystemExit(1)
 
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        print(f"ERROR: gh pr list returned non-JSON output: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: gh pr list returned non-JSON output: {exc}")
         raise SystemExit(1) from exc
 
     prs = []
@@ -191,14 +194,14 @@ def create_issue(owner: str, repo: str, title: str, body: str, labels: list[str]
 
         result = run_gh(args)
         if result.returncode != 0:
-            print(f"ERROR: gh issue create failed: {result.stderr.strip()}", file=sys.stderr)
+            logger.error(f"ERROR: gh issue create failed: {result.stderr.strip()}")
             return None
 
         match = re.search(r"/issues/(\d+)", result.stdout)
         if not match:
-            print(
-                f"ERROR: could not parse issue number from gh output: {result.stdout!r}",
-                file=sys.stderr,
+            logger.error(
+                "could not parse issue number from gh output: %r",
+                result.stdout,
             )
             return None
         return int(match.group(1))
@@ -232,9 +235,10 @@ def update_pr_body(owner: str, repo: str, pr: PullRequest, issue_number: int) ->
             ]
         )
         if result.returncode != 0:
-            print(
-                f"ERROR: gh pr edit failed for PR #{pr.number}: {result.stderr.strip()}",
-                file=sys.stderr,
+            logger.error(
+                "gh pr edit failed for PR #%s: %s",
+                pr.number,
+                result.stderr.strip(),
             )
             return False
         return True
@@ -275,14 +279,14 @@ def resolve_repo(explicit: str | None) -> tuple[str, str]:
     if explicit:
         owner, _, name = explicit.partition("/")
         if not owner or not name:
-            print(f"ERROR: --repo must be in 'owner/name' form, got '{explicit}'", file=sys.stderr)
+            logger.error(f"ERROR: --repo must be in 'owner/name' form, got '{explicit}'")
             raise SystemExit(1)
         return owner, name
 
     try:
         return get_repo_info()
     except ValueError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: {exc}")
         raise SystemExit(1) from exc
 
 
@@ -321,19 +325,18 @@ def main() -> int:
 
     owner, repo = resolve_repo(args.repo)
 
-    print(f"INFO: Fetching open PRs for {owner}/{repo}...", file=sys.stderr)
+    logger.info(f"INFO: Fetching open PRs for {owner}/{repo}...")
     prs = fetch_open_prs(owner, repo)
     if args.pr is not None:
         prs = [pr for pr in prs if pr.number == args.pr]
         if not prs:
-            print(f"ERROR: PR #{args.pr} not found among open PRs", file=sys.stderr)
+            logger.error(f"ERROR: PR #{args.pr} not found among open PRs")
             return 1
-    print(f"INFO: {len(prs)} open PR(s) to check", file=sys.stderr)
+    logger.info(f"INFO: {len(prs)} open PR(s) to check")
 
     if dry_run:
-        print(
-            "INFO: Running in dry-run mode. Pass --yes to actually create/edit anything.",
-            file=sys.stderr,
+        logger.info(
+            "Running in dry-run mode. Pass --yes to actually create/edit anything."
         )
 
     had_failures = False

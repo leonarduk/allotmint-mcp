@@ -6,7 +6,10 @@ model but expect the same TITLE:/BODY: response format back.
 """
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
 import re
 
 

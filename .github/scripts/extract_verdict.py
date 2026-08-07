@@ -1,7 +1,10 @@
 """Extract and validate the AI review verdict from review output."""
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
 import re
 import sys
 from pathlib import Path
@@ -67,11 +70,11 @@ def main(review_file: str, provider_name: str) -> int:
     try:
         review_text = Path(review_file).read_text()
     except FileNotFoundError:
-        print(f"ERROR: Review file not found: {review_file}", file=sys.stderr)
+        logger.error(f"ERROR: Review file not found: {review_file}")
         return 1
 
     if not review_text.strip():
-        print(f"ERROR: {provider_name} review output was empty", file=sys.stderr)
+        logger.error(f"ERROR: {provider_name} review output was empty")
         return 1
 
     if PROVIDER_OUTAGE_MARKER in review_text:
@@ -92,19 +95,17 @@ def main(review_file: str, provider_name: str) -> int:
         print(f"✗ {provider_name} review: CHANGES REQUESTED")
         return 1
 
-    print(
-        f"ERROR: {provider_name} review did not include a valid verdict. "
-        "Expected '**APPROVE**' or '**REQUEST CHANGES**' (with or without backticks) in the review.",
-        file=sys.stderr,
+    logger.error(
+        f"{provider_name} review did not include a valid verdict. "
+        "Expected '**APPROVE**' or '**REQUEST CHANGES**' (with or without backticks) in the review."
     )
     return 1
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print(
-            f"Usage: {sys.argv[0]} <review_file> <provider_name>",
-            file=sys.stderr,
+        logger.error(
+            f"Usage: {sys.argv[0]} <review_file> <provider_name>"
         )
         raise SystemExit(1)
     raise SystemExit(main(sys.argv[1], sys.argv[2]))

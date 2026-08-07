@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import logging
 import os
 import re
 import subprocess
@@ -14,6 +15,7 @@ from pathlib import Path
 import requests
 from lib.github_repo import get_repo_info
 
+logger = logging.getLogger(__name__)
 
 def slugify(text: str) -> str:
     """Convert text to a URL-friendly slug.
@@ -41,7 +43,7 @@ def fetch_issue(owner: str, repo: str, issue_id: int, token: str | None = None) 
         resp = requests.get(url, headers=headers, timeout=10)
         resp.raise_for_status()
     except requests.RequestException as exc:
-        print(f"Failed to fetch issue #{issue_id}: {exc}", file=sys.stderr)
+        logger.error("Failed to fetch issue #%d: %s", issue_id, exc)
         sys.exit(1)
     return resp.json()
 
@@ -67,7 +69,7 @@ def get_main_branch_sha(owner: str, repo: str) -> str:
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as exc:
-        print(f"Failed to get main branch SHA: {exc}", file=sys.stderr)
+        logger.error("Failed to get main branch SHA: %s", exc)
         sys.exit(1)
 
 
@@ -83,12 +85,12 @@ def create_branch(owner: str, repo: str, branch_name: str, sha: str, token: str 
         resp.raise_for_status()
     except requests.HTTPError as exc:
         if resp.status_code == 422 and "Reference already exists" in resp.text:
-            print(f"Branch {branch_name} already exists (will proceed with checkout)", file=sys.stderr)
+            logger.warning("Branch %s already exists (will proceed with checkout)", branch_name)
         else:
-            print(f"Failed to create branch: {exc}", file=sys.stderr)
+            logger.exception("Failed to create branch: %s", exc)
             sys.exit(1)
     except requests.RequestException as exc:
-        print(f"Failed to create branch: {exc}", file=sys.stderr)
+        logger.exception("Failed to create branch: %s", exc)
         sys.exit(1)
 
 
@@ -113,41 +115,41 @@ def main() -> None:
     try:
         owner, repo = get_repo_info()
     except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        logger.error("Error: %s", exc)
         sys.exit(1)
 
-    print(f"Using repository: {owner}/{repo}")
+    logger.info("Using repository: %s/%s", owner, repo)
 
     # Fetch latest refs before resolving SHAs
-    print("Fetching from origin...")
+    logger.info("Fetching from origin...")
     try:
         subprocess.run(["git", "fetch", "origin"], check=True)
     except subprocess.CalledProcessError as exc:
-        print(f"Failed to fetch from origin: {exc}", file=sys.stderr)
+        logger.error("Failed to fetch from origin: %s", exc)
         sys.exit(1)
 
     token = args.token or os.getenv("GITHUB_TOKEN")
 
     # Fetch issue
-    print(f"Fetching issue #{args.issue_id}...")
+    logger.info("Fetching issue #%d...", args.issue_id)
     issue = fetch_issue(owner, repo, args.issue_id, token)
     title = issue.get("title", "")
     body = issue.get("body") or ""
     if not title:
-        print(f"Error: Issue #{args.issue_id} has no title", file=sys.stderr)
+        logger.error("Error: Issue #%d has no title", args.issue_id)
         sys.exit(1)
 
     # Create branch name
     slug = slugify(title)
     branch_name = f"{args.type}/issue-{args.issue_id}-{slug}"
-    print(f"Branch name: {branch_name}")
+    logger.info("Branch name: %s", branch_name)
 
     # Get the current main/master branch SHA
-    print("Getting main branch SHA...")
+    logger.info("Getting main branch SHA...")
     sha = get_main_branch_sha(owner, repo)
 
     # Create branch in remote
-    print("Creating branch in remote...")
+    logger.info("Creating branch in remote...")
     create_branch(owner, repo, branch_name, sha, token)
 
     # Small delay to avoid a race where the branch ref isn't visible yet
@@ -162,7 +164,7 @@ def main() -> None:
 
     # Checkout the new branch (create local tracking branch if needed)
     try:
-        print(f"Checking out {branch_name}...")
+        logger.info("Checking out %s...", branch_name)
         subprocess.run(
             ["git", "checkout", "-b", branch_name, f"origin/{branch_name}"],
             check=True,
@@ -173,15 +175,15 @@ def main() -> None:
         try:
             subprocess.run(["git", "checkout", branch_name], check=True)
         except subprocess.CalledProcessError as exc:
-            print(f"Failed to checkout branch: {exc}", file=sys.stderr)
+            logger.error("Failed to checkout branch: %s", exc)
             sys.exit(1)
 
     # Write issue to markdown file (preserve original content without reformatting)
     issue_file = Path(f".issue-{args.issue_id}.md")
     content = f"{title}\n\n{body}\n"
     issue_file.write_text(content, encoding="utf-8")
-    print(f"Wrote issue to {issue_file}")
-    print(f"\n[OK] Ready to work on issue #{args.issue_id}")
+    logger.info("Wrote issue to %s", issue_file)
+    logger.info("\n[OK] Ready to work on issue #%d", args.issue_id)
 
 
 if __name__ == "__main__":

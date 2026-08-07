@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import subprocess
 import sys
@@ -10,6 +11,7 @@ import sys
 import requests
 from lib.github_repo import get_repo_info
 
+logger = logging.getLogger(__name__)
 
 def _auth_headers(token: str | None) -> dict:
     """Build GitHub API headers, including authentication when available."""
@@ -31,7 +33,7 @@ def list_open_prs(owner: str, repo: str, token: str | None) -> list[dict]:
         )
         resp.raise_for_status()
     except requests.RequestException as exc:
-        print(f"Failed to list open pull requests: {exc}", file=sys.stderr)
+        logger.exception("Failed to list open pull requests: %s", exc)
         sys.exit(1)
     return resp.json()
 
@@ -43,7 +45,7 @@ def fetch_pr(owner: str, repo: str, pr_number: int, token: str | None) -> dict:
         resp = requests.get(url, headers=_auth_headers(token), timeout=10)
         resp.raise_for_status()
     except requests.RequestException as exc:
-        print(f"Failed to fetch PR #{pr_number}: {exc}", file=sys.stderr)
+        logger.exception("Failed to fetch PR #%d: %s", pr_number, exc)
         sys.exit(1)
     return resp.json()
 
@@ -51,29 +53,29 @@ def fetch_pr(owner: str, repo: str, pr_number: int, token: str | None) -> dict:
 def prompt_for_pr(prs: list[dict]) -> dict:
     """List open PRs and prompt the user to pick one."""
     if not prs:
-        print("No open pull requests found.", file=sys.stderr)
+        logger.error("No open pull requests found.")
         sys.exit(1)
 
-    print("Open pull requests:")
+    logger.info("Open pull requests:")
     for pr in prs:
         author = (pr.get("user") or {}).get("login", "unknown")
-        print(f"  #{pr['number']}: {pr['title']} [{pr['head']['ref']}] (by {author})")
+        logger.info("  #%d: %s [%s] (by %s)", pr["number"], pr["title"], pr["head"]["ref"], author)
 
     try:
         choice = input("\nEnter PR number to work on: ").strip()
     except (EOFError, KeyboardInterrupt):
-        print("\nAborted.", file=sys.stderr)
+        logger.error("Aborted.")
         sys.exit(1)
     try:
         pr_number = int(choice)
     except ValueError:
-        print(f"Invalid PR number: {choice!r}", file=sys.stderr)
+        logger.error("Invalid PR number: %r", choice)
         sys.exit(1)
 
     for pr in prs:
         if pr["number"] == pr_number:
             return pr
-    print(f"PR #{pr_number} not found among open pull requests.", file=sys.stderr)
+    logger.error("PR #%d not found among open pull requests.", pr_number)
     sys.exit(1)
 
 
@@ -87,9 +89,8 @@ def checkout_pr_branch(pr: dict) -> None:
 
     if is_fork:
         if head_repo is None:
-            print(
-                "Error: PR head repository is inaccessible (likely deleted fork); cannot check out.",
-                file=sys.stderr,
+            logger.error(
+                "Error: PR head repository is inaccessible (likely deleted fork); cannot check out."
             )
             sys.exit(1)
         fork_full_name = head_repo["full_name"]
@@ -97,13 +98,13 @@ def checkout_pr_branch(pr: dict) -> None:
         remote_name = f"pr-{pr['number']}"
         local_branch = f"pr-{pr['number']}-{branch_name}"
         remote_ref = f"{remote_name}/{branch_name}"
-        print(f"PR head is in fork {fork_full_name}; fetching as remote '{remote_name}'...")
+        logger.info("PR head is in fork %s; fetching as remote '%s'...", fork_full_name, remote_name)
         subprocess.run(["git", "remote", "remove", remote_name], capture_output=True, check=False)
         try:
             subprocess.run(["git", "remote", "add", remote_name, fork_clone_url], check=True)
             subprocess.run(["git", "fetch", remote_name, branch_name], check=True)
         except subprocess.CalledProcessError as exc:
-            print(f"Failed to fetch {branch_name} from fork {fork_full_name}: {exc}", file=sys.stderr)
+            logger.exception("Failed to fetch %s from fork %s: %s", branch_name, fork_full_name, exc)
             sys.exit(1)
         try:
             _checkout_local_branch(local_branch, remote_ref)
@@ -112,11 +113,11 @@ def checkout_pr_branch(pr: dict) -> None:
             subprocess.run(["git", "remote", "remove", remote_name], capture_output=True, check=False)
         return
 
-    print(f"Fetching branch {branch_name} from origin...")
+    logger.info("Fetching branch %s from origin...", branch_name)
     try:
         subprocess.run(["git", "fetch", "origin", branch_name], check=True)
     except subprocess.CalledProcessError as exc:
-        print(f"Failed to fetch branch {branch_name} from origin: {exc}", file=sys.stderr)
+        logger.exception("Failed to fetch branch %s from origin: %s", branch_name, exc)
         sys.exit(1)
     _checkout_local_branch(branch_name, f"origin/{branch_name}")
 
@@ -137,7 +138,7 @@ def _checkout_local_branch(local_branch: str, remote_ref: str) -> None:
         subprocess.run(["git", "checkout", local_branch], check=True)
         subprocess.run(["git", "merge", "--ff-only", remote_ref], check=True)
     except subprocess.CalledProcessError as exc:
-        print(f"Failed to update local branch {local_branch} to {remote_ref}: {exc}", file=sys.stderr)
+        logger.exception("Failed to update local branch %s to %s: %s", local_branch, remote_ref, exc)
         sys.exit(1)
 
 
@@ -161,30 +162,30 @@ def main() -> None:
     try:
         owner, repo = get_repo_info()
     except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        logger.error("Error: %s", exc)
         sys.exit(1)
 
-    print(f"Using repository: {owner}/{repo}")
+    logger.info("Using repository: %s/%s", owner, repo)
     token = args.token or os.getenv("GITHUB_TOKEN")
 
-    print("Fetching from origin...")
+    logger.info("Fetching from origin...")
     try:
         subprocess.run(["git", "fetch", "origin"], check=True)
     except subprocess.CalledProcessError as exc:
-        print(f"Failed to fetch from origin: {exc}", file=sys.stderr)
+        logger.error("Failed to fetch from origin: %s", exc)
         sys.exit(1)
 
     if args.pr_number is not None:
         pr = fetch_pr(owner, repo, args.pr_number, token)
         if pr.get("state") != "open":
-            print(f"Warning: PR #{args.pr_number} is {pr.get('state')}, not open.", file=sys.stderr)
+            logger.warning("PR #%d is %s, not open.", args.pr_number, pr.get("state"))
     else:
         prs = list_open_prs(owner, repo, token)
         pr = prompt_for_pr(prs)
 
-    print(f"\nWorking on PR #{pr['number']}: {pr['title']}")
+    logger.info("\nWorking on PR #%d: %s", pr["number"], pr["title"])
     checkout_pr_branch(pr)
-    print(f"\n[OK] Checked out branch for PR #{pr['number']}")
+    logger.info("\n[OK] Checked out branch for PR #%d", pr["number"])
 
 
 if __name__ == "__main__":

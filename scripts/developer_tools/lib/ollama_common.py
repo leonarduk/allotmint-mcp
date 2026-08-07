@@ -1,7 +1,10 @@
 """Shared helpers for Ollama-based code review scripts."""
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
 import json
 import os
 import sys
@@ -79,26 +82,26 @@ def fetch_ollama_review(endpoint: str, model: str, prompt: str) -> str:
         # 5 min timeout for local LLM
         with urllib.request.urlopen(request, timeout=300) as response:
             raw = response.read()
-            print(f"INFO: Ollama API responded with {len(raw)} bytes", file=sys.stderr)
+            logger.info(f"INFO: Ollama API responded with {len(raw)} bytes")
             data = json.loads(raw)
     except urllib.error.HTTPError as exc:
         body = exc.read().decode()
-        print(f"ERROR: Ollama API returned {exc.code}: {body}", file=sys.stderr)
+        logger.error(f"ERROR: Ollama API returned {exc.code}: {body}")
         raise SystemExit(1) from exc
     except urllib.error.URLError as exc:
-        print(f"ERROR: Ollama API request failed: {exc.reason}", file=sys.stderr)
+        logger.error(f"ERROR: Ollama API request failed: {exc.reason}")
         raise SystemExit(1) from exc
     except TimeoutError as exc:
         # A stall mid-read after the connection succeeds raises a bare
         # TimeoutError rather than being wrapped in URLError, so it needs its
         # own handler to avoid propagating as an uncaught exception.
-        print(f"ERROR: Ollama API request timed out: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: Ollama API request timed out: {exc}")
         raise SystemExit(1) from exc
     except json.JSONDecodeError as exc:
-        print(f"ERROR: Ollama API returned non-JSON response: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: Ollama API returned non-JSON response: {exc}")
         raise SystemExit(1) from exc
 
     review = extract_ollama_review(data)
     if not review.strip():
-        print("WARNING: Ollama API returned an empty review body", file=sys.stderr)
+        logger.warning("WARNING: Ollama API returned an empty review body")
     return review

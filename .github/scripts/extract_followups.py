@@ -1,7 +1,10 @@
 """Extract follow-up issue titles from section 5 of an AI review."""
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
 import json
 import re
 import sys
@@ -61,7 +64,7 @@ def extract_followups(review_text: str) -> list[str]:
         if not title or verdict_title_re.match(title):
             continue
         if _is_low_specificity(title):
-            print(f"Skipping low-specificity follow-up: {title}", file=sys.stderr)
+            logger.error(f"Skipping low-specificity follow-up: {title}")
             continue
         titles.append(title)
     return titles
@@ -72,7 +75,7 @@ def main(review_file: str) -> int:
     try:
         review_text = Path(review_file).read_text()
     except FileNotFoundError:
-        print(f"ERROR: Review file not found: {review_file}", file=sys.stderr)
+        logger.error(f"ERROR: Review file not found: {review_file}")
         return 1
 
     titles = extract_followups(review_text)
@@ -82,6 +85,6 @@ def main(review_file: str) -> int:
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <review_file>", file=sys.stderr)
+        logger.error(f"Usage: {sys.argv[0]} <review_file>")
         raise SystemExit(1)
     raise SystemExit(main(sys.argv[1]))

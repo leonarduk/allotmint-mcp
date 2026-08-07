@@ -3,12 +3,15 @@
 n_review_issue.py (#5721) introduced a LOCAL/CLOUD model-source switch that let
 a script fall back to a cloud model (DeepSeek) when a heavier review benefits
 from it. This module centralizes that switch -- the argparse wiring, the
+import logging
 interactive prompt, connection/credential validation, and the actual
 dispatch -- so every other developer_tools script that calls an LLM (issue
 creation, issue triage, local/PR review, commit-message generation) can offer
 the same choice without re-implementing it (#5768).
 """
 
+
+logger = logging.getLogger(__name__)
 from __future__ import annotations
 
 import os
@@ -72,18 +75,16 @@ def validate_model_source(model_source: str) -> bool:
     if model_source == LOCAL:
         endpoint = get_ollama_endpoint()
         if not validate_ollama_connection(endpoint):
-            print(
-                f"ERROR: Ollama is not reachable at {endpoint}. "
-                "Start Ollama or set OLLAMA_ENDPOINT.",
-                file=sys.stderr,
+            logger.error(
+                "Ollama is not reachable at %s. Start Ollama or set OLLAMA_ENDPOINT.",
+                endpoint,
             )
             return False
         return True
 
     if not os.environ.get("DEEPSEEK_API_KEY"):
-        print(
-            "ERROR: DEEPSEEK_API_KEY is not set; cannot use the cloud model.",
-            file=sys.stderr,
+        logger.error(
+            "DEEPSEEK_API_KEY is not set; cannot use the cloud model."
         )
         return False
     return True

@@ -8,7 +8,10 @@ branch name, commits, and pushes the branch to `origin`.
 """
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
 import argparse
 import os
 import subprocess
@@ -33,12 +36,12 @@ def refuse_if_main_branch(branch: str) -> None:
     """Exit with guidance if the current branch is the main branch."""
     if branch != MAIN_BRANCH:
         return
-    print(
-        f"ERROR: Refusing to commit directly to '{MAIN_BRANCH}'.\n"
-        "Create or switch to a feature/bugfix branch first, e.g.:\n"
-        "    git checkout -b fix/<issue-number>-short-description",
-        file=sys.stderr,
-    )
+        logger.error(
+            "Refusing to commit directly to '%s'.\n"
+            "Create or switch to a feature/bugfix branch first, e.g.:\n"
+            "    git checkout -b fix/<issue-number>-short-description",
+            MAIN_BRANCH,
+        )
     raise SystemExit(1)
 
 
@@ -54,7 +57,7 @@ def get_git_root() -> str:
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as exc:
-        print(f"ERROR: Not a git repository or git command failed: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: Not a git repository or git command failed: {exc}")
         raise SystemExit(1) from exc
 
 
@@ -66,7 +69,7 @@ def stage_changes(files: list[str] | None) -> None:
         else:
             subprocess.run(["git", "add", "-A"], check=True)
     except subprocess.CalledProcessError as exc:
-        print(f"ERROR: Failed to stage changes: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: Failed to stage changes: {exc}")
         raise SystemExit(1) from exc
 
 
@@ -78,9 +81,9 @@ def has_staged_changes() -> bool:
     """
     result = subprocess.run(["git", "diff", "--cached", "--quiet"], check=False)
     if result.returncode not in (0, 1):
-        print(
-            f"ERROR: 'git diff --cached --quiet' failed with exit code {result.returncode}",
-            file=sys.stderr,
+        logger.error(
+            "'git diff --cached --quiet' failed with exit code %s",
+            result.returncode,
         )
         raise SystemExit(1)
     return result.returncode == 1
@@ -97,7 +100,7 @@ def get_staged_diff() -> str:
             check=True,
         )
     except subprocess.CalledProcessError as exc:
-        print(f"ERROR: Failed to read staged changes: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: Failed to read staged changes: {exc}")
         raise SystemExit(1) from exc
     return result.stdout
 
@@ -155,7 +158,7 @@ def commit_changes(message: str) -> bool:
         subprocess.run(["git", "commit", "-m", message], check=True)
         return True
     except subprocess.CalledProcessError as exc:
-        print(f"ERROR: Failed to commit: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: Failed to commit: {exc}")
         return False
 
 
@@ -216,10 +219,9 @@ def main() -> int:
 
     # Add warning for --model with --model-source cloud
     if args.model and args.model_source != LOCAL:
-        print(
+        logger.warning(
             "Warning: --model is only supported with --model-source local; "
-            "ignoring --model for cloud model source.",
-            file=sys.stderr,
+            "ignoring --model for cloud model source."
         )
 
     os.chdir(get_git_root())
@@ -231,21 +233,20 @@ def main() -> int:
     stage_changes(args.files)
 
     if not has_staged_changes():
-        print("No staged changes to commit.", file=sys.stderr)
+        logger.error("No staged changes to commit.")
         return 0
 
     message = args.message
     if not message and not args.no_llm:
         if validate_model_source(args.model_source):
-            print(
-                f"INFO: Generating commit message with "
-                f"{describe_model_source(args.model_source)}...",
-                file=sys.stderr,
+            logger.info(
+                "Generating commit message with %s...",
+                describe_model_source(args.model_source),
             )
             diff = get_staged_diff()
             message = generate_commit_message(diff, issue_id, args.model_source)
         else:
-            print("WARNING: Model unavailable. Using a default message.", file=sys.stderr)
+            logger.warning("WARNING: Model unavailable. Using a default message.")
 
     if not message:
         message = f"Work on issue #{issue_id}" if issue_id else "Commit local changes"

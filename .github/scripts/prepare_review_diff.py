@@ -1,7 +1,10 @@
 """Prepare and safely truncate pull-request diffs for advisory AI reviews."""
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
 import argparse
 import subprocess
 import sys
@@ -57,7 +60,7 @@ def main() -> int:
 
     if was_truncated:
         # stderr is surfaced in the Actions log so maintainers know context was intentionally reduced.
-        print(format_truncation_log(diff_text, truncated_diff), file=sys.stderr)
+        logger.info(format_truncation_log(diff_text, truncated_diff))
 
     sys.stdout.write(truncated_diff)
     return 0

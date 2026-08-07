@@ -1,5 +1,6 @@
 """Sync GitHub issues to local markdown files for offline access."""
 
+import logging
 import os
 import re
 import subprocess
@@ -7,6 +8,8 @@ import sys
 from pathlib import Path
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 REPO_OWNER = "leonarduk"
 REPO_NAME = "allotmint-mcp"
@@ -31,7 +34,7 @@ def get_github_token():
             return result.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
-    print("Error: GITHUB_TOKEN env var not set and 'gh auth token' failed.", file=sys.stderr)
+    logger.error("GITHUB_TOKEN env var not set and 'gh auth token' failed.")
     sys.exit(1)
 
 
@@ -66,26 +69,26 @@ def fetch_issues(token, state):
         try:
             resp = requests.get(url, headers=headers, timeout=10)
         except requests.RequestException as e:
-            print(f"Error fetching issues: {e}", file=sys.stderr)
+            logger.error("Error fetching issues: %s", e)
             return issues
 
         if resp.status_code in (403, 429):
             reset_time = resp.headers.get("X-RateLimit-Reset", "unknown")
-            print(
-                f"Warning: GitHub API rate limit exceeded. Reset at {reset_time}. "
-                f"Writing {len(issues)} issues fetched so far.",
-                file=sys.stderr,
+            logger.warning(
+                "GitHub API rate limit exceeded. Reset at %s. Writing %d issues fetched so far.",
+                reset_time,
+                len(issues),
             )
             return issues
 
         if resp.status_code != 200:
-            print(f"Error: API returned {resp.status_code}", file=sys.stderr)
+            logger.error("API returned %d", resp.status_code)
             return issues
 
         try:
             data = resp.json()
         except requests.exceptions.JSONDecodeError:
-            print("Error: Failed to parse JSON from API response", file=sys.stderr)
+            logger.error("Failed to parse JSON from API response")
             return issues
 
         if not data:
@@ -169,12 +172,9 @@ def main():
             try:
                 filepath.unlink()
             except PermissionError as e:
-                print(
-                    f"Warning: Could not delete {filepath}: {e}",
-                    file=sys.stderr,
-                )
+                logger.warning("Permission error: %s", e)
 
-    print(f"Synced {len(open_issues)} open issues to {ISSUES_DIR}")
+    logger.info("Synced %d open issues to %s", len(open_issues), ISSUES_DIR)
 
 
 if __name__ == "__main__":

@@ -46,11 +46,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 REPO_OWNER = "leonarduk"
 REPO_NAME = "allotmint-mcp"
@@ -133,10 +136,13 @@ def run_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
             return result
         if attempt < GH_RETRY_ATTEMPTS:
             wait_seconds = GH_RETRY_BACKOFF_SECONDS * attempt
-            print(
-                f"WARNING: gh {' '.join(args)} failed (attempt {attempt}/{GH_RETRY_ATTEMPTS}): "
-                f"{result.stderr.strip()} -- retrying in {wait_seconds}s",
-                file=sys.stderr,
+            logger.warning(
+                "gh %s failed (attempt %s/%s): %s -- retrying in %ss",
+                ' '.join(args),
+                attempt,
+                GH_RETRY_ATTEMPTS,
+                result.stderr.strip(),
+                wait_seconds,
             )
             time.sleep(wait_seconds)
     return result
@@ -159,13 +165,13 @@ def fetch_open_dependabot_prs() -> list[PullRequest]:
         ],
     )
     if result.returncode != 0:
-        print(f"ERROR: gh pr list failed: {result.stderr}", file=sys.stderr)
+        logger.error(f"ERROR: gh pr list failed: {result.stderr}")
         raise SystemExit(1)
 
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        print(f"ERROR: gh pr list returned non-JSON output: {exc}", file=sys.stderr)
+        logger.error(f"ERROR: gh pr list returned non-JSON output: {exc}")
         raise SystemExit(1) from exc
 
     prs = []
@@ -194,12 +200,12 @@ def fetch_mergeability(number: int) -> tuple[str | None, str]:
     """
     result = run_gh(["pr", "view", str(number), "--json", "mergeable,mergeStateStatus"])
     if result.returncode != 0:
-        print(f"WARNING: gh pr view {number} failed: {result.stderr.strip()}", file=sys.stderr)
+        logger.warning(f"WARNING: gh pr view {number} failed: {result.stderr.strip()}")
         return None, ""
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        print(f"WARNING: gh pr view {number} returned non-JSON output: {exc}", file=sys.stderr)
+        logger.warning(f"WARNING: gh pr view {number} returned non-JSON output: {exc}")
         return None, ""
     return data.get("mergeable"), (data.get("mergeStateStatus") or "").lower()
 
@@ -298,9 +304,10 @@ def merge_and_delete(pr: PullRequest, dry_run: bool, admin: bool = False) -> boo
         return True
 
     if pr.head_ref_name in PROTECTED_BRANCHES:
-        print(
-            f"ERROR: refusing to delete protected branch '{pr.head_ref_name}' for PR #{pr.number}",
-            file=sys.stderr,
+        logger.error(
+            "refusing to delete protected branch '%s' for PR #%s",
+            pr.head_ref_name,
+            pr.number,
         )
         return False
 
@@ -311,7 +318,7 @@ def merge_and_delete(pr: PullRequest, dry_run: bool, admin: bool = False) -> boo
         args += ["--admin"]
     result = _run_gh_once(args)
     if result.returncode != 0:
-        print(f"ERROR: failed to merge PR #{pr.number}: {result.stderr}", file=sys.stderr)
+        logger.error(f"ERROR: failed to merge PR #{pr.number}: {result.stderr}")
         return False
     return True
 
@@ -335,7 +342,7 @@ def update_branch(pr: PullRequest, dry_run: bool) -> bool:
 
     result = _run_gh_once(["pr", "update-branch", str(pr.number)])
     if result.returncode != 0:
-        print(f"ERROR: failed to update branch for PR #{pr.number}: {result.stderr}", file=sys.stderr)
+        logger.error(f"ERROR: failed to update branch for PR #{pr.number}: {result.stderr}")
         return False
     return True
 
@@ -379,7 +386,7 @@ def resolve_repo(explicit: str | None) -> tuple[str, str]:
     if explicit:
         owner, _, name = explicit.partition("/")
         if not owner or not name:
-            print(f"ERROR: --repo must be in 'owner/name' form, got '{explicit}'", file=sys.stderr)
+            logger.error(f"ERROR: --repo must be in 'owner/name' form, got '{explicit}'")
             raise SystemExit(1)
         return owner, name
 
@@ -429,12 +436,12 @@ def main() -> int:
     global REPO_OWNER, REPO_NAME
     REPO_OWNER, REPO_NAME = resolve_repo(args.repo)
 
-    print(f"INFO: Fetching open Dependabot PRs for {REPO_OWNER}/{REPO_NAME}...", file=sys.stderr)
+    logger.info(f"INFO: Fetching open Dependabot PRs for {REPO_OWNER}/{REPO_NAME}...")
     prs = fetch_open_dependabot_prs()
-    print(f"INFO: {len(prs)} open Dependabot PR(s) found", file=sys.stderr)
+    logger.info(f"INFO: {len(prs)} open Dependabot PR(s) found")
 
     if dry_run:
-        print("INFO: Running in dry-run mode. Pass --yes to actually merge/delete.", file=sys.stderr)
+        logger.info("INFO: Running in dry-run mode. Pass --yes to actually merge/delete.")
 
     had_failures = False
     for pr in prs:

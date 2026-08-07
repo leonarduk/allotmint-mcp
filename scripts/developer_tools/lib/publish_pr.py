@@ -1,7 +1,10 @@
 """CLI tool to publish a PR from the current branch with optional Ollama assistance."""
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
 import argparse
 import os
 import re
@@ -51,7 +54,7 @@ def get_current_branch() -> str:
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as exc:
-        print(f"Failed to get current branch: {exc}", file=sys.stderr)
+        logger.error(f"Failed to get current branch: {exc}")
         sys.exit(1)
 
 
@@ -150,7 +153,7 @@ def stage_and_commit(files: Optional[list[str]], message: str, branch: str, defa
             # Auto-detect changed files in the branch
             files = get_changed_files(branch, default_branch)
             if not files:
-                print("No changed files found in branch. Nothing to commit.", file=sys.stderr)
+                logger.error("No changed files found in branch. Nothing to commit.")
                 return False
 
         # Stage specified files
@@ -160,7 +163,7 @@ def stage_and_commit(files: Optional[list[str]], message: str, branch: str, defa
         subprocess.run(["git", "commit", "-m", message], check=True)
         return True
     except subprocess.CalledProcessError as exc:
-        print(f"Failed to commit: {exc}", file=sys.stderr)
+        logger.error(f"Failed to commit: {exc}")
         return False
 
 
@@ -203,7 +206,7 @@ def push_to_remote(branch: str) -> bool:
         subprocess.run(["git", "push", "-u", "origin", branch], check=True)
         return True
     except subprocess.CalledProcessError as exc:
-        print(f"Failed to push: {exc}", file=sys.stderr)
+        logger.error(f"Failed to push: {exc}")
         return False
 
 
@@ -215,7 +218,7 @@ def fetch_issue(owner: str, repo: str, issue_id: int) -> Optional[dict]:
         resp.raise_for_status()
         return resp.json()
     except requests.RequestException as exc:
-        print(f"Failed to fetch issue #{issue_id}: {exc}", file=sys.stderr)
+        logger.error(f"Failed to fetch issue #{issue_id}: {exc}")
         return None
 
 
@@ -303,7 +306,7 @@ Generate only the sections above, no preamble."""
             data = resp.json()
             return data.get("response", "").strip()
     except requests.RequestException as exc:
-        print(f"Ollama generation failed: {exc}", file=sys.stderr)
+        logger.error(f"Ollama generation failed: {exc}")
     return None
 
 
@@ -409,10 +412,10 @@ def create_pr(
                 return match.group(0)
             return result.stdout.strip()
         else:
-            print(f"Failed to create PR: {result.stderr}", file=sys.stderr)
+            logger.error(f"Failed to create PR: {result.stderr}")
             return None
     except Exception as exc:
-        print(f"Error creating PR: {exc}", file=sys.stderr)
+        logger.error(f"Error creating PR: {exc}")
         return None
     finally:
         if body_file:
@@ -430,16 +433,14 @@ def check_gh_available() -> None:
             check=False,
         )
     except FileNotFoundError:
-        print(
-            "Error: GitHub CLI (gh) is not installed. " "Install from https://cli.github.com/",
-            file=sys.stderr,
+        logger.error(
+            "GitHub CLI (gh) is not installed. Install from https://cli.github.com/"
         )
         sys.exit(1)
 
     if result.returncode != 0:
-        print(
-            "Error: GitHub CLI (gh) is not authenticated. " "Run 'gh auth login'.",
-            file=sys.stderr,
+        logger.error(
+            "GitHub CLI (gh) is not authenticated. Run 'gh auth login'."
         )
         sys.exit(1)
 
@@ -483,14 +484,14 @@ def main() -> None:
         git_root = result.stdout.strip()
         os.chdir(git_root)
     except subprocess.CalledProcessError:
-        print("Error: Could not determine git root directory", file=sys.stderr)
+        logger.error("Error: Could not determine git root directory")
         sys.exit(1)
 
     # Get repo info
     try:
         owner, repo = get_repo_info()
     except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        logger.error(f"Error: {exc}")
         sys.exit(1)
 
     print(f"Using repository: {owner}/{repo}")
@@ -502,8 +503,8 @@ def main() -> None:
     # Extract issue ID
     issue_id = extract_issue_id(branch)
     if not issue_id:
-        print(f"Error: Could not extract issue ID from branch name '{branch}'", file=sys.stderr)
-        print("Branch name should match pattern: fix/issue-NNNN-* or feat/issue-NNNN-*", file=sys.stderr)
+        logger.error(f"Error: Could not extract issue ID from branch name '{branch}'")
+        logger.error("Branch name should match pattern: fix/issue-NNNN-* or feat/issue-NNNN-*")
         sys.exit(1)
 
     print(f"Issue ID: #{issue_id}")
@@ -524,7 +525,7 @@ def main() -> None:
 
     # Check if branch is ahead of main
     if not branch_is_ahead_of_main(branch=branch, default_branch=default_branch):
-        print(f"Error: Branch '{branch}' is not ahead of '{default_branch}'", file=sys.stderr)
+        logger.error(f"Error: Branch '{branch}' is not ahead of '{default_branch}'")
         sys.exit(1)
 
     # Stage and commit
@@ -573,7 +574,7 @@ def main() -> None:
         print("\n✓ PR created successfully!")
         print(f"  {pr_url}")
     else:
-        print("Failed to create PR", file=sys.stderr)
+        logger.error("Failed to create PR")
         sys.exit(1)
 
 

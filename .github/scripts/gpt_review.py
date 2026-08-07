@@ -6,7 +6,10 @@ this repo's PR volume is low enough that the extra cost is negligible.
 """
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
 import os
 from typing import Any
 

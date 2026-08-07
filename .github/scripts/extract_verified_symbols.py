@@ -1,7 +1,10 @@
 """Extract class/method names from changed files and verify they exist in the codebase."""
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
 import argparse
 import re
 import subprocess

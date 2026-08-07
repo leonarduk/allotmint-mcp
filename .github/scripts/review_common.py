@@ -1,7 +1,10 @@
 """Shared helpers for advisory AI PR review scripts and workflows."""
 
 from __future__ import annotations
+import logging
 
+
+logger = logging.getLogger(__name__)
 import json
 import os
 import sys
@@ -56,7 +59,7 @@ def get_required_env(name: str) -> str:
     """Return a required environment variable or raise SystemExit with a clear error."""
     value = os.environ.get(name, "")
     if not value:
-        print(f"ERROR: {name} not set", file=sys.stderr)
+        logger.error(f"ERROR: {name} not set")
         raise SystemExit(1)
     return value
 
@@ -214,7 +217,7 @@ def finalize_review(review: str, provider_name: str) -> int:
     workflow defaulting to a blocking "CHANGES REQUESTED".
     """
     if not review.strip():
-        print(f"WARNING: {provider_name} API returned an empty review", file=sys.stderr)
+        logger.warning(f"WARNING: {provider_name} API returned an empty review")
         print(
             f"{provider_name} review could not be completed: the API responded "
             "successfully but returned no review content (possibly a reasoning "
@@ -409,9 +412,8 @@ def _post_once(request: urllib.request.Request, provider_label: str) -> dict[str
     with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
         status = getattr(response, "status", None)
         raw = response.read()
-        print(
-            f"INFO: {provider_label} API responded status={status} bytes={len(raw)}",
-            file=sys.stderr,
+        logger.info(
+            f"{provider_label} API responded status={status} bytes={len(raw)}"
         )
         return json.loads(raw)
 
@@ -453,7 +455,7 @@ def fetch_review(
         except urllib.error.HTTPError as exc:
             # Keep the provider response in stderr so maintainers can distinguish auth, quota, and API failures.
             body = exc.read().decode()
-            print(f"ERROR: {provider_label} API returned {exc.code}: {body}", file=sys.stderr)
+            logger.error(f"ERROR: {provider_label} API returned {exc.code}: {body}")
             if exc.code not in RETRYABLE_HTTP_STATUSES:
                 raise SystemExit(1) from exc
             if attempt == MAX_FETCH_ATTEMPTS:
@@ -461,27 +463,25 @@ def fetch_review(
                     f"{provider_label} API returned {exc.code} after {MAX_FETCH_ATTEMPTS} attempts"
                 ) from exc
         except urllib.error.URLError as exc:
-            print(f"ERROR: {provider_label} API request failed: {exc.reason}", file=sys.stderr)
+            logger.error(f"ERROR: {provider_label} API request failed: {exc.reason}")
             if attempt == MAX_FETCH_ATTEMPTS:
                 raise ProviderOutageError(
                     f"{provider_label} API request failed after {MAX_FETCH_ATTEMPTS} attempts: {exc.reason}"
                 ) from exc
         except json.JSONDecodeError as exc:
-            print(f"ERROR: {provider_label} API returned non-JSON response: {exc}", file=sys.stderr)
+            logger.error(f"ERROR: {provider_label} API returned non-JSON response: {exc}")
             raise SystemExit(1) from exc
 
         delay = RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))
-        print(
-            f"INFO: {provider_label} attempt {attempt}/{MAX_FETCH_ATTEMPTS} failed; "
-            f"retrying in {delay}s",
-            file=sys.stderr,
+        logger.info(
+            f"{provider_label} attempt {attempt}/{MAX_FETCH_ATTEMPTS} failed; "
+            f"retrying in {delay}s"
         )
         time.sleep(delay)
 
     review, extra = extractor(data)
     if not review.strip():
-        print(
-            f"WARNING: {provider_label} API returned an empty review body",
-            file=sys.stderr,
+        logger.warning(
+            f"{provider_label} API returned an empty review body"
         )
     return review, extra

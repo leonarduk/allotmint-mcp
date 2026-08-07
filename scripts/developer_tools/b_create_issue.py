@@ -6,6 +6,7 @@ then creates the issue via the GitHub API (with a ``gh`` CLI fallback).
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
@@ -13,6 +14,8 @@ import sys
 from pathlib import Path
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent / "lib"))
 from github_repo import get_repo_info
@@ -109,7 +112,7 @@ def get_github_token() -> str:
             return result.stdout.strip()
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
-    print("Error: GITHUB_TOKEN env var not set and 'gh auth token' failed.", file=sys.stderr)
+    logger.error("GITHUB_TOKEN env var not set and 'gh auth token' failed.")
     sys.exit(1)
 
 
@@ -288,7 +291,7 @@ def create_issue_via_api(
         data = resp.json()
         return data.get("html_url")
     except requests.RequestException as exc:
-        print(f"API request failed: {exc}", file=sys.stderr)
+        logger.error("API request failed: %s", exc)
         return None
 
 
@@ -331,13 +334,13 @@ def create_issue_via_gh(
         result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=30)
 
         if result.returncode != 0:
-            print(f"gh CLI failed: {result.stderr.strip()}", file=sys.stderr)
+            logger.error("gh CLI error: %s", result.stderr)
             return None
 
         url = result.stdout.strip()
         return url if url else None
     except (OSError, subprocess.TimeoutExpired) as exc:
-        print(f"gh CLI error: {exc}", file=sys.stderr)
+        logger.error("gh CLI error: %s", exc)
         return None
     finally:
         if body_path and os.path.exists(body_path):
@@ -393,10 +396,10 @@ def offer_llm_review(title: str, body: str) -> tuple[str, str]:
     if not validate_model_source(model_source):
         return title, body
 
-    print(f"Reviewing with {describe_model_source(model_source)}...")
+    logger.info("Reviewing with %s...", describe_model_source(model_source))
     response = fetch_review(model_source, build_review_prompt(title, body))
     if not response.strip():
-        print("WARNING: LLM review returned no content; keeping original issue.", file=sys.stderr)
+        logger.warning("LLM review returned no content; keeping original issue.")
         return title, body
 
     suggested_title, suggested_body = parse_review_response(response, title, body)
@@ -445,26 +448,26 @@ def confirm_and_create(
         confirm = "y"
 
     if confirm and confirm not in ("y", "yes", ""):
-        print("Aborted.", file=sys.stderr)
+        print("Aborted.")
         sys.exit(0)
 
     print()
-    print("Creating issue via API...")
+    logger.info("Creating issue via API...")
     url = create_issue_via_api(owner, repo, title, body, labels, token)
 
     if not url:
-        print("Falling back to gh CLI...")
+        logger.info("Falling back to gh CLI...")
         url = create_issue_via_gh(owner, repo, title, body, labels)
 
     if url:
         # Extract issue number from URL for a concise summary
         match = re.search(r"/issues/(\d+)", url)
         if match:
-            print(f"\n[OK] Created issue #{match.group(1)}: {url}")
+            logger.info("[OK] Created issue #%s: %s", match.group(1), url)
         else:
-            print(f"\n[OK] Created issue: {url}")
+            logger.info("[OK] Created issue: %s", url)
     else:
-        print("Failed to create issue.", file=sys.stderr)
+        logger.error("Failed to create issue.")
         sys.exit(1)
 
 
@@ -477,7 +480,7 @@ def main() -> None:
     try:
         owner, repo = get_repo_info()
     except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        logger.error("%s", exc)
         sys.exit(1)
 
     print(f"Target repository: {owner}/{repo}")
@@ -520,7 +523,7 @@ def main() -> None:
         default=derived_title or "",
     )
     if not title:
-        print("Error: Title is required.", file=sys.stderr)
+        logger.error("Error: Title is required.")
         sys.exit(1)
 
     # Prompt for labels
