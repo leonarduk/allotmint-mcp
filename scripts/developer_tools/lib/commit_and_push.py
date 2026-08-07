@@ -230,18 +230,18 @@ def prompt_for_disposition() -> tuple[str, str | None]:
     if lowered in ("n", "no"):
         return "abort", None
     if lowered in ("e", "edit"):
-        try:
-            edited = input("Enter your edited commit message: ").strip()
-        except EOFError:
-            return "abort", None
-        if edited:
-            return "edit", edited
-        # Empty edit input – treat as retry with feedback instead
-        print(
-            "INFO: Empty edit; treating as retry. Type feedback or Ctrl+C to cancel.",
-            file=sys.stderr,
-        )
-        return "retry", raw
+        # Keep prompting until the user provides a non-empty message or signals abort.
+        while True:
+            try:
+                edited = input("Enter your edited commit message: ").strip()
+            except EOFError:
+                return "abort", None
+            if edited:
+                return "edit", edited
+            print(
+                "INFO: Edit cannot be empty. Press Ctrl+C to cancel or enter your message.",
+                file=sys.stderr,
+            )
     return "retry", raw
 
 
@@ -301,10 +301,16 @@ def create_commit_message(args, issue_id) -> str | None:
             )
             diff = get_staged_diff()
             feedback = None
-            while True:
+            retries = 0
+            MAX_RETRIES = 5
+            while retries < MAX_RETRIES:
                 message = generate_commit_message(diff, issue_id, args.model_source, feedback=feedback)
 
-                print(f"INFO: Comment: '{message.splitlines()[0]}'", file=sys.stderr)
+                if message:
+                    print(f"INFO: Proposed commit message:\n{message}", file=sys.stderr)
+                else:
+                    print("WARNING: Model returned no message. Using a default.", file=sys.stderr)
+                    break
 
                 action, feedback = prompt_for_disposition()
                 if action == "apply":
@@ -315,7 +321,20 @@ def create_commit_message(args, issue_id) -> str | None:
                 if action == "abort":
                     print("Aborted; no agreed comment.", file=sys.stderr)
                     return None
-                print("INFO: Re-generating with your feedback...", file=sys.stderr)
+                retries += 1
+                if retries < MAX_RETRIES:
+                    print(
+                        f"INFO: Re-generating with your feedback "
+                        f"(attempt {retries + 1}/{MAX_RETRIES})...",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"WARNING: Reached maximum retries ({MAX_RETRIES}). "
+                        f"Using the last generated message.",
+                        file=sys.stderr,
+                    )
+                    break
 
         else:
             print("WARNING: Model unavailable. Using a default message.", file=sys.stderr)
