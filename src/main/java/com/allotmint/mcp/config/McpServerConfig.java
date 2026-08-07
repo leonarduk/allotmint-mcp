@@ -1,7 +1,7 @@
 package com.allotmint.mcp.config;
 
-import com.allotmint.mcp.AllotMintClient;
-import com.allotmint.mcp.ResearchAgentClient;
+import com.allotmint.mcp.client.AllotMintClient;
+import com.allotmint.mcp.client.ResearchAgentClient;
 import com.allotmint.mcp.tool.*;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;

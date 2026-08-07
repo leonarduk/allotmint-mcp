@@ -3,7 +3,7 @@ package com.allotmint.mcp.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import com.allotmint.mcp.AllotMintClient;
+import com.allotmint.mcp.client.AllotMintClient;
 import com.allotmint.mcp.pojo.AllotMintHealthStatus;
 import com.allotmint.mcp.tool.AllotMintHealthTool;
 import io.modelcontextprotocol.server.McpServerFeatures;

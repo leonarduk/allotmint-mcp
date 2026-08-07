@@ -1,7 +1,7 @@
 package com.allotmint.mcp.tool;
 
-import com.allotmint.mcp.AllotMintClient;
-import com.allotmint.mcp.ResearchAgentClient;
+import com.allotmint.mcp.client.AllotMintClient;
+import com.allotmint.mcp.client.ResearchAgentClient;
 import com.allotmint.mcp.error.AllotMintApiException;
 import com.allotmint.mcp.pojo.ResearchAnswer;
 import io.modelcontextprotocol.server.McpServerFeatures;

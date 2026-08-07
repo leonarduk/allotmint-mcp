@@ -9,7 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.allotmint.mcp.ResearchAgentClient;
+import com.allotmint.mcp.client.ResearchAgentClient;
 import com.allotmint.mcp.error.AllotMintApiException;
 import com.allotmint.mcp.pojo.ResearchAnswer;
 import io.modelcontextprotocol.server.McpServerFeatures;

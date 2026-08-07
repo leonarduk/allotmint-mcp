@@ -1,6 +1,6 @@
 package com.allotmint.mcp.config;
 
-import com.allotmint.mcp.ResearchAgentClient;
+import com.allotmint.mcp.client.ResearchAgentClient;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;

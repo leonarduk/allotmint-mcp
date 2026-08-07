@@ -7,7 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.allotmint.mcp.AllotMintClient;
+import com.allotmint.mcp.client.AllotMintClient;
 import com.allotmint.mcp.error.AllotMintApiException;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;

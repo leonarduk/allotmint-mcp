@@ -1,4 +1,4 @@
-package com.allotmint.mcp;
+package com.allotmint.mcp.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

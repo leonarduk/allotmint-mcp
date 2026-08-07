@@ -1,6 +1,6 @@
 package com.allotmint.mcp.pojo;
 
-import com.allotmint.mcp.AllotMintClient;
+import com.allotmint.mcp.client.AllotMintClient;
 
 /**
  * Result of an {@link AllotMintClient#health()} call.
