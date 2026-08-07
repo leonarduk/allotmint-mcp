@@ -1,6 +1,6 @@
-# Run the backend test suite from anywhere in the repo (root or
-# scripts/developer_tools). Resolve the repo root first so mvnw is invoked
-# from the right place regardless of the caller's working directory.
+# Run the Maven build/test suite from anywhere in the repo. Resolve the repo
+# root first so mvnw is invoked from the right place regardless of the
+# caller's working directory.
 $repoRoot = git rev-parse --show-toplevel 2>$null
 if (-not $repoRoot) {
     Write-Error "Not in a git repository"

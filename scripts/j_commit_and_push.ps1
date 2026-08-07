@@ -9,7 +9,7 @@ param(
     [alias("no-llm")]
     [switch]$NoLlm = $false,
     [string]$Model = $null,
-    [ValidateSet('local', 'cloud')]
+    [ValidateSet('local', 'cloud', 'remote')]
     [string]$ModelSource = $null,
     [switch]$NoPush = $false
 )
@@ -41,6 +41,7 @@ Specify the source of the model being committed and pushed.
 Possible values:
 - local: Use a local LLM model.
 - cloud: Use a cloud-based LLM model.
+- remote: Use a self-hosted OpenAI-compatible model.
 
 .PARAMETER NoPush
 Commit only; skip pushing the branch to origin.
@@ -55,17 +56,19 @@ Commit only; skip pushing the branch to origin.
 .\j_commit_and_push.ps1 -Model "qwen2.5-coder:7b" -ModelSource local
 
 .NOTES
-Ensure you're in the repo root when running this script.
+Ensure you're in the target repo (any subdirectory) when running this script, and that
+the cicaid-devtools package is installed -- see the Install section of
+https://github.com/leonarduk/cicaid#readme for the current release wheel URL.
 #>
 
-# Ensure we're in the repo root
+# Ensure we're in a git repo (commit-and-push resolves owner/repo dynamically from here)
 $repoRoot = git rev-parse --show-toplevel 2>$null
 if (-not $repoRoot) {
     Write-Error "Not in a git repository"
     exit 1
 }
 
-# Build arguments for the Python script
+# Build arguments for the CLI
 $pythonArgs = @()
 
 if ($Message) {
@@ -97,9 +100,6 @@ if ($NoPush) {
     $pythonArgs += "--no-push"
 }
 
-# Run the Python script
-# Nest Join-Path calls so this also works on Windows PowerShell 5.1, whose
-# Join-Path lacks the -AdditionalChildPath parameter (PowerShell 6+ only).
-$scriptPath = Join-Path (Join-Path (Join-Path (Join-Path $repoRoot "scripts") "developer_tools") "lib") "commit_and_push.py"
-python $scriptPath @pythonArgs
+# Run the installed console-script entry point (from the cicaid-devtools package)
+commit-and-push @pythonArgs
 exit $LASTEXITCODE

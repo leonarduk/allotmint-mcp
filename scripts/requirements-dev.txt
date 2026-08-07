@@ -1,0 +1,6 @@
+# Shared issue/PR/review automation CLI (sync-issues, work-on-issue, local-review,
+# commit-and-push, run-ci-checks, etc.) -- see https://github.com/leonarduk/cicaid
+#
+# Pinned to a release wheel for reproducible installs; check
+# https://github.com/leonarduk/cicaid/releases for newer versions.
+cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.2.0/cicaid_devtools-0.2.0-py3-none-any.whl

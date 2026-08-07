@@ -299,3 +299,21 @@ Before committing Java changes, run:
 ```bash
 ./mvnw spotless:apply
 ```
+
+## Developer tooling
+
+The issue/PR/review automation CLI (`sync-issues`, `work-on-issue`, `local-review`,
+`commit-and-push`, `run-ci-checks`, ...) is no longer vendored under
+`scripts/developer_tools/` — it's the shared
+[cicaid-devtools](https://github.com/leonarduk/cicaid) package now, installed with:
+
+```bash
+pip install -r scripts/requirements-dev.txt
+```
+
+See [cicaid's README](https://github.com/leonarduk/cicaid#readme) for the full
+command list. `run-ci-checks` reads its check list from
+[`.cicaid-checks.toml`](.cicaid-checks.toml) in this repo (Maven build +
+research-agent/mcp-client pytest, mirroring `.github/workflows/build.yml`).
+`scripts/g_run_tests.ps1`, `scripts/j_commit_and_push.ps1`, and
+`scripts/k_publish-pr.ps1` are thin PowerShell wrappers around the installed CLI.

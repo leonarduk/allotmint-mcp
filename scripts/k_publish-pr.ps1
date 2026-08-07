@@ -32,9 +32,6 @@ if ($Model) {
     $pythonArgs += "--model", $Model
 }
 
-# Run the Python script
-# Nest Join-Path calls so this also works on Windows PowerShell 5.1, whose
-# Join-Path lacks the -AdditionalChildPath parameter (PowerShell 6+ only).
-$scriptPath = Join-Path (Join-Path (Join-Path (Join-Path $repoRoot "scripts") "developer_tools") "lib") "publish_pr.py"
-python $scriptPath @pythonArgs
+# Run the installed console-script entry point (from the cicaid-devtools package)
+publish-pr @pythonArgs
 exit $LASTEXITCODE
