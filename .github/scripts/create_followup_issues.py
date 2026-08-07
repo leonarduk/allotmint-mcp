@@ -84,16 +84,17 @@ Write a complete, actionable GitHub issue body in Markdown covering:
 1. **What** — exactly what needs to change and where (file, class, method)
 2. **Why** — the motivation (correctness risk, maintainability, protocol compliance, etc.)
 3. **How** — a concrete implementation approach
-4. **Constraints** — what must not break, what is out of scope
-5. **LLM tier** — which model is appropriate:
+4. **Files Affected** — specific file paths (from the repo root) to change, add, or delete. One per line. Use only paths you can confirm from the review text above; if you are unsure, write "Unknown".
+5. **Constraints** — what must not break, what is out of scope
+6. **LLM tier** — which model is appropriate:
    - Haiku: simple/mechanical tasks (formatting, renames, obvious one-line fixes)
    - Sonnet: moderate design judgment (multi-file changes, non-trivial
      heuristics, new test coverage requiring design decisions)
    - Opus: complex design/architecture (cross-cutting changes, significant
      ambiguity, architectural trade-offs)
    Default to Sonnet when in doubt.
-6. **Success looks like** — specific, verifiable criteria
-7. **Failure looks like** — what would indicate the implementation went wrong
+7. **Success looks like** — specific, verifiable criteria
+8. **Failure looks like** — what would indicate the implementation went wrong
 
 Be concise but complete. Do not pad with generic advice.
 
