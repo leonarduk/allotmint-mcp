@@ -109,7 +109,7 @@ def get_staged_diff() -> str:
 MAX_DIFF_CHARS = 20_000
 
 
-def build_commit_prompt(diff: str, issue_id: int | None) -> str:
+def build_commit_prompt(diff: str, issue_id: int | None, feedback: str = None) -> str:
     """Build the prompt used to draft a commit message from a diff."""
     issue_line = (
         f"Reference issue #{issue_id} in the message (e.g. a trailing 'Refs #{issue_id}' line)."
@@ -119,6 +119,8 @@ def build_commit_prompt(diff: str, issue_id: int | None) -> str:
     if len(diff) > MAX_DIFF_CHARS:
         diff = diff[:MAX_DIFF_CHARS] + "\n... (diff truncated)"
     return f"""Write a git commit message for the following diff.
+
+{"Note this extra feedback: " + feedback if  feedback else ""}
 
 Rules:
 - Subject line under 72 characters, imperative mood (e.g. "Fix", "Add", "Update").
@@ -131,11 +133,11 @@ Diff:
 """
 
 
-def generate_commit_message(diff: str, issue_id: int | None, model_source: str) -> str | None:
+def generate_commit_message(diff: str, issue_id: int | None, model_source: str, feedback: str = None) -> str | None:
     """Ask the chosen model to draft a commit message. Returns None on failure or empty diff."""
     if not diff.strip():
         return None
-    prompt = build_commit_prompt(diff, issue_id)
+    prompt = build_commit_prompt(diff, issue_id, feedback=feedback)
     try:
         message = fetch_review(model_source, prompt)
     except SystemExit:
@@ -210,6 +212,42 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     return parser
 
+def prompt_for_disposition() -> tuple[str, str | None]:
+    """Ask the user to apply, reject, edit, or send feedback on a proposed revision.
+
+    Returns a ("apply" | "abort" | "edit" | "retry", text) pair:
+    - "apply" → use the commit message as-is
+    - "abort" → cancel the commit
+    - "edit"  → text is the user's edited commit message
+    - "retry" → text is feedback for the model to regenerate
+    """
+    try:
+        raw = input(
+            "Apply this comment to the commit? [Y/n/e(dit), or type feedback to have the model "
+            "try again] "
+        ).strip()
+    except EOFError:
+        return "abort", None
+    lowered = raw.lower()
+    if lowered in ("", "y", "yes"):
+        return "apply", None
+    if lowered in ("n", "no"):
+        return "abort", None
+    if lowered in ("e", "edit"):
+        # Keep prompting until the user provides a non-empty message or signals abort.
+        while True:
+            try:
+                edited = input("Enter your edited commit message: ").strip()
+            except EOFError:
+                return "abort", None
+            if edited:
+                return "edit", edited
+            print(
+                "INFO: Edit cannot be empty. Press Ctrl+C to cancel or enter your message.",
+                file=sys.stderr,
+            )
+    return "retry", raw
+
 
 def main() -> int:
     """Stage, commit, and optionally push changes based on CLI arguments."""
@@ -237,25 +275,13 @@ def main() -> int:
         logger.error("No staged changes to commit.")
         return 0
 
-    message = args.message
-    if not message and not args.no_llm:
-        if validate_model_source(args.model_source):
-            logger.info(
-                "Generating commit message with %s...",
-                describe_model_source(args.model_source),
-            )
-            diff = get_staged_diff()
-            message = generate_commit_message(diff, issue_id, args.model_source)
-        else:
-            logger.warning("WARNING: Model unavailable. Using a default message.")
-
-    if not message:
-        message = f"Work on issue #{issue_id}" if issue_id else "Commit local changes"
-
-    message = ensure_issue_reference(message, issue_id)
+    message = create_commit_message(args, issue_id)
+    if message is None:
+        return 1
 
     if not commit_changes(message):
         return 1
+
     print(f"Committed: {message.splitlines()[0]}")
 
     if args.no_push:
@@ -265,6 +291,61 @@ def main() -> int:
         return 1
     print(f"Pushed branch '{branch}' to origin.")
     return 0
+
+
+def create_commit_message(args, issue_id) -> str | None:
+    message = args.message
+    if not message and not args.no_llm:
+        if validate_model_source(args.model_source):
+            logger.info(
+                "Generating commit message with %s...",
+                describe_model_source(args.model_source),
+            )
+            diff = get_staged_diff()
+            feedback = None
+            retries = 0
+            MAX_RETRIES = 5
+            while retries < MAX_RETRIES:
+                message = generate_commit_message(diff, issue_id, args.model_source, feedback=feedback)
+
+                if message:
+                    print(f"INFO: Proposed commit message:\n{message}", file=sys.stderr)
+                else:
+                    print("WARNING: Model returned no message. Using a default.", file=sys.stderr)
+                    break
+
+                action, feedback = prompt_for_disposition()
+                if action == "apply":
+                    break
+                if action == "edit":
+                    message = feedback  # feedback contains the user-edited message
+                    break
+                if action == "abort":
+                    print("Aborted; no agreed comment.", file=sys.stderr)
+                    return None
+                retries += 1
+                if retries < MAX_RETRIES:
+                    print(
+                        f"INFO: Re-generating with your feedback "
+                        f"(attempt {retries + 1}/{MAX_RETRIES})...",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"WARNING: Reached maximum retries ({MAX_RETRIES}). "
+                        f"Using the last generated message.",
+                        file=sys.stderr,
+                    )
+                    break
+
+        else:
+            logger.warning("WARNING: Model unavailable. Using a default message.")
+
+    if not message:
+        message = f"Work on issue #{issue_id}" if issue_id else "Commit local changes"
+
+    message = ensure_issue_reference(message, issue_id)
+    return message
 
 
 if __name__ == "__main__":
