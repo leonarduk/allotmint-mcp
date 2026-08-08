@@ -1,146 +1,24 @@
-"""DeepSeek AI code review script called by deepseek-pr-review.yml.
+"""allotmint-mcp's DeepSeek review entrypoint, called by deepseek-pr-review.yml.
 
-DeepSeek provides an OpenAI-compatible chat completions API at
-https://api.deepseek.com/v1/chat/completions. The integration reuses the
-shared `review_common` helpers so the prompt, verdict format, and error
-handling stay identical across both reviewers.
+The DeepSeek integration (retry/outage/auth-error handling, prompt building,
+verdict format) now lives entirely in the cicaid-devtools package; this file
+only supplies this repo's RepoProfile. See allotmint-mcp#409.
 """
 
 from __future__ import annotations
+
 import logging
 
+from cicaid_devtools.lib.deepseek_review import main as _cicaid_main
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-import os
-import sys
-from typing import Any
-
-from review_common import (
-    ProviderOutageError,
-    build_prompt,
-    emit_empty_diff_notice,
-    emit_outage_notice,
-    fetch_review,
-    finalize_review,
-    load_review_context,
-)
-
-DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
-DEFAULT_MAX_TOKENS = 4096
-
-
-def get_deepseek_model() -> str:
-    """Return the DeepSeek model ID to call for advisory reviews.
-
-    Defaults to `deepseek-v4-flash`. Set `DEEPSEEK_MODEL` to override (e.g.
-    to `deepseek-v4-pro` for a deeper review). An unset or empty value falls
-    back to the default.
-    """
-    return os.environ.get("DEEPSEEK_MODEL") or DEFAULT_DEEPSEEK_MODEL
-
-
-def get_max_tokens() -> int:
-    """Return the max_tokens budget for DeepSeek review responses."""
-    raw = os.environ.get("DEEPSEEK_MAX_TOKENS", str(DEFAULT_MAX_TOKENS))
-    try:
-        value = int(raw)
-    except ValueError:
-        return DEFAULT_MAX_TOKENS
-    return max(256, value)
-
-
-def extract_deepseek_review(data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    """Extract review text from DeepSeek chat-completions responses.
-
-    DeepSeek's API is OpenAI-compatible: the response shape is always
-    `{"choices": [{"message": {"content": "<string>"}}]}`.
-
-    Thinking-capable models (e.g. `deepseek-v4-flash`, `deepseek-reasoner`) also
-    return a `reasoning_content` field holding the chain-of-thought. If
-    `max_tokens` is exhausted before the model finishes reasoning, `content`
-    comes back empty even though the response itself is large - this used to
-    fail with no clue why (see allotmint#5697). `fetch_deepseek_review` disables
-    thinking mode to avoid this, but if a response still comes back with
-    reasoning and no content, surface that explicitly instead of a bare
-    empty-review error.
-    """
-    choices = data.get("choices", [])
-    if not choices:
-        return "", {}
-
-    choice = choices[0]
-    message = choice.get("message", {})
-    content = message.get("content", "")
-    review = content.strip() if isinstance(content, str) else ""
-
-    if not review:
-        reasoning = message.get("reasoning_content") or ""
-        finish_reason = choice.get("finish_reason")
-        if reasoning:
-            logger.warning(
-                "DeepSeek response contained only reasoning_content "
-                f"({len(reasoning)} chars, finish_reason={finish_reason!r}) and no "
-                "final content - the model likely ran out of max_tokens while "
-                "thinking. Consider raising DEEPSEEK_MAX_TOKENS."
-            )
-
-    return review, {}
-
-
-def fetch_deepseek_review(api_key: str, prompt: str) -> str:
-    """Call DeepSeek and return the advisory review body.
-
-    The workflow is expected to provide `DEEPSEEK_API_KEY`; HTTP errors are
-    surfaced with a non-zero exit code so the advisory workflow can post a
-    skip/failure notice instead of silently succeeding.
-    """
-    model = get_deepseek_model()
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": get_max_tokens(),
-        "temperature": 0.2,
-    }
-    if model != "deepseek-reasoner":
-        # Thinking-capable models (the default deepseek-v4-flash) default to
-        # thinking mode "on" with high effort, which can burn the entire
-        # max_tokens budget on reasoning_content and leave `content` empty
-        # (see allotmint#5697 - reviews were failing with a 200 response and no
-        # visible reason). PR review is a straightforward advisory task that
-        # doesn't need chain-of-thought, so disable it for a reliable final
-        # answer within budget. Skip this for deepseek-reasoner (an explicit
-        # override via DEEPSEEK_MODEL) since reasoning is that model's whole
-        # purpose and disabling isn't documented as supported for it.
-        payload["thinking"] = {"type": "disabled"}
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-
-    review, _extra = fetch_review(
-        "https://api.deepseek.com/v1/chat/completions",
-        headers,
-        payload,
-        extract_deepseek_review,
-        "DeepSeek",
-    )
-    return review
+from review_common import MCP_REPO_PROFILE
 
 
 def main() -> int:
-    """Run the advisory DeepSeek review flow."""
-    context = load_review_context("DEEPSEEK_API_KEY")
-    if not context.diff.strip():
-        return emit_empty_diff_notice("DeepSeek")
-
-    prompt = build_prompt(context.pr_title, context.diff, context.issue_body, context.discussion, context.verified_facts)
-    try:
-        review = fetch_deepseek_review(context.api_key, prompt)
-    except ProviderOutageError as exc:
-        return emit_outage_notice("DeepSeek", str(exc))
-    return finalize_review(review, "DeepSeek")
+    """Run the advisory DeepSeek review flow with allotmint-mcp's RepoProfile."""
+    return _cicaid_main(MCP_REPO_PROFILE)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     raise SystemExit(main())
