@@ -1,10 +1,7 @@
 # Shared issue/PR/review automation CLI (sync-issues, work-on-issue, local-review,
 # commit-and-push, run-ci-checks, etc.) -- see https://github.com/leonarduk/cicaid
 #
-# Pinned to a release wheel for reproducible installs; check
-# https://github.com/leonarduk/cicaid/releases for newer versions.
-#
-# SHA-256 of the wheel (verify before installing from a new release):
-#   curl -sL https://github.com/leonarduk/cicaid/releases/download/v0.5.0/cicaid_devtools-0.5.0-py3-none-any.whl | sha256sum
-# Expected: abd2d298348f4d6b0ce337d747c17f5a3b11c046221ab5b9646a0e1e7480c3dd
-cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.5.0/cicaid_devtools-0.5.0-py3-none-any.whl
+# Pinned to a specific commit until the next release (v0.6.0+) includes the
+# 7 new lib/ modules added for allotmint-mcp#429. Switch back to a release
+# wheel once a tagged release with these modules is available.
+cicaid-devtools @ git+https://github.com/leonarduk/cicaid.git@3e6a0fd
