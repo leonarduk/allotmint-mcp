@@ -96,6 +96,15 @@
 			<artifactId>mcp</artifactId>
 		</dependency>
 
+		<!-- Exposes a local .env file as a low-priority Spring PropertySource. Real
+		     environment variables and JVM properties continue to take precedence. -->
+		<dependency>
+			<groupId>me.paulschwarz</groupId>
+			<artifactId>springboot4-dotenv</artifactId>
+			<version>5.1.0</version>
+			<optional>true</optional>
+		</dependency>
+
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>

@@ -36,6 +36,25 @@ java -jar target/allotmint-mcp-server.jar
 
 Set `ALLOTMINT_API_BASE` to use a backend other than `http://localhost:8000`.
 
+### Local environment configuration
+
+For local development, copy the committed template and edit the values you need:
+
+```bash
+cp .env.example .env
+java -jar target/allotmint-mcp-server.jar
+```
+
+The Java server loads `.env` from its current working directory automatically. The file uses
+`KEY=value` syntax, and the available settings and defaults are listed in `.env.example`. Values
+from the real process environment or JVM system properties take precedence over `.env`, so the
+same JAR can safely use deployment-provided environment variables in testing and production.
+Spring's normal defaults apply when a key is absent everywhere.
+
+The `.env` file is ignored by Git and must not be committed because it may contain the short-lived
+authentication token. Commit only non-secret additions to `.env.example`. To disable `.env`
+loading entirely, set `SPRINGDOTENV_ENABLED=false` in the process environment.
+
 To run the optional HTTP transport at `/mcp`, with Actuator health, info, and metrics endpoints:
 
 ```bash
