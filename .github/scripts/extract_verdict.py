@@ -10,7 +10,13 @@ import re
 import sys
 from pathlib import Path
 
-from review_common import EMPTY_REVIEW_MARKER, PROVIDER_OUTAGE_MARKER
+from review_common import (
+    API_KEY_INVALID_MARKER,
+    API_KEY_MISSING_MARKER,
+    EMPTY_DIFF_MARKER,
+    EMPTY_REVIEW_MARKER,
+    PROVIDER_OUTAGE_MARKER,
+)
 
 # Primary format: bold verdict, optionally with backticks inside the bold markers, e.g.
 # `**APPROVE**` or `` **`APPROVE`** ``. Matched anywhere in the text (first occurrence wins),
@@ -62,11 +68,11 @@ def main(review_file: str, provider_name: str) -> int:
 
     Returns:
         0 if verdict is APPROVE, 1 if REQUEST CHANGES or no verdict found,
-        2 if the review was skipped due to a provider outage (see
-        `review_common.PROVIDER_OUTAGE_MARKER`) or an empty provider response
-        (see `review_common.EMPTY_REVIEW_MARKER`) — both soft-fails distinct
-        from a genuine review failure, so the calling workflow doesn't block
-        the merge gate over an infra incident.
+        2 if the review was skipped due to an empty diff, a provider outage,
+        an empty provider response, or a missing/invalid API key (see the
+        `review_common.*_MARKER` constants) — all soft-fails distinct from a
+        genuine review failure, so the calling workflow doesn't block the
+        merge gate over an infra incident or a docs-only PR.
     """
     try:
         review_text = Path(review_file).read_text()
@@ -78,12 +84,24 @@ def main(review_file: str, provider_name: str) -> int:
         logger.error(f"ERROR: {provider_name} review output was empty")
         return 1
 
+    if EMPTY_DIFF_MARKER in review_text:
+        print(f"⚠ {provider_name} review skipped: empty diff (see log for details)")
+        return 2
+
     if PROVIDER_OUTAGE_MARKER in review_text:
         print(f"⚠ {provider_name} review skipped: provider outage (see log for details)")
         return 2
 
     if EMPTY_REVIEW_MARKER in review_text:
         print(f"⚠ {provider_name} review skipped: empty provider response (see log for details)")
+        return 2
+
+    if API_KEY_MISSING_MARKER in review_text:
+        print(f"⚠ {provider_name} review skipped: API key not configured (see log for details)")
+        return 2
+
+    if API_KEY_INVALID_MARKER in review_text:
+        print(f"⚠ {provider_name} review skipped: API key rejected (see log for details)")
         return 2
 
     verdict = extract_verdict(review_text)
