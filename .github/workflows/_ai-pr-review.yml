@@ -165,10 +165,38 @@ import sys; sys.exit(main())
         run: |
           python3 -c "
 import os, sys
-sys.path.insert(0, '.github/scripts')
 from importlib import import_module
+from cicaid_devtools.lib.review_common import RepoProfile
+
+MCP_REPO_PROFILE = RepoProfile(
+    name='allotmint-mcp',
+    persona='a Java/Spring Boot Model Context Protocol (MCP) server exposing allotmint data over stdio/HTTP transports.',
+    stack_paragraph=(
+        'The stack is Java 25 + Spring Boot + the MCP Java SDK '
+        '(\`io.modelcontextprotocol.sdk\`), built with Maven. '
+        'Key constraints: preserve MCP protocol correctness (tool/resource schemas, stdio framing), '
+        'keep the stdio transport free of stray stdout writes (anything not valid MCP JSON-RPC '
+        'breaks the client), and avoid regressions in the Spring Boot startup path.'
+    ),
+    diff_file_types='Java, XML, YAML, properties, Markdown, shell/PowerShell scripts (.sh/.ps1), Python (.py)',
+    dimension_2_body=(
+        'Blocking only: incorrect behaviour, unhandled edge cases, resource leaks (unclosed '
+        'streams/connections), null-safety violations, swallowed exceptions, thread-safety '
+        'issues, or security/data-loss risks. For documentation PRs: factual errors or '
+        'dangerously misleading statements.'
+    ),
+    dimension_3_title='MCP protocol and Spring Boot safety',
+    dimension_3_body=(
+        '- Anything writing to stdout on the stdio transport that is not valid MCP JSON-RPC '
+        '(breaks the protocol framing for stdio clients)? '
+        '- Tool/resource schema definitions that do not match their handler actual behaviour? '
+        '- Spring Boot bean wiring, configuration, or startup changes that could break the app '
+        'context, or Maven dependency/scope changes with unintended transitive effects? '
+        '- Secrets, permissions, or CI assumptions mishandled?'
+    ),
+)
+
 mod = import_module(os.environ['CICAID_MODULE'])
-from repo_profile import MCP_REPO_PROFILE
 sys.exit(mod.main(MCP_REPO_PROFILE))
 " > /tmp/${{ inputs.provider_id }}_review_body.md
 
@@ -207,9 +235,21 @@ sys.exit(main('/tmp/${{ inputs.provider_id }}_review_body.md', '${{ inputs.provi
           PR_NUMBER: ${{ github.event.pull_request.number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          bash .github/scripts/build_review_comment.sh /tmp/${{ inputs.provider_id }}_review_body.md \
-            "${{ inputs.provider_name }}" "${{ inputs.workflow_file }}" "$RUN_URL" > /tmp/${{ inputs.provider_id }}_comment_body.md
-
+          BODY_FILE="/tmp/${{ inputs.provider_id }}_review_body.md"
+          PROVIDER="${{ inputs.provider_name }}"
+          WORKFLOW="${{ inputs.workflow_file }}"
+          if [ -s "$BODY_FILE" ]; then
+            echo "## ${PROVIDER} AI Code Review"
+            echo ""
+            cat "$BODY_FILE"
+            echo ""
+            echo "---"
+            echo "*Reviewed by ${PROVIDER} via [${WORKFLOW}](.github/workflows/${WORKFLOW}). Advisory only.*"
+          else
+            echo "## ${PROVIDER} AI Code Review - Failed"
+            echo ""
+            echo "The ${PROVIDER} review failed to complete. Check [Actions]($RUN_URL) for error details."
+          fi > /tmp/${{ inputs.provider_id }}_comment_body.md
           cat /tmp/${{ inputs.provider_id }}_comment_body.md >> "$GITHUB_STEP_SUMMARY"
 
           if ! gh pr comment "$PR_NUMBER" --body-file /tmp/${{ inputs.provider_id }}_comment_body.md; then
