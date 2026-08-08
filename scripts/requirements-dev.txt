@@ -3,8 +3,4 @@
 #
 # Pinned to a release wheel for reproducible installs; check
 # https://github.com/leonarduk/cicaid/releases for newer versions.
-#
-# SHA-256 of the wheel (verify before installing from a new release):
-#   curl -sL https://github.com/leonarduk/cicaid/releases/download/v0.5.0/cicaid_devtools-0.5.0-py3-none-any.whl | sha256sum
-# Expected: abd2d298348f4d6b0ce337d747c17f5a3b11c046221ab5b9646a0e1e7480c3dd
-cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.5.0/cicaid_devtools-0.5.0-py3-none-any.whl
+cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.5.2/cicaid_devtools-0.5.2-py3-none-any.whl
