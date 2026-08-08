@@ -1,487 +1,68 @@
-"""Shared helpers for advisory AI PR review scripts and workflows."""
+"""allotmint-mcp's RepoProfile plus re-exports of the shared cicaid-devtools review helpers.
+
+The retry/outage/auth-error handling, diff truncation, and prompt scaffolding
+used to be forked here from the cicaid-devtools package (see
+https://github.com/leonarduk/cicaid). That duplication is now resolved:
+everything except this repo's own review persona (MCP_REPO_PROFILE) comes
+from the installed package. See allotmint-mcp#409.
+"""
 
 from __future__ import annotations
-import logging
 
-
-logger = logging.getLogger(__name__)
-import json
-import os
-import sys
-import time
-import urllib.error
-import urllib.request
-from dataclasses import dataclass
-from typing import Any, Callable
-
-MAX_DIFF_CHARS = 120_000
-REQUEST_TIMEOUT_SECONDS = 60
-# 5 attempts with exponential backoff (2/4/8/16s between attempts, ~30s total)
-# rides out a short provider outage; 3 flat 2s retries (the old behaviour)
-# proved too short to survive the transient OpenAI 500s seen on PR #113.
-MAX_FETCH_ATTEMPTS = 5
-RETRY_BACKOFF_SECONDS = 2
-RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
-DEFAULT_ISSUE_BODY = "No linked issue found. Review code on its own merits."
-# Sentinel embedded in the review body when a genuine provider outage exhausts
-# all retries. extract_verdict.py looks for this marker so the workflow can
-# treat it as a skipped check rather than a blocking "REQUEST CHANGES"
-# verdict — an infra outage isn't a code-review finding and shouldn't hold up
-# a merge the way a real review failure does.
-PROVIDER_OUTAGE_MARKER = "**REVIEW SKIPPED - PROVIDER OUTAGE**"
-# Sentinel embedded in the review body when a provider responds 200 OK but
-# extracts to no usable review text - observed with DeepSeek's reasoning
-# models, which can spend their whole `max_tokens` budget on internal
-# reasoning and never write a final answer into `content`. Handled the same
-# way as PROVIDER_OUTAGE_MARKER (see extract_verdict.py): a soft-fail skip,
-# not a blocking verdict, since an empty provider response is a provider/config
-# issue rather than a code-review finding.
-EMPTY_REVIEW_MARKER = "**REVIEW SKIPPED - EMPTY PROVIDER RESPONSE**"
-TRUNCATION_NOTICE_TEMPLATE = (
-    "\n\n[diff truncated after {kept_files} file(s); skipped {skipped_files} additional file(s) "
-    "to stay within the 120k-character review budget while preserving whole-file diff blocks]"
+from cicaid_devtools.lib.review_common import (
+    API_KEY_INVALID_MARKER,
+    API_KEY_MISSING_MARKER,
+    EMPTY_DIFF_MARKER,
+    EMPTY_REVIEW_MARKER,
+    MAX_DIFF_CHARS,
+    PROVIDER_OUTAGE_MARKER,
+    ProviderAuthError,
+    ProviderOutageError,
+    RepoProfile,
+    ReviewContext,
+    build_discussion_section,
+    build_prompt,
+    count_changed_files,
+    emit_empty_diff_notice,
+    emit_invalid_key_notice,
+    emit_missing_key_notice,
+    emit_outage_notice,
+    extract_filenames_from_diff,
+    extract_important_filenames,
+    fetch_review,
+    filter_binary_files,
+    finalize_review,
+    format_truncation_log,
+    get_required_env,
+    load_review_context,
+    prioritize_diff_blocks,
+    redact_env_var_names,
+    split_diff_blocks,
+    truncate_diff,
 )
 
-
-@dataclass(frozen=True)
-class ReviewContext:
-    """Environment-driven inputs shared by the DeepSeek and GPT review scripts."""
-
-    api_key: str
-    pr_title: str
-    diff: str
-    issue_body: str
-    discussion: str
-    verified_facts: str = ""
-
-
-def get_required_env(name: str) -> str:
-    """Return a required environment variable or raise SystemExit with a clear error."""
-    value = os.environ.get(name, "")
-    if not value:
-        logger.error(f"ERROR: {name} not set")
-        raise SystemExit(1)
-    return value
-
-
-def load_review_context(api_key_env: str) -> ReviewContext:
-    """Load the workflow inputs expected by the review scripts from environment variables.
-
-    The workflows pass PR metadata through `PR_TITLE`, `DIFF`, and `ISSUE_BODY`, while the
-    provider-specific secret must be present in `api_key_env`.
-    """
-
-    return ReviewContext(
-        api_key=get_required_env(api_key_env),
-        pr_title=os.environ.get("PR_TITLE", ""),
-        diff=os.environ.get("DIFF", ""),
-        issue_body=os.environ.get("ISSUE_BODY", DEFAULT_ISSUE_BODY),
-        discussion=os.environ.get("DISCUSSION", ""),
-        verified_facts=os.environ.get("VERIFIED_FACTS", ""),
-    )
-
-
-def build_discussion_section(discussion: str) -> str:
-    """Return the prompt section covering discussion since the last review, if any."""
-    if not discussion.strip():
-        return ""
-    return f"""
-
-## Discussion since your last review
-The following PR comments were posted after your last review (oldest first).
-Treat them as **pointers**, not as proof. A comment claiming something is "fixed" or
-"addressed" does not by itself clear a blocking concern. However, a comment that points
-to a specific commit SHA or file:line reference may be treated as evidence the concern
-was addressed; verify it against the diff if the relevant block is present. If a blocking
-concern is only verbally dismissed with no code reference, you must still REQUEST CHANGES.
-
-{discussion}"""
-
-
-def build_prompt(pr_title: str, diff: str, issue_body: str, discussion: str = "", verified_facts: str = "") -> str:
-    """Build the shared advisory review prompt used by both models."""
-    discussion_section = build_discussion_section(discussion)
-    verified_facts_section = f"\n- {verified_facts}" if verified_facts else ""
-    return f"""You are a senior engineer reviewing a pull request for **allotmint-mcp**,
-a Java/Spring Boot Model Context Protocol (MCP) server exposing allotmint data over stdio/HTTP transports.
-
-The stack is Java 25 + Spring Boot + the MCP Java SDK (`io.modelcontextprotocol.sdk`), built with Maven.
+MCP_REPO_PROFILE = RepoProfile(
+    name="allotmint-mcp",
+    persona=(
+        "a Java/Spring Boot Model Context Protocol (MCP) server exposing "
+        "allotmint data over stdio/HTTP transports."
+    ),
+    stack_paragraph="""The stack is Java 25 + Spring Boot + the MCP Java SDK (`io.modelcontextprotocol.sdk`), built with Maven.
 Key constraints: preserve MCP protocol correctness (tool/resource schemas, stdio framing), keep the
 stdio transport free of stray stdout writes (anything not valid MCP JSON-RPC breaks the client), and
-avoid regressions in the Spring Boot startup path.{verified_facts_section}
-
-## Linked issue / acceptance criteria
-{issue_body}
-
-## PR title
-{pr_title}
-
-## Diff (Java, XML, YAML, properties, Markdown, shell/PowerShell scripts (.sh/.ps1), Python (.py) — truncated at 120k chars)
-{diff}
-
-If the diff is empty, this is likely a docs-only or config-only PR whose file types
-were not captured. In that case, review the PR based solely on the linked issue
-acceptance criteria and PR title, and note that no diff was available.
-{discussion_section}
-
-Review this PR across these dimensions. Be direct and specific — cite line numbers
-or method/class names where relevant. Spend your words on real concerns.
-
-**Omit any section entirely if you have nothing to say about it.**
-Do not write "No issues found" or placeholder text for empty sections — just skip them.
-
-### 1. Acceptance criteria
-Does the diff satisfy every AC in the linked issue? Call out any gaps explicitly.
-If no diff is available, assess whether the PR title and issue description suggest
-the work is complete and correctly scoped.
-
-### 2. Bugs and logic errors
-Blocking only: incorrect behaviour, unhandled edge cases, resource leaks (unclosed
+avoid regressions in the Spring Boot startup path.""",
+    diff_file_types=(
+        "Java, XML, YAML, properties, Markdown, shell/PowerShell scripts (.sh/.ps1), Python (.py)"
+    ),
+    dimension_2_body="""Blocking only: incorrect behaviour, unhandled edge cases, resource leaks (unclosed
 streams/connections), null-safety violations, swallowed exceptions, thread-safety
 issues, or security/data-loss risks. For documentation PRs: factual errors or
-dangerously misleading statements.
-
-### 3. MCP protocol and Spring Boot safety
-Blocking only:
-- Anything writing to stdout on the stdio transport that isn't valid MCP JSON-RPC
+dangerously misleading statements.""",
+    dimension_3_title="MCP protocol and Spring Boot safety",
+    dimension_3_body="""- Anything writing to stdout on the stdio transport that isn't valid MCP JSON-RPC
   (breaks the protocol framing for stdio clients)?
 - Tool/resource schema definitions that don't match their handler's actual behaviour?
 - Spring Boot bean wiring, configuration, or startup changes that could break the app
   context, or Maven dependency/scope changes with unintended transitive effects?
-- Secrets, permissions, or CI assumptions mishandled?
-
-### 4. Test coverage
-Are the acceptance criteria exercised by tests or validation steps? Note obvious
-missing cases only if they represent a real regression risk.
-
-### 5. Suggested follow-up issues (optional)
-For non-blocking improvements (style consistency, missing test coverage, refactor
-opportunities, etc.) that are real but should not block this PR: list each as a
-one-line suggested GitHub issue title. Do not request changes for these — they
-belong in the backlog, not this review.
-
-End with a **verdict line** as the very last line of your review, in exactly this format
-(do not add backticks around the verdict, and do not add a list marker such as `-` before it):
-
-- `**APPROVE**` — no blocking concerns (non-blocking items go in section 5 above)
-- `**REQUEST CHANGES**` — one or more blocking bugs, security issues, or unmet AC items (list them)
-
-The verdict line must contain nothing but the bold verdict itself, optionally followed
-by a short "— explanation" on the same line. Do not use COMMENT as a verdict. If there
-are only non-blocking observations, use APPROVE and put them in section 5."""
-
-
-def emit_empty_diff_notice(provider_name: str) -> int:
-    """Exit cleanly when the filtered diff is empty instead of making a no-context API call."""
-    print(
-        f"No {provider_name} review generated because the filtered diff was empty. "
-        "The workflow can still post this advisory note without failing."
-    )
-    return 0
-
-
-class ProviderOutageError(RuntimeError):
-    """Raised when a retryable HTTP/network error exhausts all retry attempts.
-
-    Kept distinct from the `SystemExit(1)` raised for non-retryable errors
-    (bad model name, auth failures, malformed JSON) so callers can treat a
-    genuine transient outage as a soft-fail advisory instead of a hard
-    workflow failure, while config/auth bugs still fail loudly.
-    """
-
-
-def emit_outage_notice(provider_name: str, detail: str) -> int:
-    """Print an advisory notice for a genuine provider outage and return success.
-
-    Printing (rather than exiting non-zero) lets the workflow post this as the
-    review body without the merge-gate check treating it as "REQUEST CHANGES".
-    """
-    print(
-        f"{provider_name} review could not be completed after {MAX_FETCH_ATTEMPTS} "
-        f"attempts: {detail}\n\nThis looks like a transient provider outage rather "
-        "than a code issue; re-run the check once the provider recovers.\n\n"
-        f"{PROVIDER_OUTAGE_MARKER}"
-    )
-    return 0
-
-
-def finalize_review(review: str, provider_name: str) -> int:
-    """Print a non-empty review, or soft-fail when the provider returned no content.
-
-    A 200 OK response with no usable review text (observed with DeepSeek's
-    reasoning models exhausting their `max_tokens` budget on internal reasoning
-    before writing a final answer - see EMPTY_REVIEW_MARKER) is a provider/config
-    issue, not a real review verdict. It's treated the same way as a genuine
-    provider outage: print an advisory body carrying EMPTY_REVIEW_MARKER and
-    return 0, so extract_verdict.py soft-fails the check (exit 2) instead of the
-    workflow defaulting to a blocking "CHANGES REQUESTED".
-    """
-    if not review.strip():
-        logger.warning(f"WARNING: {provider_name} API returned an empty review")
-        print(
-            f"{provider_name} review could not be completed: the API responded "
-            "successfully but returned no review content (possibly a reasoning "
-            "model's token budget exhausted before producing a final answer). "
-            "This looks like a provider/config issue rather than a code issue; "
-            "re-run the check if it persists.\n\n"
-            f"{EMPTY_REVIEW_MARKER}"
-        )
-        return 0
-    print(review.strip())
-    return 0
-
-
-def extract_filenames_from_diff(diff_text: str) -> list[str]:
-    """Extract filenames from diff in order of appearance."""
-    filenames = []
-    for line in diff_text.splitlines():
-        if line.startswith("diff --git "):
-            # Extract filename from "diff --git a/path/to/file b/path/to/file"
-            parts = line.split()
-            if len(parts) >= 4:
-                # Get the filename (remove a/ and b/ prefixes)
-                filename = parts[3]
-                if filename.startswith("b/"):
-                    filename = filename[2:]
-                filenames.append(filename)
-    return filenames
-
-
-def extract_important_filenames(text: str) -> set[str]:
-    """Extract filenames mentioned in text (PR title or issue body)."""
-    import re
-    filenames = set()
-    for match in re.finditer(r'\b[\w\-./]+\.(?:java|xml|yml|yaml|properties|sh|md)\b', text):
-        filenames.add(match.group(0))
-    return filenames
-
-
-def prioritize_diff_blocks(diff_text: str, pr_title: str = "", issue_body: str = "") -> list[str]:
-    """Split and prioritize diff blocks by importance.
-
-    Returns blocks sorted so that files mentioned in PR title/issue come first,
-    followed by other changed files.
-    """
-    blocks = split_diff_blocks(diff_text)
-    if not blocks or not (pr_title or issue_body):
-        return blocks
-
-    # Extract filenames mentioned in PR title and issue body
-    important_files = extract_important_filenames(f"{pr_title} {issue_body}")
-
-    # Extract filename for each block
-    def get_block_filename(block: str) -> str:
-        for line in block.splitlines():
-            if line.startswith("diff --git "):
-                parts = line.split()
-                if len(parts) >= 4:
-                    filename = parts[3]
-                    if filename.startswith("b/"):
-                        filename = filename[2:]
-                    return filename
-        return ""
-
-    # Check if a block's file matches any important file
-    def is_important(block: str) -> bool:
-        block_file = get_block_filename(block)
-        if not block_file:
-            return False
-        # Check full path match
-        if block_file in important_files:
-            return True
-        # Check basename match (e.g., "ToolConfig.java" matches "src/main/java/.../ToolConfig.java")
-        basename = os.path.basename(block_file)
-        for important in important_files:
-            if basename == os.path.basename(important) or basename == important:
-                return True
-        return False
-
-    # Sort blocks: important files first, then others
-    important_blocks = [b for b in blocks if is_important(b)]
-    other_blocks = [b for b in blocks if not is_important(b)]
-
-    return important_blocks + other_blocks
-
-
-def split_diff_blocks(diff_text: str) -> list[str]:
-    """Split a git diff into whole-file blocks so truncation never cuts mid-file.
-
-    Preserving complete `diff --git` blocks avoids mid-line truncation and helps keep YAML/XML
-    hunks structurally intelligible when the workflow must drop content to fit the model budget.
-    """
-    if not diff_text:
-        return []
-
-    blocks: list[str] = []
-    current: list[str] = []
-    for line in diff_text.splitlines(keepends=True):
-        if line.startswith("diff --git ") and current:
-            blocks.append("".join(current))
-            current = [line]
-        else:
-            current.append(line)
-    if current:
-        blocks.append("".join(current))
-    return blocks
-
-
-def filter_binary_files(diff_text: str) -> str:
-    """Drop binary file entries from a git diff before it reaches the model.
-
-    Binary blocks (jars, compiled artifacts) waste review budget and can
-    confuse the model with non-text content; reuses ``split_diff_blocks`` so
-    whole-file boundaries are preserved even for renamed binary files.
-    """
-    blocks = split_diff_blocks(diff_text)
-    text_blocks = [
-        block for block in blocks if "Binary files" not in block and "GIT binary patch" not in block
-    ]
-    return "".join(text_blocks)
-
-
-def truncate_diff(diff_text: str, limit: int = MAX_DIFF_CHARS) -> tuple[str, bool]:
-    """Truncate a diff on whole-file boundaries and emit a notice when files are skipped.
-
-    The character cap exists to stay within model context and comment-size budgets. When the
-    diff is too large, we keep only complete file blocks that fit and append a short summary rather
-    than slicing through a line or partial YAML/XML structure.
-
-    If every file block individually exceeds the limit (e.g. a single enormous file), we fall back
-    to a hard line-boundary truncation of the first block so callers always receive non-empty output
-    for a non-empty diff.
-    """
-    if len(diff_text) <= limit:
-        return diff_text, False
-
-    blocks = split_diff_blocks(diff_text)
-    kept: list[str] = []
-    used = 0
-
-    for block in blocks:
-        if len(block) > limit:
-            continue
-        projected = used + len(block)
-        if projected > limit:
-            break
-        kept.append(block)
-        used = projected
-
-    if not kept:
-        # Every block exceeds the limit individually.  Hard-truncate the first block at the
-        # nearest line boundary so we still send something useful to the model.
-        first_block = blocks[0] if blocks else diff_text
-        hard_cut = first_block[:limit]
-        if "\n" in hard_cut:
-            hard_cut = hard_cut[: hard_cut.rfind("\n") + 1]
-        notice = TRUNCATION_NOTICE_TEMPLATE.format(kept_files=0, skipped_files=len(blocks))
-        return f"{hard_cut.rstrip()}{notice}", True
-
-    skipped_files = max(len(blocks) - len(kept), 0)
-    notice = TRUNCATION_NOTICE_TEMPLATE.format(
-        kept_files=len(kept),
-        skipped_files=skipped_files,
-    )
-    allowed_notice = max(limit - len(notice), 0)
-    truncated = "".join(kept)
-    if len(truncated) > allowed_notice:
-        trimmed = truncated[:allowed_notice]
-        truncated = trimmed[: trimmed.rfind("\n") + 1] if "\n" in trimmed else ""
-    return f"{truncated.rstrip()}{notice}", True
-
-
-def count_changed_files(diff_text: str) -> int:
-    """Count diff file headers for workflow logging."""
-    return sum(1 for line in diff_text.splitlines() if line.startswith("diff --git "))
-
-
-def format_truncation_log(original_diff: str, truncated_diff: str) -> str:
-    """Return a concise stderr message for workflow logs when truncation occurs."""
-    return (
-        "INFO: Truncated review diff from "
-        f"{len(original_diff)} to {len(truncated_diff)} characters across "
-        f"{count_changed_files(original_diff)} file block(s) to preserve whole diff sections."
-    )
-
-
-def _post_once(request: urllib.request.Request, provider_label: str) -> dict[str, Any]:
-    """Issue a single POST attempt and return the parsed JSON body.
-
-    Raises `urllib.error.HTTPError`/`URLError`/`json.JSONDecodeError` on failure;
-    the caller decides which of those are worth retrying.
-    """
-    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-        status = getattr(response, "status", None)
-        raw = response.read()
-        logger.info(
-            f"{provider_label} API responded status={status} bytes={len(raw)}"
-        )
-        return json.loads(raw)
-
-
-def fetch_review(
-    url: str,
-    headers: dict[str, str],
-    payload: dict[str, Any],
-    extractor: Callable[[dict[str, Any]], tuple[str, dict[str, Any]]],
-    provider_label: str,
-) -> tuple[str, dict[str, Any]]:
-    """POST `payload` to `url` and return the review text plus provider-specific extras.
-
-    Shared by the DeepSeek and GPT review scripts: handles the HTTP POST, timeout,
-    retry-with-backoff on transient failures, `HTTPError` reporting, and empty-response
-    warning so each script only has to supply its endpoint, headers, payload, and an
-    `extractor` that turns the parsed JSON response into `(review_text, extra)`.
-
-    Retries up to `MAX_FETCH_ATTEMPTS` times with exponential backoff (`RETRY_BACKOFF_SECONDS
-    * 2 ** (attempt - 1)`) on network errors (`URLError`, including timeouts) and HTTP statuses
-    in `RETRYABLE_HTTP_STATUSES` (429 rate limiting, 5xx server errors). Raises
-    `ProviderOutageError` once those retries are exhausted, since that's an infra failure
-    rather than a code-review finding. Non-retryable HTTP errors (e.g. 401/403 auth failures)
-    and malformed JSON responses fail immediately via `SystemExit` without retrying, since
-    those indicate a config bug that needs a human, not a transient outage.
-    """
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode(),
-        headers=headers,
-        method="POST",
-    )
-
-    data: dict[str, Any] | None = None
-    for attempt in range(1, MAX_FETCH_ATTEMPTS + 1):
-        try:
-            data = _post_once(request, provider_label)
-            break
-        except urllib.error.HTTPError as exc:
-            # Keep the provider response in stderr so maintainers can distinguish auth, quota, and API failures.
-            body = exc.read().decode()
-            logger.error(f"ERROR: {provider_label} API returned {exc.code}: {body}")
-            if exc.code not in RETRYABLE_HTTP_STATUSES:
-                raise SystemExit(1) from exc
-            if attempt == MAX_FETCH_ATTEMPTS:
-                raise ProviderOutageError(
-                    f"{provider_label} API returned {exc.code} after {MAX_FETCH_ATTEMPTS} attempts"
-                ) from exc
-        except urllib.error.URLError as exc:
-            logger.error(f"ERROR: {provider_label} API request failed: {exc.reason}")
-            if attempt == MAX_FETCH_ATTEMPTS:
-                raise ProviderOutageError(
-                    f"{provider_label} API request failed after {MAX_FETCH_ATTEMPTS} attempts: {exc.reason}"
-                ) from exc
-        except json.JSONDecodeError as exc:
-            logger.error(f"ERROR: {provider_label} API returned non-JSON response: {exc}")
-            raise SystemExit(1) from exc
-
-        delay = RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))
-        logger.info(
-            f"{provider_label} attempt {attempt}/{MAX_FETCH_ATTEMPTS} failed; "
-            f"retrying in {delay}s"
-        )
-        time.sleep(delay)
-
-    review, extra = extractor(data)
-    if not review.strip():
-        logger.warning(
-            f"{provider_label} API returned an empty review body"
-        )
-    return review, extra
+- Secrets, permissions, or CI assumptions mishandled?""",
+)

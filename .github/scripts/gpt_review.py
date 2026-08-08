@@ -15,9 +15,13 @@ import os
 from typing import Any
 
 from review_common import (
+    MCP_REPO_PROFILE,
+    ProviderAuthError,
     ProviderOutageError,
     build_prompt,
     emit_empty_diff_notice,
+    emit_invalid_key_notice,
+    emit_missing_key_notice,
     emit_outage_notice,
     fetch_review,
     finalize_review,
@@ -77,12 +81,23 @@ def fetch_openai_review(api_key: str, prompt: str) -> str:
 def main() -> int:
     """Run the advisory GPT review flow."""
     context = load_review_context("OPENAI_API_KEY")
+    if not context.api_key:
+        return emit_missing_key_notice("GPT", "OPENAI_API_KEY")
     if not context.diff.strip():
         return emit_empty_diff_notice("GPT")
 
-    prompt = build_prompt(context.pr_title, context.diff, context.issue_body, context.discussion, context.verified_facts)
+    prompt = build_prompt(
+        context.pr_title,
+        context.diff,
+        context.issue_body,
+        context.discussion,
+        context.verified_facts,
+        MCP_REPO_PROFILE,
+    )
     try:
         review = fetch_openai_review(context.api_key, prompt)
+    except ProviderAuthError as exc:
+        return emit_invalid_key_notice("GPT", "OPENAI_API_KEY", str(exc))
     except ProviderOutageError as exc:
         return emit_outage_notice("GPT", str(exc))
     return finalize_review(review, "OpenAI")

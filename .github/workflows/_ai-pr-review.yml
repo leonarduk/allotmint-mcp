@@ -68,6 +68,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install cicaid-devtools
+        run: python -m pip install -r scripts/requirements-dev.txt
+
       - name: Get linked issue body
         id: issue
         env:
@@ -174,8 +182,9 @@ jobs:
           verdict_exit=$?
           set -e
 
-          # Exit codes from extract_verdict.py: 0 = APPROVE, 2 = provider outage
-          # (soft-fail, doesn't block merge), anything else = REQUEST CHANGES /
+          # Exit codes from extract_verdict.py: 0 = APPROVE, 2 = soft-fail skip
+          # (empty diff, provider outage, empty response, or missing/invalid
+          # API key -- doesn't block merge), anything else = REQUEST CHANGES /
           # missing verdict (hard fail).
           if [ "$verdict_exit" -eq 0 ]; then
             echo "approved=true" >> "$GITHUB_OUTPUT"
