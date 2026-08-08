@@ -1,45 +1,15 @@
-"""allotmint-mcp's RepoProfile plus re-exports of the shared cicaid-devtools review helpers.
+"""allotmint-mcp's RepoProfile — the sole local override allowed by cicaid#409.
 
-The retry/outage/auth-error handling, diff truncation, and prompt scaffolding
-used to be forked here from the cicaid-devtools package (see
-https://github.com/leonarduk/cicaid). That duplication is now resolved:
-everything except this repo's own review persona (MCP_REPO_PROFILE) comes
-from the installed package. See allotmint-mcp#409.
+Everything else (review logic, verdict extraction, follow-up creation, diff
+preparation, discussion fetching, symbol verification, LLM labels) is in the
+installed cicaid-devtools package. This file only supplies the repo-specific
+persona, stack description, and MCP protocol safety checks that the shared
+review prompt injects via RepoProfile.
 """
 
 from __future__ import annotations
 
-from cicaid_devtools.lib.review_common import (
-    API_KEY_INVALID_MARKER,
-    API_KEY_MISSING_MARKER,
-    EMPTY_DIFF_MARKER,
-    EMPTY_REVIEW_MARKER,
-    MAX_DIFF_CHARS,
-    PROVIDER_OUTAGE_MARKER,
-    ProviderAuthError,
-    ProviderOutageError,
-    RepoProfile,
-    ReviewContext,
-    build_discussion_section,
-    build_prompt,
-    count_changed_files,
-    emit_empty_diff_notice,
-    emit_invalid_key_notice,
-    emit_missing_key_notice,
-    emit_outage_notice,
-    extract_filenames_from_diff,
-    extract_important_filenames,
-    fetch_review,
-    filter_binary_files,
-    finalize_review,
-    format_truncation_log,
-    get_required_env,
-    load_review_context,
-    prioritize_diff_blocks,
-    redact_env_var_names,
-    split_diff_blocks,
-    truncate_diff,
-)
+from cicaid_devtools.lib.review_common import RepoProfile
 
 MCP_REPO_PROFILE = RepoProfile(
     name="allotmint-mcp",

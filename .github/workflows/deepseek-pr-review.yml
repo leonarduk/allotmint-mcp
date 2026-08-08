@@ -15,7 +15,7 @@ jobs:
     with:
       provider_name: DeepSeek
       provider_id: deepseek
-      review_script: .github/scripts/deepseek_review.py
+      provider_module: deepseek_review
       workflow_file: deepseek-pr-review.yml
     secrets:
       openai_api_key: ${{ secrets.OPENAI_API_KEY }}
