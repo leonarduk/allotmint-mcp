@@ -99,24 +99,22 @@ jobs:
       - name: Verify console scripts are importable
         run: |
           set -euo pipefail
-          # Every console-script entry point must import without error
-          # (catches missing modules, broken wheels, dependency issues).
-          # Only cli.main() is called with --help here because it accepts
-          # an explicit argv parameter; other commands read sys.argv
-          # directly and would try to act on a CI runner.
-          python -c "import cicaid_devtools.cli; cicaid_devtools.cli.main(['--help'])"
-          python -c "import cicaid_devtools.sync_issues"
-          python -c "import cicaid_devtools.create_issue"
-          python -c "import cicaid_devtools.triage_issues"
-          python -c "import cicaid_devtools.work_on_issue"
-          python -c "import cicaid_devtools.work_on_pr"
-          python -c "import cicaid_devtools.implement_issue_with_aider"
-          python -c "import cicaid_devtools.run_ci_checks"
-          python -c "import cicaid_devtools.local_review"
-          python -c "import cicaid_devtools.pr_review"
-          python -c "import cicaid_devtools.dependabot_auto_merge"
-          python -c "import cicaid_devtools.review_issue"
-          python -c "import cicaid_devtools.add_issue_to_pr"
-          python -c "import cicaid_devtools.clear_ai_slop_issues"
+          # Every console-script entry point (per the package's
+          # entry_points.txt) must import without error (catches missing
+          # modules, broken wheels, dependency issues). None are invoked:
+          # most read sys.argv directly and would try to act on a CI runner.
+          python -c "import cicaid_devtools.a_sync_issues"
+          python -c "import cicaid_devtools.b_create_issue"
+          python -c "import cicaid_devtools.c_triage_issues"
+          python -c "import cicaid_devtools.d_work_on_issue"
+          python -c "import cicaid_devtools.e_work_on_pr"
+          python -c "import cicaid_devtools.f_implement_issue_with_aider"
+          python -c "import cicaid_devtools.h_run_ci_checks"
+          python -c "import cicaid_devtools.i_local_review"
+          python -c "import cicaid_devtools.l_pr_review"
+          python -c "import cicaid_devtools.m_dependabot_auto_merge"
+          python -c "import cicaid_devtools.o_review_issue"
+          python -c "import cicaid_devtools.p_add_issue_to_pr"
+          python -c "import cicaid_devtools.q_clear_ai_slop_issues"
           python -c "import cicaid_devtools.lib.commit_and_push"
           python -c "import cicaid_devtools.lib.publish_pr"
