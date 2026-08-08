@@ -100,7 +100,7 @@ jobs:
         run: |
           git fetch origin "$BASE_REF"
           DIFF=$(python3 -c "
-from cicaid_devtools.lib.prepare_review_diff import main
+from cicaid_devtools.lib.review_diff import main
 import sys; sys.exit(main())
 " --base-ref "$BASE_REF" --pr-title "$PR_TITLE" --issue-body "$ISSUE_BODY")
           DELIM="EOF_$(uuidgen | tr -d '-')"
@@ -121,7 +121,7 @@ import sys; sys.exit(main())
             MAX_CHARS_ARGS=(--max-chars "$DISCUSSION_MAX_CHARS")
           fi
           DISCUSSION=$(python3 -c "
-from cicaid_devtools.lib.prepare_review_discussion import main
+from cicaid_devtools.lib.review_discussion import main
 import sys; sys.exit(main())
 " --repo "${{ github.repository }}" \
   --pr-number "${{ github.event.pull_request.number }}" \
@@ -140,7 +140,7 @@ import sys; sys.exit(main())
           DIFF_OUTPUT: ${{ steps.diff.outputs.diff }}
         run: |
           VERIFIED=$(python3 -c "
-from cicaid_devtools.lib.extract_verified_symbols import main
+from cicaid_devtools.lib.verified_symbols import main
 import sys; sys.exit(main())
 " --diff "$DIFF_OUTPUT")
           DELIM="EOF_$(uuidgen | tr -d '-')"
@@ -282,13 +282,13 @@ sys.exit(main('/tmp/${{ inputs.provider_id }}_review_body.md', '${{ inputs.provi
           create_label_if_missing "opus" "0052CC" "Suitable for Claude Opus (complex design/architecture)"
 
           python3 -c "
-from cicaid_devtools.lib.extract_followups import main
+from cicaid_devtools.lib.followups import main
 import sys
 sys.exit(main('/tmp/${{ inputs.provider_id }}_review_body.md'))
 " > /tmp/followups.json
 
           python3 -c "
-from cicaid_devtools.lib.create_followup_issues import main
+from cicaid_devtools.lib.followup_issues import main
 import sys
 sys.exit(main('allotmint-mcp'))
 " /tmp/followups.json "${PR_NUMBER}" /tmp/${{ inputs.provider_id }}_review_body.md
