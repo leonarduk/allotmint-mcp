@@ -11,8 +11,8 @@ on:
         description: "Lowercase identifier used for file/output naming (e.g. deepseek, gpt)"
         required: true
         type: string
-      provider_module:
-        description: "cicaid_devtools.lib module name (deepseek_review or gpt_review)"
+      review_module:
+        description: "Dotted module name of the provider's review integration (e.g. cicaid_devtools.lib.deepseek_review)"
         required: true
         type: string
       workflow_file:
@@ -45,6 +45,9 @@ on:
         description: "Token used for gh CLI calls (PR/issue read and write)"
         required: true
 
+# github.workflow resolves to the *calling* workflow's name (DeepSeek/GPT PR
+# Review), so this groups per-provider without cross-cancelling other
+# providers' runs for the same PR.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -64,12 +67,12 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
       - name: Install cicaid-devtools
-        run: python -m pip install -r scripts/requirements-dev.txt
+        run: python -m pip install "cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.6.2/cicaid_devtools-0.6.2-py3-none-any.whl"
 
       - name: Get linked issue body
         id: issue
@@ -99,10 +102,10 @@ jobs:
           ISSUE_BODY: ${{ steps.issue.outputs.body }}
         run: |
           git fetch origin "$BASE_REF"
-          DIFF=$(python3 -c "
-from cicaid_devtools.lib.review_diff import main
-import sys; sys.exit(main())
-" --base-ref "$BASE_REF" --pr-title "$PR_TITLE" --issue-body "$ISSUE_BODY")
+          DIFF=$(python3 -m cicaid_devtools.lib.review_diff \
+            --base-ref "$BASE_REF" \
+            --pr-title "$PR_TITLE" \
+            --issue-body "$ISSUE_BODY")
           DELIM="EOF_$(uuidgen | tr -d '-')"
           {
             echo "diff<<$DELIM"
@@ -120,13 +123,11 @@ import sys; sys.exit(main())
           if [ -n "$DISCUSSION_MAX_CHARS" ]; then
             MAX_CHARS_ARGS=(--max-chars "$DISCUSSION_MAX_CHARS")
           fi
-          DISCUSSION=$(python3 -c "
-from cicaid_devtools.lib.review_discussion import main
-import sys; sys.exit(main())
-" --repo "${{ github.repository }}" \
-  --pr-number "${{ github.event.pull_request.number }}" \
-  --provider-name "${{ inputs.provider_name }}" \
-  "${MAX_CHARS_ARGS[@]}")
+          DISCUSSION=$(python3 -m cicaid_devtools.lib.review_discussion \
+            --repo "${{ github.repository }}" \
+            --pr-number "${{ github.event.pull_request.number }}" \
+            --provider-name "${{ inputs.provider_name }}" \
+            "${MAX_CHARS_ARGS[@]}")
           DELIM="EOF_$(uuidgen | tr -d '-')"
           {
             echo "text<<$DELIM"
@@ -139,10 +140,8 @@ import sys; sys.exit(main())
         env:
           DIFF_OUTPUT: ${{ steps.diff.outputs.diff }}
         run: |
-          VERIFIED=$(python3 -c "
-from cicaid_devtools.lib.verified_symbols import main
-import sys; sys.exit(main())
-" --diff "$DIFF_OUTPUT")
+          VERIFIED=$(python3 -m cicaid_devtools.lib.verified_symbols \
+            --diff "$DIFF_OUTPUT")
           DELIM="EOF_$(uuidgen | tr -d '-')"
           {
             echo "facts<<$DELIM"
@@ -152,7 +151,6 @@ import sys; sys.exit(main())
 
       - name: Call ${{ inputs.provider_name }} API
         env:
-          CICAID_MODULE: cicaid_devtools.lib.${{ inputs.provider_module }}
           OPENAI_API_KEY: ${{ secrets.openai_api_key }}
           DEEPSEEK_API_KEY: ${{ secrets.deepseek_api_key }}
           DEEPSEEK_MODEL: ${{ inputs.deepseek_model }}
@@ -163,43 +161,11 @@ import sys; sys.exit(main())
           DISCUSSION: ${{ steps.discussion.outputs.text }}
           VERIFIED_FACTS: ${{ steps.verified.outputs.facts }}
         run: |
-          python3 -c "
-import os, sys
-from importlib import import_module
-from cicaid_devtools.lib.review_common import RepoProfile
+          python3 -m ${{ inputs.review_module }} > /tmp/${{ inputs.provider_id }}_review_body.md
 
-MCP_REPO_PROFILE = RepoProfile(
-    name='allotmint-mcp',
-    persona='a Java/Spring Boot Model Context Protocol (MCP) server exposing allotmint data over stdio/HTTP transports.',
-    stack_paragraph=(
-        'The stack is Java 25 + Spring Boot + the MCP Java SDK '
-        '(\`io.modelcontextprotocol.sdk\`), built with Maven. '
-        'Key constraints: preserve MCP protocol correctness (tool/resource schemas, stdio framing), '
-        'keep the stdio transport free of stray stdout writes (anything not valid MCP JSON-RPC '
-        'breaks the client), and avoid regressions in the Spring Boot startup path.'
-    ),
-    diff_file_types='Java, XML, YAML, properties, Markdown, shell/PowerShell scripts (.sh/.ps1), Python (.py)',
-    dimension_2_body=(
-        'Blocking only: incorrect behaviour, unhandled edge cases, resource leaks (unclosed '
-        'streams/connections), null-safety violations, swallowed exceptions, thread-safety '
-        'issues, or security/data-loss risks. For documentation PRs: factual errors or '
-        'dangerously misleading statements.'
-    ),
-    dimension_3_title='MCP protocol and Spring Boot safety',
-    dimension_3_body=(
-        '- Anything writing to stdout on the stdio transport that is not valid MCP JSON-RPC '
-        '(breaks the protocol framing for stdio clients)? '
-        '- Tool/resource schema definitions that do not match their handler actual behaviour? '
-        '- Spring Boot bean wiring, configuration, or startup changes that could break the app '
-        'context, or Maven dependency/scope changes with unintended transitive effects? '
-        '- Secrets, permissions, or CI assumptions mishandled?'
-    ),
-)
-
-mod = import_module(os.environ['CICAID_MODULE'])
-sys.exit(mod.main(MCP_REPO_PROFILE))
-" > /tmp/${{ inputs.provider_id }}_review_body.md
-
+          # Guard: `-s` returns true only if the file exists AND has size > 0.
+          # This distinguishes a successful API response (review body written to stdout)
+          # from a failure (empty output, missing file, or API error).
           if [ ! -s /tmp/${{ inputs.provider_id }}_review_body.md ]; then
             echo "ERROR: ${{ inputs.provider_name }} review output was empty" >&2
             exit 1
@@ -207,17 +173,16 @@ sys.exit(mod.main(MCP_REPO_PROFILE))
 
       - name: Check ${{ inputs.provider_name }} approval
         id: check_approval
-        continue-on-error: true
+        continue-on-error: true  # REQUEST CHANGES exits 1; allow later steps (post comment, create issues) to still run
         run: |
           set +e
-          python3 -c "
-from cicaid_devtools.lib.verdict import main
-import sys
-sys.exit(main('/tmp/${{ inputs.provider_id }}_review_body.md', '${{ inputs.provider_name }}'))
-"
+          python3 -m cicaid_devtools.lib.verdict /tmp/${{ inputs.provider_id }}_review_body.md "${{ inputs.provider_name }}"
           verdict_exit=$?
           set -e
 
+          # Exit codes from extract_verdict.py: 0 = APPROVE, 2 = provider outage
+          # (soft-fail, doesn't block merge), anything else = REQUEST CHANGES /
+          # missing verdict (hard fail).
           if [ "$verdict_exit" -eq 0 ]; then
             echo "approved=true" >> "$GITHUB_OUTPUT"
           elif [ "$verdict_exit" -eq 2 ]; then
@@ -229,27 +194,17 @@ sys.exit(main('/tmp/${{ inputs.provider_id }}_review_body.md', '${{ inputs.provi
 
       - name: Post ${{ inputs.provider_name }} review comment
         if: (success() || failure()) && !cancelled()
-        continue-on-error: true
+        continue-on-error: true  # If posting fails (e.g. API rate limit), don't fail job; review is also in Actions summary
         env:
           GH_TOKEN: ${{ secrets.gh_token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          BODY_FILE="/tmp/${{ inputs.provider_id }}_review_body.md"
-          PROVIDER="${{ inputs.provider_name }}"
-          WORKFLOW="${{ inputs.workflow_file }}"
-          if [ -s "$BODY_FILE" ]; then
-            echo "## ${PROVIDER} AI Code Review"
-            echo ""
-            cat "$BODY_FILE"
-            echo ""
-            echo "---"
-            echo "*Reviewed by ${PROVIDER} via [${WORKFLOW}](.github/workflows/${WORKFLOW}). Advisory only.*"
-          else
-            echo "## ${PROVIDER} AI Code Review - Failed"
-            echo ""
-            echo "The ${PROVIDER} review failed to complete. Check [Actions]($RUN_URL) for error details."
-          fi > /tmp/${{ inputs.provider_id }}_comment_body.md
+          python3 -m cicaid_devtools.lib.review_comment /tmp/${{ inputs.provider_id }}_review_body.md \
+            "${{ inputs.provider_name }}" "${{ inputs.workflow_file }}" "$RUN_URL" > /tmp/${{ inputs.provider_id }}_comment_body.md
+
+          # Write to Actions job summary so the review is always visible in the UI,
+          # even if the gh pr comment call below fails.
           cat /tmp/${{ inputs.provider_id }}_comment_body.md >> "$GITHUB_STEP_SUMMARY"
 
           if ! gh pr comment "$PR_NUMBER" --body-file /tmp/${{ inputs.provider_id }}_comment_body.md; then
@@ -266,7 +221,11 @@ sys.exit(main('/tmp/${{ inputs.provider_id }}_review_body.md', '${{ inputs.provi
           OPENAI_API_KEY: ${{ secrets.openai_api_key }}
           DEEPSEEK_API_KEY: ${{ secrets.deepseek_api_key }}
           FOLLOWUP_LLM_PROVIDER: ${{ vars.FOLLOWUP_LLM_PROVIDER }}
+          REPO_NAME: ${{ github.event.repository.name }}
         run: |
+          # Fetch existing label names once and only create the ones missing,
+          # instead of firing a gh label create call (and eating a 422) for
+          # every label on every run.
           existing_labels="$(gh label list --json name -q '.[].name')"
 
           create_label_if_missing() {
@@ -281,17 +240,11 @@ sys.exit(main('/tmp/${{ inputs.provider_id }}_review_body.md', '${{ inputs.provi
           create_label_if_missing "sonnet" "BFD4F2" "Suitable for Claude Sonnet (moderate reasoning)"
           create_label_if_missing "opus" "0052CC" "Suitable for Claude Opus (complex design/architecture)"
 
-          python3 -c "
-from cicaid_devtools.lib.followups import main
-import sys
-sys.exit(main('/tmp/${{ inputs.provider_id }}_review_body.md'))
-" > /tmp/followups.json
-
-          python3 -c "
-from cicaid_devtools.lib.followup_issues import main
-import sys
-sys.exit(main('allotmint-mcp'))
-" /tmp/followups.json "${PR_NUMBER}" /tmp/${{ inputs.provider_id }}_review_body.md
+          # Extract titles to a file, then create issues via Python subprocess (no shell injection)
+          python3 -m cicaid_devtools.lib.followups /tmp/${{ inputs.provider_id }}_review_body.md \
+            > /tmp/followups.json
+          python3 -m cicaid_devtools.lib.followup_issues \
+            /tmp/followups.json "${PR_NUMBER}" /tmp/${{ inputs.provider_id }}_review_body.md
 
       - name: Add 'Changes Requested' label if review failed
         if: steps.check_approval.outputs.approved == 'false'
@@ -300,11 +253,13 @@ sys.exit(main('allotmint-mcp'))
           GH_TOKEN: ${{ secrets.gh_token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          # Create the label only if it doesn't already exist
           if ! gh label list --json name -q '.[].name' | grep -qxF "Changes Requested"; then
             gh label create "Changes Requested" --color "d73a49" --description "PR requested changes from code review" \
               2>/dev/null || true
           fi
 
+          # Add the label to the PR
           gh pr edit "$PR_NUMBER" --add-label "Changes Requested"
 
       - name: Fail if ${{ inputs.provider_name }} did not approve
