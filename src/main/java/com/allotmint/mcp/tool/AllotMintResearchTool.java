@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import static com.allotmint.mcp.tool.ToolArguments.optionalString;
+
 /**
  * The {@code allotmint_research} tool: answers a compound natural-language question by running an
  * agentic RAG loop - retrieve relevant embedded context, then chain the read-only v0 tools ({@code
@@ -253,14 +255,6 @@ public final class AllotMintResearchTool {
       rows.add(row);
     }
     return rows;
-  }
-
-  private static String optionalString(Map<String, Object> values, String key) {
-    Object value = values.get(key);
-    if (!(value instanceof String text) || text.isBlank()) {
-      return null;
-    }
-    return text.trim();
   }
 
   /**

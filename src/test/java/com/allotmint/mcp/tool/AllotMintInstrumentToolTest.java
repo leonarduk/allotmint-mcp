@@ -187,6 +187,24 @@ class AllotMintInstrumentToolTest {
   }
 
   @Test
+  void sentinelExchangeStringIsTreatedAsAbsent() {
+    when(client.news("VWRL")).thenReturn(List.of());
+
+    call(Map.of("action", "news", "ticker", "VWRL", "exchange", "NuLl"));
+
+    verify(client).news("VWRL");
+  }
+
+  @Test
+  void sentinelTickerStringIsTreatedAsAbsent() {
+    McpSchema.CallToolResult result = call(Map.of("action", "news", "ticker", " none "));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(text(result)).contains("ticker is required");
+    verify(client, never()).news(ArgumentMatchers.anyString());
+  }
+
+  @Test
   void backendApiErrorsBecomeMcpErrors() {
     when(client.instrumentDetail("MISSING.L"))
         .thenThrow(new AllotMintApiException(404, "AllotMint backend returned 404: not found"));

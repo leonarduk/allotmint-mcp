@@ -12,6 +12,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 
+import static com.allotmint.mcp.tool.ToolArguments.optionalString;
+
 /**
  * Instrument lookups composed from AllotMint's per-ticker endpoints: {@code search} matches
  * tickers/names, {@code detail} merges price history + portfolio positions + recent news, {@code
@@ -180,14 +182,6 @@ public final class AllotMintInstrumentTool {
       return ticker + "." + exchange;
     }
     return ticker;
-  }
-
-  private static String optionalString(Map<String, Object> values, String key) {
-    Object value = values.get(key);
-    if (!(value instanceof String text) || text.isBlank()) {
-      return null;
-    }
-    return text.trim();
   }
 
   private static McpSchema.CallToolResult error(String message) {

@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import static com.allotmint.mcp.tool.ToolArguments.optionalString;
+
 /** Read-only portfolio queries composed from the per-owner AllotMint endpoints. */
 @Slf4j
 public final class AllotMintPortfolioTool {
@@ -379,14 +381,6 @@ public final class AllotMintPortfolioTool {
 
   private static String requiredString(Map<String, Object> values, String key) {
     return optionalString(values, key);
-  }
-
-  private static String optionalString(Map<String, Object> values, String key) {
-    Object value = values.get(key);
-    if (!(value instanceof String text) || text.isBlank()) {
-      return null;
-    }
-    return text.trim();
   }
 
   private static boolean optionalBoolean(Map<String, Object> values, String key) {
