@@ -28,6 +28,9 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
+		<!-- Keep every Log4j module on the patched release. In particular, Spring Boot
+		     4.1.0 otherwise manages log4j-to-slf4j at vulnerable version 2.25.4. -->
+		<log4j2.version>2.26.1</log4j2.version>
 		<!-- Excludes @Tag("integration") tests (see AllotMintClientIntegrationTest) from the
 		     default mvn test/verify run, since they require a live AWS-deployed backend and a
 		     real, short-lived auth token. The "integration" profile below clears this property
@@ -65,11 +68,6 @@
 				<groupId>org.apache.tomcat.embed</groupId>
 				<artifactId>tomcat-embed-websocket</artifactId>
 				<version>11.0.24</version>
-			</dependency>
-			<dependency>
-				<groupId>org.apache.logging.log4j</groupId>
-				<artifactId>log4j-api</artifactId>
-				<version>2.26.1</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
