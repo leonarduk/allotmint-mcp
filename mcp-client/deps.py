@@ -15,6 +15,7 @@ and are no-ops when it's already there.
 from __future__ import annotations
 
 import datetime
+import importlib.util
 import os
 import shutil
 import signal
@@ -59,6 +60,37 @@ def log(message: str, *, level: str = "INFO") -> None:
     LOG_DIR.mkdir(exist_ok=True)
     with open(LOG_DIR / "mcp-client.log", "a", encoding="utf-8") as f:
         f.write(line + "\n")
+
+
+def ensure_python_packages(requirements: dict[str, str]) -> None:
+    """Installs any of `requirements` (import name -> pip spec) that aren't importable.
+
+    All of this project's own Python dependencies are listed in
+    requirements.txt, but nothing enforces that a given interpreter actually
+    has them - a venv created before uvicorn was added to that file, or a
+    `pip install` that got interrupted, leaves a script one bare
+    ModuleNotFoundError away from working. Rather than let that traceback
+    surface deep inside main(), check right at import time and pip install
+    whatever's missing with the same interpreter that's about to run this
+    script.
+
+    Raises subprocess.CalledProcessError if pip itself fails (no network, no
+    pip, etc.) - that failure is real and shouldn't be swallowed, but the log
+    line before it tells the user the exact command to retry by hand.
+    """
+    missing = {name: spec for name, spec in requirements.items() if importlib.util.find_spec(name) is None}
+    if not missing:
+        return
+    log(f"missing Python package(s): {', '.join(missing)} - installing via pip...", level="WARNING")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", *missing.values()])
+    except subprocess.CalledProcessError as exc:
+        log(
+            f"pip install failed ({exc}) - install manually with: "
+            f"{sys.executable} -m pip install {' '.join(missing.values())}",
+            level="ERROR",
+        )
+        raise
 
 
 def tcp_open(host: str, port: int, timeout: float = 1.5) -> bool:

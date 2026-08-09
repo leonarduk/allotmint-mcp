@@ -28,12 +28,22 @@ import json
 import sys
 from html import escape
 
+import deps
+
+# Self-healing (issue #302 follow-up): fastapi/pydantic/uvicorn are all in
+# requirements.txt, but a stale or partial venv can be missing one of them -
+# install whatever's absent before importing it, instead of a bare
+# ModuleNotFoundError. deps.py itself only uses the stdlib, so this is safe to
+# run before these imports exist.
+deps.ensure_python_packages(
+    {"fastapi": "fastapi>=0.115", "pydantic": "pydantic", "uvicorn": "uvicorn[standard]>=0.32"}
+)
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 import client
-import deps
 
 app = FastAPI(
     title="AllotMint MCP client (web UI)",
