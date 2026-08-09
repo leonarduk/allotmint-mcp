@@ -26,11 +26,18 @@ import deps
 # Self-healing (issue #437): install the UI and MCP client packages before
 # importing them.  deps.py is deliberately stdlib-only, so this bootstrap also
 # works in a fresh or partially installed virtual environment.
+#
+# Only runs when this file is executed directly (`python gradio_ui.py`), not
+# on a bare `import gradio_ui` - so importing this module (as the test suite
+# does) still fails with a normal ModuleNotFoundError if gradio/mcp are
+# missing, rather than triggering a pip install as an import-time side
+# effect.
 PYTHON_REQUIREMENTS = {
     "gradio": "gradio>=6.15.0,<7.0",
     "mcp": "mcp>=1.9",
 }
-deps.ensure_python_packages(PYTHON_REQUIREMENTS)
+if __name__ == "__main__":
+    deps.ensure_python_packages(PYTHON_REQUIREMENTS)
 
 import gradio as gr
 
