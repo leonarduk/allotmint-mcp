@@ -30,13 +30,19 @@ from html import escape
 
 import deps
 
-# Self-healing (issue #302 follow-up): fastapi/pydantic/uvicorn are all in
+# Self-healing (issue #302 follow-up): mcp/fastapi/pydantic/uvicorn are all in
 # requirements.txt, but a stale or partial venv can be missing one of them -
 # install whatever's absent before importing it, instead of a bare
 # ModuleNotFoundError. deps.py itself only uses the stdlib, so this is safe to
-# run before these imports exist.
+# run before these imports exist. Keep mcp in this early check because client.py
+# imports it lazily when a browser request opens a session (issue #449).
 deps.ensure_python_packages(
-    {"fastapi": "fastapi>=0.115", "pydantic": "pydantic", "uvicorn": "uvicorn[standard]>=0.32"}
+    {
+        "mcp": "mcp>=1.9",
+        "fastapi": "fastapi>=0.115",
+        "pydantic": "pydantic",
+        "uvicorn": "uvicorn[standard]>=0.32",
+    }
 )
 
 from fastapi import FastAPI, HTTPException

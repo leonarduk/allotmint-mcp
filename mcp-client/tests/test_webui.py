@@ -8,7 +8,9 @@ webui.py adds on top of client.py's already-tested ask/list_tools/call_tool.
 
 from __future__ import annotations
 
+import ast
 from contextlib import asynccontextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -17,6 +19,22 @@ from fastapi.testclient import TestClient
 import client as client_module
 import webui
 from tests._helpers import FakeSession, _content, _fake_open_session, _result
+
+
+def test_startup_dependency_check_includes_mcp():
+    """Prevent the browser request path from failing on client.py's lazy import."""
+    tree = ast.parse(Path(webui.__file__).read_text(encoding="utf-8"))
+    ensure_call = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "ensure_python_packages"
+    )
+
+    requirements = ast.literal_eval(ensure_call.args[0])
+
+    assert requirements["mcp"] == "mcp>=1.9"
 
 
 @pytest.fixture
