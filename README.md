@@ -51,6 +51,10 @@ from the real process environment or JVM system properties take precedence over 
 same JAR can safely use deployment-provided environment variables in testing and production.
 Spring's normal defaults apply when a key is absent everywhere.
 
+The template also includes Spring's `SPRING_PROFILES_ACTIVE` setting and the optional MCP feature
+flags, so local stdio, HTTP, files-tool, and research-tool configuration can be kept in the same
+place. Leave `SPRING_PROFILES_ACTIVE` empty for stdio or set it to `http` for HTTP transport.
+
 The `.env` file is ignored by Git and must not be committed because it may contain the short-lived
 authentication token. Commit only non-secret additions to `.env.example`. To disable `.env`
 loading entirely, set `SPRINGDOTENV_ENABLED=false` in the process environment.
