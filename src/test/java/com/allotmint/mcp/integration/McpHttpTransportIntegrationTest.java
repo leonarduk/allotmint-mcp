@@ -68,7 +68,8 @@ class McpHttpTransportIntegrationTest {
             "allotmint_health",
             "allotmint_instrument",
             "allotmint_market",
-            "allotmint_portfolio");
+            "allotmint_portfolio",
+            "allotmint_reconcile");
 
     McpSchema.CallToolResult result =
         client.callTool(
@@ -79,5 +80,14 @@ class McpHttpTransportIntegrationTest {
         .isInstanceOfSatisfying(
             McpSchema.TextContent.class,
             text -> assertThat(text.text()).isEqualTo("You said: integration-test"));
+  }
+
+  @Test
+  void applyReconciliationToolIsAbsentWhenWriteDisabledByDefault() {
+    McpSchema.ListToolsResult tools = client.listTools();
+
+    assertThat(tools.tools())
+        .extracting(McpSchema.Tool::name)
+        .doesNotContain("allotmint_apply_reconciliation");
   }
 }
