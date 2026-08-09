@@ -18,11 +18,12 @@ import deps
 
 
 def test_ensure_python_packages_installs_missing_packages(monkeypatch):
-    monkeypatch.setattr(
-        deps.importlib.util,
-        "find_spec",
-        lambda name: None if name == "missing" else object(),
-    )
+    def fake_import_module(name):
+        if name == "missing":
+            raise ModuleNotFoundError(f"No module named '{name}'")
+        return object()
+
+    monkeypatch.setattr(deps.importlib, "import_module", fake_import_module)
     commands = []
     messages = []
     monkeypatch.setattr(deps.subprocess, "check_call", lambda command: commands.append(command))
@@ -37,6 +38,29 @@ def test_ensure_python_packages_installs_missing_packages(monkeypatch):
         "all necessary Python dependencies have been installed" in message
         for _, message in messages
     )
+
+
+def test_ensure_python_packages_reinstalls_a_package_broken_by_a_missing_transitive_dependency(monkeypatch):
+    """Regression test for #454: a package that's on disk (find_spec would
+    call it present) but fails on actual import - e.g. `mcp` installed
+    without Windows-only pywin32, so `import mcp` raises ModuleNotFoundError
+    for 'pywintypes' deep inside `mcp.client.stdio` - must still be treated
+    as missing and reinstalled, not silently skipped.
+    """
+
+    def fake_import_module(name):
+        if name == "mcp":
+            raise ModuleNotFoundError("No module named 'pywintypes'")
+        return object()
+
+    monkeypatch.setattr(deps.importlib, "import_module", fake_import_module)
+    commands = []
+    monkeypatch.setattr(deps.subprocess, "check_call", lambda command: commands.append(command))
+    monkeypatch.setattr(deps, "log", lambda message, level="INFO": None)
+
+    deps.ensure_python_packages({"mcp": "mcp>=1.9"})
+
+    assert commands == [[deps.sys.executable, "-m", "pip", "install", "mcp>=1.9"]]
 
 
 def test_log_writes_a_timestamped_line_to_the_log_file(monkeypatch, tmp_path, capsys):
