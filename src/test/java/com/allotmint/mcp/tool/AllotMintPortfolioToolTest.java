@@ -68,6 +68,27 @@ class AllotMintPortfolioToolTest {
   }
 
   @Test
+  void summaryTreatsNullAndNoneStringsAsAbsentFilters() {
+    when(client.portfolio("steve")).thenReturn(portfolio());
+    when(client.performance("steve")).thenReturn(Map.of());
+
+    Map<String, Object> withoutFilters =
+        structured(call(Map.of("action", "summary", "owner", "steve")));
+    Map<String, Object> withSentinels =
+        structured(
+            call(
+                Map.of(
+                    "action", "summary",
+                    "owner", "steve",
+                    "account_type", "NULL",
+                    "currency", " none ")));
+
+    assertThat(withSentinels).isEqualTo(withoutFilters);
+    assertThat(withSentinels).containsEntry("total_value_gbp", new BigDecimal("1500.0"));
+    assertThat((List<?>) withSentinels.get("allocation")).hasSize(2);
+  }
+
+  @Test
   void exposureUsesBackendSectorsAndDerivesOtherAvailableBreakdowns() {
     List<Map<String, Object>> sectors =
         List.of(Map.of("sector", "Technology", "market_value_gbp", 1000.0));

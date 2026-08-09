@@ -72,7 +72,12 @@ class ToolSession:
                 }
             )
 
-        cleaned = {k: v for k, v in arguments.items() if v is not None}
+        cleaned = {
+            k: v
+            for k, v in arguments.items()
+            if v is not None
+            and not (isinstance(v, str) and v.strip().lower() in {"null", "none"})
+        }
         log.info("agent -> %s(%s)", name, cleaned)
 
         if self.trace_logger is not None:

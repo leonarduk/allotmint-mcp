@@ -115,6 +115,14 @@ class AllotMintResearchToolTest {
   }
 
   @Test
+  void rejectsSentinelQuestionAsMissing() {
+    McpSchema.CallToolResult result = call(Map.of("action", "ask", "question", "NuLl"));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(textOf(result)).contains("question is required");
+  }
+
+  @Test
   void rejectsAnOutOfRangeLookback() {
     McpSchema.CallToolResult result =
         call(Map.of("action", "ask", "question", "why?", "lookback_days", 99999));
