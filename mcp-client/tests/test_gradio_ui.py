@@ -234,3 +234,10 @@ def test_parse_args_overrides():
     assert args.port == 9000
     assert args.url == "http://x/mcp"
     assert args.share is True
+
+
+def test_bootstrap_covers_the_direct_runtime_dependencies():
+    assert gradio_ui.PYTHON_REQUIREMENTS == {
+        "gradio": "gradio>=6.15.0,<7.0",
+        "mcp": "mcp>=1.9",
+    }

@@ -91,6 +91,7 @@ def ensure_python_packages(requirements: dict[str, str]) -> None:
             level="ERROR",
         )
         raise
+    log("all necessary Python dependencies have been installed")
 
 
 def tcp_open(host: str, port: int, timeout: float = 1.5) -> bool:
