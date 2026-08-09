@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
@@ -113,6 +114,32 @@ public class AllotMintClient {
 
   public Map<String, Object> performance(String owner) {
     return getObject("performance", owner);
+  }
+
+  /** Returns a read-only diff between stored holdings and broker CSV positions. */
+  public Map<String, Object> reconcileHoldings(
+      String owner, String accountType, String csvContent) {
+    return postObject(
+        "/holdings/reconcile",
+        Map.of("owner", owner, "account_type", accountType, "csv_content", csvContent));
+  }
+
+  /** Applies a backend-issued reconciliation after the caller has reviewed its diff. */
+  public Map<String, Object> applyReconciliation(String reconciliationId) {
+    return postObject("/holdings/reconcile/apply", Map.of("reconciliation_id", reconciliationId));
+  }
+
+  private Map<String, Object> postObject(String path, Map<String, Object> request) {
+    Map<String, Object> response =
+        restClient
+            .post()
+            .uri(path)
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(request)
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(OBJECT_MAP);
+    return response == null ? Map.of() : response;
   }
 
   private Map<String, Object> getObject(String endpoint, String owner) {

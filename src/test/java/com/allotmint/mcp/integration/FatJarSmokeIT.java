@@ -77,7 +77,11 @@ class FatJarSmokeIT {
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
         .contains(
-            "allotmint_health", "allotmint_instrument", "allotmint_market", "allotmint_portfolio");
+            "allotmint_health",
+            "allotmint_instrument",
+            "allotmint_market",
+            "allotmint_portfolio",
+            "allotmint_reconcile");
   }
 
   private Path fatJarPath() {

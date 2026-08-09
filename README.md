@@ -105,7 +105,7 @@ On Windows, use an escaped absolute path, for example:
 }
 ```
 
-Restart Claude Desktop after saving the configuration. The `echo` tool is available as a transport smoke test; the four AllotMint tools are documented below, along with the opt-in `allotmint_research` tool.
+Restart Claude Desktop after saving the configuration. The `echo` tool is available as a transport smoke test; the AllotMint tools are documented below, including the opt-in write and research tools.
 
 ## Authentication
 
@@ -248,11 +248,66 @@ Returns one owner's summary, exposure breakdown, or flat holdings list.
 
 Get valid `owner` slugs from the AllotMint backend's `GET /owners` endpoint. `account_type` and `currency` are optional case-insensitive client-side filters.
 
+### `allotmint_reconcile`
+
+Produces a read-only structured diff between one account's stored holdings and an uploaded broker
+CSV. Broker parsing and ticker/currency normalization happen in the AllotMint backend.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "owner": { "type": "string", "minLength": 1 },
+    "account_type": { "type": "string", "minLength": 1 },
+    "csv_content": { "type": "string", "minLength": 1 }
+  },
+  "required": ["owner", "account_type", "csv_content"],
+  "additionalProperties": false
+}
+```
+
+The response includes added, removed, quantity/value-changed holdings, the cash delta, and an
+opaque `reconciliation_id`. Show the complete diff to the user before offering to apply it. This
+tool never writes, including when write support is enabled.
+
+### `allotmint_apply_reconciliation` (opt-in write)
+
+Applies exactly the previously returned diff identified by `reconciliation_id`. It does not accept
+replacement holdings or CSV content, so a client cannot change the reviewed payload during apply.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "reconciliation_id": { "type": "string", "minLength": 1 }
+  },
+  "required": ["reconciliation_id"],
+  "additionalProperties": false
+}
+```
+
+The write tool is not registered by default. Enable it only on a backend where portfolio mutation
+is intended:
+
+```bash
+export ALLOTMINT_MCP_WRITE_ENABLED=true
+java -jar target/allotmint-mcp-server.jar
+```
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ALLOTMINT_MCP_WRITE_ENABLED` | `false` | Registers the explicit reconciliation apply tool |
+
+Enabling the flag does not replace approval: an AI client must first call `allotmint_reconcile`,
+display its diff, obtain human approval, and only then call the apply tool with its ID. See the
+[reconciliation design](docs/reconciliation-design.md) for the trust boundary and backend
+requirements.
+
 ### `allotmint_research` (opt-in)
 
-> **What's different from v0:** The four v0 tools above are deterministic REST wrappers with no external dependencies beyond the AllotMint backend. Enabling `allotmint_research` introduces the server's first LLM dependency, a pgvector retrieval store, and optional Langfuse observability — each with its own configuration, dependency, and egress path. The defaults stay local and free (Ollama + local embeddings), but switching to a hosted LLM or enabling Langfuse requires outbound internet access. See [Design: allotmint_research agentic/RAG MCP tool + LLM observability (Langfuse)](https://github.com/leonarduk/allotmint/discussions/4915) for the full rationale.
+> **What's different from v0:** The four core query tools are deterministic REST wrappers with no external dependencies beyond the AllotMint backend. Enabling `allotmint_research` introduces the server's first LLM dependency, a pgvector retrieval store, and optional Langfuse observability — each with its own configuration, dependency, and egress path. The defaults stay local and free (Ollama + local embeddings), but switching to a hosted LLM or enabling Langfuse requires outbound internet access. See [Design: allotmint_research agentic/RAG MCP tool + LLM observability (Langfuse)](https://github.com/leonarduk/allotmint/discussions/4915) for the full rationale.
 
-Answers a compound natural-language question by retrieving relevant embedded context and chaining the four read-only tools above as the question requires, returning a grounded answer whose `[n]` markers cite the retrieved documents and tool calls behind it.
+Answers a compound natural-language question by retrieving relevant embedded context and chaining the four core read-only query tools as the question requires, returning a grounded answer whose `[n]` markers cite the retrieved documents and tool calls behind it.
 
 ```json
 {
@@ -285,7 +340,7 @@ Answers a compound natural-language question by retrieving relevant embedded con
 Unlike the tools above, this one is **off by default** and needs two things running alongside the server:
 
 - the [research agent sidecar](research-agent/README.md), which runs the agent loop (Python, Pydantic AI);
-- the HTTP transport, because the agent reaches the four v0 tools as an MCP client of this server's own `/mcp` endpoint. Both transports can run at once, so a stdio client still works.
+- the HTTP transport, because the agent reaches the four core query tools as an MCP client of this server's own `/mcp` endpoint. Both transports can run at once, so a stdio client still works.
 
 ```bash
 export ALLOTMINT_MCP_RESEARCH_ENABLED=true
