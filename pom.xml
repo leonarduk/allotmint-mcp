@@ -268,7 +268,7 @@
 			<plugin>
 				<groupId>org.owasp</groupId>
 				<artifactId>dependency-check-maven</artifactId>
-				<version>12.2.2</version>
+				<version>13.0.0</version>
 				<configuration>
 					<!-- Conservative starting threshold: fail only on critical findings until
 					     the existing dependency tree's baseline has been triaged. -->
