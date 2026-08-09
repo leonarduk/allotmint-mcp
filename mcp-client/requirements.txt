@@ -1,5 +1,5 @@
 mcp>=1.9
 fastapi>=0.115
 uvicorn[standard]>=0.32
-gradio>=5.0,<6.0
+gradio>=6.15.0,<7.0
 huggingface_hub<1.0
