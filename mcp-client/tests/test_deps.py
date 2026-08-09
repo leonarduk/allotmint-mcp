@@ -17,6 +17,28 @@ import pytest
 import deps
 
 
+def test_ensure_python_packages_installs_missing_packages(monkeypatch):
+    monkeypatch.setattr(
+        deps.importlib.util,
+        "find_spec",
+        lambda name: None if name == "missing" else object(),
+    )
+    commands = []
+    messages = []
+    monkeypatch.setattr(deps.subprocess, "check_call", lambda command: commands.append(command))
+    monkeypatch.setattr(
+        deps, "log", lambda message, level="INFO": messages.append((level, message))
+    )
+
+    deps.ensure_python_packages({"present": "present>=1", "missing": "missing>=2"})
+
+    assert commands == [[deps.sys.executable, "-m", "pip", "install", "missing>=2"]]
+    assert any(
+        "all necessary Python dependencies have been installed" in message
+        for _, message in messages
+    )
+
+
 def test_log_writes_a_timestamped_line_to_the_log_file(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(deps, "LOG_DIR", tmp_path)
 

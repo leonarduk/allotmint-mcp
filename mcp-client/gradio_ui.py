@@ -10,7 +10,6 @@ keeps working exactly as before, and so does webui.py - this supersedes
 it but doesn't remove it.
 
 Usage:
-    pip install -r requirements.txt
     python gradio_ui.py
     python gradio_ui.py --port 8601 --url http://localhost:8080/mcp
     python gradio_ui.py --start-deps
@@ -22,10 +21,20 @@ import argparse
 import json
 import sys
 
+import deps
+
+# Self-healing (issue #437): install the UI and MCP client packages before
+# importing them.  deps.py is deliberately stdlib-only, so this bootstrap also
+# works in a fresh or partially installed virtual environment.
+PYTHON_REQUIREMENTS = {
+    "gradio": "gradio>=6.15.0,<7.0",
+    "mcp": "mcp>=1.9",
+}
+deps.ensure_python_packages(PYTHON_REQUIREMENTS)
+
 import gradio as gr
 
 import client
-import deps
 
 # Populated from CLI flags in main() before the server starts; only used to
 # prefill the form's default values, exactly like client.py's own --url and

@@ -144,6 +144,8 @@ python client.py --call allotmint_health --args "{}"
 
 `gradio_ui.py` puts a locally hosted [Gradio](https://gradio.app) front end on this same client ([issue #310](https://github.com/leonarduk/allotmint-mcp/issues/310)) — the same prerequisites above, the same `ask`/`--list-tools`/`--call` calls, just a modern interactive interface instead of a terminal. `client.py` is unchanged and still works exactly as documented above; this is a second entrypoint onto it, not a replacement.
 
+On startup, the script checks for its Gradio and MCP Python packages and installs any that are missing with the current interpreter. After an automatic installation it prints a confirmation before launching the UI.
+
 ```bash
 python gradio_ui.py
 ```
