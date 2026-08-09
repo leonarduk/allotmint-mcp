@@ -74,7 +74,10 @@ public final class AllotMintReconcileTool {
 
   static String required(Map<String, Object> arguments, String name) {
     Object value = arguments.get(name);
-    return value instanceof String text && !text.isBlank() ? text.trim() : null;
+    if (!(value instanceof String text) || text.isBlank()) {
+      return null;
+    }
+    return "csv_content".equals(name) ? text : text.trim();
   }
 
   static McpSchema.CallToolResult error(String message) {

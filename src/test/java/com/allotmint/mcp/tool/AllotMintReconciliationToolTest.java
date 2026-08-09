@@ -48,6 +48,23 @@ class AllotMintReconciliationToolTest {
   }
 
   @Test
+  void preservesCsvContentWhitespaceButTrimsOwnerAndAccountType() {
+    when(client.reconcileHoldings("alice", "SIPP", " Code,Quantity\nVWRL,2\n"))
+        .thenReturn(Map.of("reconciliation_id", "rec-1"));
+
+    McpSchema.CallToolResult result =
+        call(
+            AllotMintReconcileTool.specification(client),
+            Map.of(
+                "owner", " alice ",
+                "account_type", " SIPP ",
+                "csv_content", " Code,Quantity\nVWRL,2\n"));
+
+    assertThat(result.isError()).isNotEqualTo(true);
+    verify(client).reconcileHoldings("alice", "SIPP", " Code,Quantity\nVWRL,2\n");
+  }
+
+  @Test
   void rejectsMissingCsvBeforeCallingBackend() {
     McpSchema.CallToolResult result =
         call(

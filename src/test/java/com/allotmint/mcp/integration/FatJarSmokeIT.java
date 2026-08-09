@@ -81,7 +81,11 @@ class FatJarSmokeIT {
             "allotmint_instrument",
             "allotmint_market",
             "allotmint_portfolio",
-            "allotmint_reconcile");
+            "allotmint_reconcile")
+        // allotmint_apply_reconciliation is the server's only write-capable tool; it must stay
+        // absent unless ALLOTMINT_MCP_WRITE_ENABLED is explicitly set, which this smoke test
+        // never does.
+        .doesNotContain("allotmint_apply_reconciliation");
   }
 
   private Path fatJarPath() {

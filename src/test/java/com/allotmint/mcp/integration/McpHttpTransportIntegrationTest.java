@@ -81,4 +81,13 @@ class McpHttpTransportIntegrationTest {
             McpSchema.TextContent.class,
             text -> assertThat(text.text()).isEqualTo("You said: integration-test"));
   }
+
+  @Test
+  void applyReconciliationToolIsAbsentWhenWriteDisabledByDefault() {
+    McpSchema.ListToolsResult tools = client.listTools();
+
+    assertThat(tools.tools())
+        .extracting(McpSchema.Tool::name)
+        .doesNotContain("allotmint_apply_reconciliation");
+  }
 }
