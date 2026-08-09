@@ -15,7 +15,7 @@ and are no-ops when it's already there.
 from __future__ import annotations
 
 import datetime
-import importlib.util
+import importlib
 import os
 import shutil
 import signal
@@ -74,11 +74,26 @@ def ensure_python_packages(requirements: dict[str, str]) -> None:
     whatever's missing with the same interpreter that's about to run this
     script.
 
+    Actually imports each package rather than checking
+    importlib.util.find_spec(): find_spec only confirms a package is
+    discoverable on sys.path, not that it successfully imports. A package
+    can be present on disk and still raise ModuleNotFoundError when
+    imported, if something *it* depends on is missing - e.g. `mcp` is
+    installed but Windows-only pywin32 isn't, so `import mcp` fails on
+    `import pywintypes` deep inside `mcp.client.stdio`. find_spec("mcp")
+    can't see that; only attempting the import can, and only that catches
+    it here instead of as an unhandled crash in main().
+
     Raises subprocess.CalledProcessError if pip itself fails (no network, no
     pip, etc.) - that failure is real and shouldn't be swallowed, but the log
     line before it tells the user the exact command to retry by hand.
     """
-    missing = {name: spec for name, spec in requirements.items() if importlib.util.find_spec(name) is None}
+    missing = {}
+    for name, spec in requirements.items():
+        try:
+            importlib.import_module(name)
+        except ImportError:
+            missing[name] = spec
     if not missing:
         return
     log(f"missing Python package(s): {', '.join(missing)} - installing via pip...", level="WARNING")
