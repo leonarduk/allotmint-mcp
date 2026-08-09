@@ -15,7 +15,7 @@ jobs:
     with:
       provider_name: DeepSeek
       provider_id: deepseek
-      provider_module: deepseek_review
+      review_module: cicaid_devtools.lib.deepseek_review
       workflow_file: deepseek-pr-review.yml
     secrets:
       openai_api_key: ${{ secrets.OPENAI_API_KEY }}

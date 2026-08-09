@@ -15,7 +15,7 @@ jobs:
     with:
       provider_name: GPT
       provider_id: gpt
-      provider_module: gpt_review
+      review_module: cicaid_devtools.lib.gpt_review
       workflow_file: gpt-pr-review.yml
     secrets:
       openai_api_key: ${{ secrets.OPENAI_API_KEY }}
