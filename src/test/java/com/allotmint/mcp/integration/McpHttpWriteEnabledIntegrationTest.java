@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Verifies the write-enabled environment configuration over the HTTP MCP transport. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("http")
-@TestPropertySource(properties = {"mcp.stdio.enabled=false", "ALLOTMINT_MCP_WRITE_ENABLED=true"})
+@TestPropertySource(properties = {"mcp.stdio.enabled=false", "allotmint.mcp.write.enabled=true"})
 class McpHttpWriteEnabledIntegrationTest {
 
   @LocalServerPort private int port;
