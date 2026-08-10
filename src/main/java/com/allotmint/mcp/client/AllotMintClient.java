@@ -3,6 +3,7 @@ package com.allotmint.mcp.client;
 import com.allotmint.mcp.exception.AllotMintApiException;
 import com.allotmint.mcp.model.AllotMintHealthStatus;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpRequest;
@@ -37,12 +38,15 @@ public class AllotMintClient {
       new ParameterizedTypeReference<>() {};
 
   private final RestClient restClient;
+  private final RestClient postRestClient;
   private final String baseUrl;
 
   public AllotMintClient(
-      RestClient allotMintRestClient,
+      @Qualifier("allotMintRestClient") RestClient allotMintRestClient,
+      @Qualifier("allotMintPostRestClient") RestClient allotMintPostRestClient,
       @Value("${allotmint.api.base-url:http://localhost:8000}") String baseUrl) {
     this.restClient = allotMintRestClient;
+    this.postRestClient = allotMintPostRestClient;
     this.baseUrl = baseUrl;
   }
 
@@ -131,7 +135,7 @@ public class AllotMintClient {
 
   private Map<String, Object> postObject(String path, Map<String, Object> request) {
     Map<String, Object> response =
-        restClient
+        postRestClient
             .post()
             .uri(path)
             .contentType(MediaType.APPLICATION_JSON)

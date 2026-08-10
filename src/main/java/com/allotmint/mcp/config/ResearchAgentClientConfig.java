@@ -1,6 +1,7 @@
 package com.allotmint.mcp.config;
 
 import com.allotmint.mcp.client.ResearchAgentClient;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -40,7 +41,7 @@ class ResearchAgentClientConfig {
 
   @Bean
   ResearchAgentClient researchAgentClient(
-      RestClient researchAgentRestClient,
+      @Qualifier("researchAgentRestClient") RestClient researchAgentRestClient,
       @Value("${allotmint.research.base-url:http://localhost:8100}") String baseUrl) {
     return new ResearchAgentClient(researchAgentRestClient, baseUrl);
   }

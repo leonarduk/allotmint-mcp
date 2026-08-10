@@ -39,6 +39,24 @@ public class AllotMintClientConfig {
   }
 
   /**
+   * A client dedicated to POST requests, whose longer read timeout does not alter GET behavior on
+   * the primary client.
+   */
+  @Bean
+  RestClient allotMintPostRestClient(
+      @Value("${allotmint.api.base-url:http://localhost:8000}") String baseUrl,
+      @Value("${allotmint.mcp.auth-token:}") String authToken,
+      @Value("${allotmint.api.connect-timeout-seconds:5}") int connectTimeoutSeconds,
+      @Value("${allotmint.api.post-read-timeout-seconds:60}") int postReadTimeoutSeconds) {
+    SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+    requestFactory.setConnectTimeout(Duration.ofSeconds(connectTimeoutSeconds));
+    requestFactory.setReadTimeout(Duration.ofSeconds(postReadTimeoutSeconds));
+    return withAuthorization(
+            RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory), authToken)
+        .build();
+  }
+
+  /**
    * Attaches the configured backend-issued JWT as a default {@code Authorization} header, so every
    * request the resulting {@link RestClient} makes carries it - callers such as {@link
    * AllotMintClient} don't need to remember to add it themselves. Left blank (the default), no
