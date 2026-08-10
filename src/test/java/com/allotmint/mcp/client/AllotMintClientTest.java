@@ -24,7 +24,8 @@ public class AllotMintClientTest {
   void reportsBackendVersionWhenReachable() {
     RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-    AllotMintClient client = new AllotMintClient(builder.build(), BASE_URL);
+    RestClient restClient = builder.build();
+    AllotMintClient client = new AllotMintClient(restClient, restClient, BASE_URL);
 
     server
         .expect(requestTo(BASE_URL + "/openapi.json"))
@@ -38,7 +39,8 @@ public class AllotMintClientTest {
   void reportsUnreachableWhenBackendReturnsUnauthorized() {
     RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-    AllotMintClient client = new AllotMintClient(builder.build(), BASE_URL);
+    RestClient restClient = builder.build();
+    AllotMintClient client = new AllotMintClient(restClient, restClient, BASE_URL);
 
     server.expect(requestTo(BASE_URL + "/openapi.json")).andRespond(withUnauthorizedRequest());
 
@@ -50,7 +52,8 @@ public class AllotMintClientTest {
   void mapsUnauthorizedResponseToClearAuthErrorOnDataCalls() {
     RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-    AllotMintClient client = new AllotMintClient(builder.build(), BASE_URL);
+    RestClient restClient = builder.build();
+    AllotMintClient client = new AllotMintClient(restClient, restClient, BASE_URL);
 
     server.expect(requestTo(BASE_URL + "/portfolio/demo")).andRespond(withUnauthorizedRequest());
 
@@ -62,10 +65,12 @@ public class AllotMintClientTest {
 
   @Test
   void postsCsvForReadOnlyReconciliation() {
-    RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
-    MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-    AllotMintClient client = new AllotMintClient(builder.build(), BASE_URL);
-    server
+    RestClient.Builder getBuilder = RestClient.builder().baseUrl(BASE_URL);
+    MockRestServiceServer getServer = MockRestServiceServer.bindTo(getBuilder).build();
+    RestClient.Builder postBuilder = RestClient.builder().baseUrl(BASE_URL);
+    MockRestServiceServer postServer = MockRestServiceServer.bindTo(postBuilder).build();
+    AllotMintClient client = new AllotMintClient(getBuilder.build(), postBuilder.build(), BASE_URL);
+    postServer
         .expect(requestTo(BASE_URL + "/holdings/reconcile"))
         .andExpect(method(POST))
         .andExpect(
@@ -78,14 +83,16 @@ public class AllotMintClientTest {
 
     assertThat(client.reconcileHoldings("alice", "SIPP", "Ticker,Quantity\nVWRL,2"))
         .containsEntry("reconciliation_id", "rec-1");
-    server.verify();
+    postServer.verify();
+    getServer.verify();
   }
 
   @Test
   void appliesOnlyBackendIssuedReconciliationId() {
     RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-    AllotMintClient client = new AllotMintClient(builder.build(), BASE_URL);
+    RestClient restClient = builder.build();
+    AllotMintClient client = new AllotMintClient(restClient, restClient, BASE_URL);
     server
         .expect(requestTo(BASE_URL + "/holdings/reconcile/apply"))
         .andExpect(method(POST))

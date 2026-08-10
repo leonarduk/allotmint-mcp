@@ -23,7 +23,8 @@ class AllotMintClientMarketTest {
   void setUp() {
     RestClient.Builder builder = RestClient.builder().baseUrl("http://allotmint.test");
     server = MockRestServiceServer.bindTo(builder).build();
-    client = new AllotMintClient(builder.build(), "http://allotmint.test");
+    RestClient restClient = builder.build();
+    client = new AllotMintClient(restClient, restClient, "http://allotmint.test");
   }
 
   @Test

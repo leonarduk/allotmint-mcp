@@ -92,7 +92,7 @@ class AllotMintClientIntegrationTest {
   private static AllotMintClient newClient(String token) {
     RestClient.Builder builder = RestClient.builder().baseUrl(API_BASE);
     RestClient restClient = AllotMintClientConfig.withAuthorization(builder, token).build();
-    return new AllotMintClient(restClient, API_BASE);
+    return new AllotMintClient(restClient, restClient, API_BASE);
   }
 
   private static boolean hasText(String value) {

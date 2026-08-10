@@ -4,6 +4,7 @@ import com.allotmint.mcp.client.AllotMintClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.util.StringUtils;
@@ -25,6 +26,7 @@ import java.time.Duration;
 public class AllotMintClientConfig {
 
   @Bean
+  @Primary
   RestClient allotMintRestClient(
       @Value("${allotmint.api.base-url:http://localhost:8000}") String baseUrl,
       @Value("${allotmint.mcp.auth-token:}") String authToken,
@@ -33,6 +35,24 @@ public class AllotMintClientConfig {
     SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
     requestFactory.setConnectTimeout(Duration.ofSeconds(connectTimeoutSeconds));
     requestFactory.setReadTimeout(Duration.ofSeconds(readTimeoutSeconds));
+    return withAuthorization(
+            RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory), authToken)
+        .build();
+  }
+
+  /**
+   * A client dedicated to POST requests, whose longer read timeout does not alter GET behavior on
+   * the primary client.
+   */
+  @Bean
+  RestClient allotMintPostRestClient(
+      @Value("${allotmint.api.base-url:http://localhost:8000}") String baseUrl,
+      @Value("${allotmint.mcp.auth-token:}") String authToken,
+      @Value("${allotmint.api.connect-timeout-seconds:5}") int connectTimeoutSeconds,
+      @Value("${allotmint.api.write-timeout-seconds:60}") int writeTimeoutSeconds) {
+    SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+    requestFactory.setConnectTimeout(Duration.ofSeconds(connectTimeoutSeconds));
+    requestFactory.setReadTimeout(Duration.ofSeconds(writeTimeoutSeconds));
     return withAuthorization(
             RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory), authToken)
         .build();
