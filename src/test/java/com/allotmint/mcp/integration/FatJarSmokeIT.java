@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Timeout;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -51,27 +52,7 @@ class FatJarSmokeIT {
   @Test
   @Timeout(10)
   void fatJarStartsWithinBudgetAndRegistersAllotMintTools() {
-    Path jar = fatJarPath();
-    assertThat(Files.isRegularFile(jar))
-        .withFailMessage(
-            "Fat jar not found at %s - expected `mvn package` to have built it before this"
-                + " integration test ran",
-            jar.toAbsolutePath())
-        .isTrue();
-
-    ServerParameters params =
-        ServerParameters.builder("java").args("-jar", jar.toAbsolutePath().toString()).build();
-    StdioClientTransport transport = new StdioClientTransport(params, McpJsonDefaults.getMapper());
-
-    client =
-        McpClient.sync(transport)
-            .requestTimeout(STARTUP_BUDGET)
-            .initializationTimeout(STARTUP_BUDGET)
-            .build();
-
-    // Performs the MCP initialize handshake; throws if the server isn't ready within the
-    // configured initializationTimeout, which enforces the 5-second startup budget.
-    client.initialize();
+    startServer(false);
 
     McpSchema.ListToolsResult tools = client.listTools();
     assertThat(tools.tools())
@@ -86,6 +67,51 @@ class FatJarSmokeIT {
         // absent unless ALLOTMINT_MCP_WRITE_ENABLED is explicitly set, which this smoke test
         // never does.
         .doesNotContain("allotmint_apply_reconciliation");
+  }
+
+  @Test
+  @Timeout(10)
+  void writeEnabledFatJarRegistersApplyToolWithRequiredSchema() {
+    startServer(true);
+
+    McpSchema.ListToolsResult tools = client.listTools();
+    assertThat(tools.tools())
+        .extracting(McpSchema.Tool::name)
+        .contains("allotmint_reconcile", "allotmint_apply_reconciliation");
+
+    McpSchema.Tool applyTool =
+        tools.tools().stream()
+            .filter(tool -> tool.name().equals("allotmint_apply_reconciliation"))
+            .findFirst()
+            .orElseThrow();
+    assertThat(applyTool.inputSchema()).containsEntry("required", List.of("reconciliation_id"));
+  }
+
+  private void startServer(boolean writeEnabled) {
+    Path jar = fatJarPath();
+    assertThat(Files.isRegularFile(jar))
+        .withFailMessage(
+            "Fat jar not found at %s - expected `mvn package` to have built it before this"
+                + " integration test ran",
+            jar.toAbsolutePath())
+        .isTrue();
+
+    ServerParameters params =
+        ServerParameters.builder("java")
+            .args("-jar", jar.toAbsolutePath().toString())
+            .addEnvVar("ALLOTMINT_MCP_WRITE_ENABLED", Boolean.toString(writeEnabled))
+            .build();
+    StdioClientTransport transport = new StdioClientTransport(params, McpJsonDefaults.getMapper());
+
+    client =
+        McpClient.sync(transport)
+            .requestTimeout(STARTUP_BUDGET)
+            .initializationTimeout(STARTUP_BUDGET)
+            .build();
+
+    // Performs the MCP initialize handshake; throws if the server isn't ready within the
+    // configured initializationTimeout, which enforces the 5-second startup budget.
+    client.initialize();
   }
 
   private Path fatJarPath() {
