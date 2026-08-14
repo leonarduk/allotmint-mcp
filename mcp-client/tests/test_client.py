@@ -142,6 +142,17 @@ async def test_call_tool_passes_arguments_through_verbatim():
 
 
 @pytest.mark.asyncio
+async def test_call_tool_data_quality_issues_needs_no_owner_argument():
+    """The data-quality issues action must not require an owner slug (issue #498)."""
+    session = FakeSession(_result('{"count": 1, "issues": [{"id": "i1"}]}'))
+
+    output = await call_tool(session, "allotmint_data_quality", {"action": "issues"})
+
+    assert session.calls == [("allotmint_data_quality", {"action": "issues"})]
+    assert output == '{"count": 1, "issues": [{"id": "i1"}]}'
+
+
+@pytest.mark.asyncio
 async def test_list_tools_formats_name_and_description():
     session = FakeSession(
         SimpleNamespace(
@@ -334,6 +345,7 @@ def test_missing_required_tools_reports_only_what_is_absent():
         "allotmint_portfolio",
         "allotmint_instrument",
         "allotmint_market",
+        "allotmint_data_quality",
     ]
 
 

@@ -25,6 +25,9 @@ Usage:
     # exercise a v0 tool directly
     python client.py --call allotmint_health --args "{}"
 
+    # exercise a v0 tool with arguments (no owner needed for data quality)
+    python client.py --call allotmint_data_quality --args '{"action": "issues"}'
+
     # start whatever isn't already running (pgvector, Ollama, the Java
     # server, the research-agent sidecar), then ask a question
     python client.py "..." --owner demo --start-deps
@@ -45,7 +48,13 @@ import deps
 DEFAULT_MCP_URL = deps.DEFAULT_MCP_URL
 DEFAULT_RESEARCH_URL = deps.DEFAULT_RESEARCH_URL
 RESEARCH_TOOL = "allotmint_research"
-V0_TOOLS = ("allotmint_portfolio", "allotmint_instrument", "allotmint_market", "allotmint_health")
+V0_TOOLS = (
+    "allotmint_portfolio",
+    "allotmint_instrument",
+    "allotmint_market",
+    "allotmint_health",
+    "allotmint_data_quality",
+)
 REQUIRED_TOOLS = (RESEARCH_TOOL,) + V0_TOOLS
 
 

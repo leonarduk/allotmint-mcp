@@ -3,6 +3,7 @@ package com.allotmint.mcp.config;
 import com.allotmint.mcp.client.AllotMintClient;
 import com.allotmint.mcp.client.ResearchAgentClient;
 import com.allotmint.mcp.tool.AllotMintApplyReconciliationTool;
+import com.allotmint.mcp.tool.AllotMintDataQualityTool;
 import com.allotmint.mcp.tool.AllotMintFilesTool;
 import com.allotmint.mcp.tool.AllotMintHealthTool;
 import com.allotmint.mcp.tool.AllotMintInstrumentTool;
@@ -43,6 +44,7 @@ public class StdioMcpServerConfig {
       @Value("${allotmint.mcp.files.enabled:false}") boolean filesEnabled,
       @Value("${allotmint.mcp.files.root:}") String filesRoot,
       @Value("${allotmint.mcp.research.enabled:false}") boolean researchEnabled,
+      @Value("${allotmint.mcp.data-quality.enabled:true}") boolean dataQualityEnabled,
       @Value("${allotmint.mcp.write.enabled:false}") boolean writeEnabled) {
     StdioServerTransportProvider transportProvider = new StdioServerTransportProvider(jsonMapper);
 
@@ -53,6 +55,10 @@ public class StdioMcpServerConfig {
     tools.add(AllotMintMarketTool.specification(allotMintClient));
     tools.add(AllotMintPortfolioTool.specification(allotMintClient));
     tools.add(AllotMintReconcileTool.specification(allotMintClient));
+
+    if (dataQualityEnabled) {
+      tools.add(AllotMintDataQualityTool.specification(allotMintClient, writeEnabled));
+    }
 
     if (writeEnabled) {
       tools.add(AllotMintApplyReconciliationTool.specification(allotMintClient));

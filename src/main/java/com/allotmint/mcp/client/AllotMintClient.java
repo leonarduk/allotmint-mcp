@@ -249,6 +249,109 @@ public class AllotMintClient {
   }
 
   /**
+   * Returns the aggregated data-quality issue list via {@code GET /data-quality/issues}. The
+   * backend aggregates holdings across all owners server-side, so no owner argument is required.
+   * Optional filters ({@code type}, {@code severity}, {@code owner}, {@code account}, {@code
+   * ticker}) are passed through as query parameters when present.
+   */
+  public Map<String, Object> dataQualityIssues(Map<String, String> filters) {
+    Map<String, Object> response =
+        restClient
+            .get()
+            .uri(
+                builder -> {
+                  builder.pathSegment("data-quality", "issues");
+                  // Skip null/blank values so a direct caller can't emit empty query
+                  // parameters like ?type=; the tool layer already filters these.
+                  filters.forEach(
+                      (name, value) -> {
+                        if (value != null && !value.isBlank()) {
+                          builder.queryParam(name, value);
+                        }
+                      });
+                  return builder.build();
+                })
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(OBJECT_MAP);
+    return response == null ? Map.of() : response;
+  }
+
+  /** Returns per-series quality metrics via {@code GET /data-quality/timeseries}. */
+  public Map<String, Object> dataQualitySeries() {
+    return getObjectMap("/data-quality/timeseries");
+  }
+
+  /**
+   * Returns one issue's suggested fix via {@code GET /data-quality/issues/{issue_id}/preview}.
+   * Read-only; never mutates state.
+   */
+  public Map<String, Object> dataQualityPreview(String issueId) {
+    Map<String, Object> response =
+        restClient
+            .get()
+            .uri(
+                builder ->
+                    builder.pathSegment("data-quality", "issues", issueId, "preview").build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(OBJECT_MAP);
+    return response == null ? Map.of() : response;
+  }
+
+  /**
+   * Applies a previewed fix via {@code POST /data-quality/issues/{issue_id}/fix}. Refuses to call
+   * the backend unless {@code confirm} is true - writes must never be silent.
+   */
+  public Map<String, Object> dataQualityFix(String issueId, boolean confirm) {
+    requireWriteConfirmation("fix", confirm);
+    return postNoBody("data-quality", "issues", issueId, "fix");
+  }
+
+  /**
+   * Dedupes a cached series via {@code POST /data-quality/series/{ticker}/{exchange}/dedupe}.
+   * Refuses to call the backend unless {@code confirm} is true.
+   */
+  public Map<String, Object> dataQualityDedupe(String ticker, String exchange, boolean confirm) {
+    requireWriteConfirmation("dedupe", confirm);
+    return postNoBody("data-quality", "series", ticker, exchange, "dedupe");
+  }
+
+  /** Returns the append-only fix history via {@code GET /data-quality/audit}. */
+  public Map<String, Object> dataQualityAudit() {
+    return getObjectMap("/data-quality/audit");
+  }
+
+  /**
+   * Reverts one audited action via {@code POST /data-quality/audit/{entry_id}/undo}. Refuses to
+   * call the backend unless {@code confirm} is true.
+   */
+  public Map<String, Object> dataQualityUndo(String auditId, boolean confirm) {
+    requireWriteConfirmation("undo", confirm);
+    return postNoBody("data-quality", "audit", auditId, "undo");
+  }
+
+  private Map<String, Object> postNoBody(String... pathSegments) {
+    Map<String, Object> response =
+        postRestClient
+            .post()
+            .uri(builder -> builder.pathSegment(pathSegments).build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(OBJECT_MAP);
+    return response == null ? Map.of() : response;
+  }
+
+  private static void requireWriteConfirmation(String action, boolean confirm) {
+    if (!confirm) {
+      throw new IllegalArgumentException(
+          "AllotMint write action '"
+              + action
+              + "' requires confirm=true; refusing to mutate state.");
+    }
+  }
+
+  /**
    * Maps a 4xx/5xx response into an {@link AllotMintApiException} carrying a readable message
    * (status code + backend's error body if present), so it never leaks a raw stack trace back
    * through the MCP tool layer.
