@@ -171,6 +171,40 @@ def test_wait_until_returns_false_after_the_timeout(monkeypatch):
     assert deps.wait_until(lambda: False, timeout_seconds=0) is False
 
 
+def test_docker_daemon_reachable_is_true_when_info_exits_zero(monkeypatch):
+    commands = []
+
+    class FakeCompletedProcess:
+        returncode = 0
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return FakeCompletedProcess()
+
+    monkeypatch.setattr(deps.subprocess, "run", fake_run)
+
+    assert deps.docker_daemon_reachable() is True
+    assert commands == [["docker", "info"]]
+
+
+def test_docker_daemon_reachable_is_false_when_info_fails(monkeypatch):
+    class FakeCompletedProcess:
+        returncode = 1
+
+    monkeypatch.setattr(deps.subprocess, "run", lambda command, **kwargs: FakeCompletedProcess())
+
+    assert deps.docker_daemon_reachable() is False
+
+
+def test_docker_daemon_reachable_is_false_when_the_probe_times_out(monkeypatch):
+    def _timeout(command, **kwargs):
+        raise deps.subprocess.TimeoutExpired(command, timeout=kwargs.get("timeout"))
+
+    monkeypatch.setattr(deps.subprocess, "run", _timeout)
+
+    assert deps.docker_daemon_reachable() is False
+
+
 def test_ensure_pgvector_is_a_noop_when_already_reachable(monkeypatch):
     monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: True)
 
@@ -187,10 +221,24 @@ def test_ensure_pgvector_reports_missing_docker(monkeypatch):
     assert "docker" in problem
 
 
+def test_ensure_pgvector_reports_an_unreachable_daemon_before_compose(monkeypatch):
+    monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: False)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(deps, "docker_daemon_reachable", lambda timeout=5.0: False)
+    commands = []
+    monkeypatch.setattr(deps.subprocess, "run", lambda command, **kwargs: commands.append(command))
+
+    problem = deps.ensure_pgvector(timeout_seconds=5)
+
+    assert problem == deps.DAEMON_UNREACHABLE_MESSAGE
+    assert commands == []  # never gets as far as docker compose
+
+
 def test_ensure_pgvector_starts_it_and_waits(monkeypatch):
     reachable = {"value": False}
     monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: reachable["value"])
     monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(deps, "docker_daemon_reachable", lambda timeout=5.0: True)
 
     commands = []
 
@@ -213,6 +261,7 @@ def test_ensure_pgvector_starts_it_and_waits(monkeypatch):
 def test_ensure_pgvector_reports_a_failed_compose_command(monkeypatch):
     monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: False)
     monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(deps, "docker_daemon_reachable", lambda timeout=5.0: True)
 
     class FakeCompletedProcess:
         returncode = 1
@@ -228,6 +277,7 @@ def test_ensure_pgvector_reports_a_failed_compose_command(monkeypatch):
 def test_ensure_pgvector_reports_a_timeout_after_starting(monkeypatch):
     monkeypatch.setattr(deps, "tcp_open", lambda host, port, timeout=1.5: False)
     monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(deps, "docker_daemon_reachable", lambda timeout=5.0: True)
 
     class FakeCompletedProcess:
         returncode = 0
@@ -319,9 +369,23 @@ def test_ensure_research_agent_is_a_noop_when_already_reachable(monkeypatch):
     assert seeded == []
 
 
+def test_ensure_research_agent_reports_an_unreachable_daemon_before_compose(monkeypatch):
+    monkeypatch.setattr(deps, "http_ok", lambda url, timeout=2.0: False)
+    monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(deps, "docker_daemon_reachable", lambda timeout=5.0: False)
+    commands = []
+    monkeypatch.setattr(deps.subprocess, "run", lambda command, **kwargs: commands.append(command))
+
+    problem = deps.ensure_research_agent("http://localhost:8100", timeout_seconds=5)
+
+    assert problem == deps.DAEMON_UNREACHABLE_MESSAGE
+    assert commands == []  # never gets as far as docker compose
+
+
 def test_ensure_research_agent_starts_the_compose_profile_and_seeds_it(monkeypatch):
     monkeypatch.setattr(deps, "http_ok", lambda url, timeout=2.0: False)
     monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(deps, "docker_daemon_reachable", lambda timeout=5.0: True)
 
     class FakeCompletedProcess:
         returncode = 0
@@ -349,6 +413,7 @@ def test_ensure_research_agent_starts_the_compose_profile_and_seeds_it(monkeypat
 def test_ensure_research_agent_does_not_seed_if_the_container_never_came_up(monkeypatch):
     monkeypatch.setattr(deps, "http_ok", lambda url, timeout=2.0: False)
     monkeypatch.setattr(deps.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(deps, "docker_daemon_reachable", lambda timeout=5.0: True)
 
     class FakeCompletedProcess:
         returncode = 0
