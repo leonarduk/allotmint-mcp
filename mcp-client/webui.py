@@ -333,7 +333,14 @@ def main(argv: list[str] | None = None) -> int:
 
     which = client.requested_dependencies(args)
     if which:
-        deps.ensure_running(args.url, args.research_url, args.start_timeout, which)
+        problems = deps.ensure_running(args.url, args.research_url, args.start_timeout, which)
+        if problems:
+            deps.log(
+                f"not starting the UI: {len(problems)} requested dependency(ies) failed to start - "
+                "fix the problems above and re-run, or run without --start-deps to open the UI anyway",
+                level="ERROR",
+            )
+            return 1
 
     deps.log("webui.py is deprecated; prefer gradio_ui.py (issue #310)", level="WARNING")
 

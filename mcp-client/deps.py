@@ -182,6 +182,32 @@ def spawn_background(
     return log_path
 
 
+DAEMON_UNREACHABLE_MESSAGE = (
+    "docker is on PATH but the Docker daemon isn't reachable - "
+    "start Docker Desktop (or dockerd) and re-run --start-deps"
+)
+
+
+def docker_daemon_reachable(timeout: float = 5.0) -> bool:
+    """True if the Docker CLI can reach the daemon (`docker info` exits 0).
+
+    `shutil.which("docker")` only proves the binary exists. With the daemon
+    down - Docker Desktop stopped on Windows, or dockerd not running - every
+    `docker compose` call fails with a raw engine error (on Windows: `open
+    //./pipe/dockerDesktopLinuxEngine: The system cannot find the file
+    specified`) that says nothing about the actual problem. Probing the
+    daemon up front lets ensure_pgvector/ensure_research_agent report that
+    clearly instead of passing the engine error through.
+    """
+    try:
+        result = subprocess.run(
+            ["docker", "info"], capture_output=True, timeout=timeout, **_TEXT_KWARGS
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
 def ensure_pgvector(timeout_seconds: float) -> str | None:
     """Starts the pgvector container if :5432 isn't already open.
 
@@ -193,6 +219,8 @@ def ensure_pgvector(timeout_seconds: float) -> str | None:
         return None
     if shutil.which("docker") is None:
         return "not reachable on :5432 and 'docker' isn't on PATH - start it yourself (docker compose up -d pgvector)"
+    if not docker_daemon_reachable():
+        return DAEMON_UNREACHABLE_MESSAGE
 
     log("pgvector: starting (docker compose up -d pgvector)...")
     result = subprocess.run(["docker", "compose", "up", "-d", "pgvector"], cwd=REPO_ROOT)
@@ -302,6 +330,8 @@ def ensure_research_agent(research_url: str, timeout_seconds: float) -> str | No
         return None
     if shutil.which("docker") is None:
         return f"not reachable at {research_url} and 'docker' isn't on PATH"
+    if not docker_daemon_reachable():
+        return DAEMON_UNREACHABLE_MESSAGE
 
     log("research-agent: starting (docker compose --profile research up -d research-agent)...")
     log(

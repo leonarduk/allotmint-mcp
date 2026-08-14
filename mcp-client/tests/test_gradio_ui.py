@@ -241,3 +241,43 @@ def test_bootstrap_covers_the_direct_runtime_dependencies():
         "gradio": "gradio>=6.15.0,<7.0",
         "mcp": "mcp>=1.9",
     }
+
+
+# ------------------------------------------------------------------ main()
+
+
+def test_main_refuses_to_serve_when_a_requested_dependency_failed_to_start(monkeypatch):
+    monkeypatch.setattr(gradio_ui.client, "requested_dependencies", lambda args: {"pgvector"})
+    monkeypatch.setattr(
+        gradio_ui.deps,
+        "ensure_running",
+        lambda *args, **kwargs: ["pgvector: docker is on PATH but the Docker daemon isn't reachable"],
+    )
+    built = []
+    monkeypatch.setattr(gradio_ui, "build_app", lambda defaults=None: built.append(True) or object())
+    errors = []
+    monkeypatch.setattr(gradio_ui.deps, "log", lambda message, level="INFO": errors.append((level, message)))
+
+    assert gradio_ui.main([]) == 1
+    assert built == []  # must not serve a stack that didn't come up
+    assert any(level == "ERROR" and "not starting the UI" in message for level, message in errors)
+    assert any("without --start-deps" in message for _, message in errors)
+
+
+def test_main_serves_when_requested_dependencies_start_cleanly(monkeypatch):
+    monkeypatch.setattr(gradio_ui.client, "requested_dependencies", lambda args: {"pgvector"})
+    monkeypatch.setattr(gradio_ui.deps, "ensure_running", lambda *args, **kwargs: [])
+
+    class FakeDemo:
+        def __init__(self):
+            self.launch_calls = []
+
+        def launch(self, **kwargs):
+            self.launch_calls.append(kwargs)
+
+    demo = FakeDemo()
+    monkeypatch.setattr(gradio_ui, "build_app", lambda defaults=None: demo)
+    monkeypatch.setattr(gradio_ui.deps, "log", lambda message, level="INFO": None)
+
+    assert gradio_ui.main([]) == 0
+    assert demo.launch_calls == [{"server_name": "127.0.0.1", "server_port": 8601, "share": False}]

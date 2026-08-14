@@ -232,3 +232,32 @@ def test_parse_args_overrides():
     assert args.host == "0.0.0.0"
     assert args.port == 9000
     assert args.url == "http://x/mcp"
+
+
+# ------------------------------------------------------------------ main()
+
+
+def test_main_refuses_to_serve_when_a_requested_dependency_failed_to_start(monkeypatch):
+    monkeypatch.setattr(webui.client, "requested_dependencies", lambda args: {"research-agent"})
+    monkeypatch.setattr(
+        webui.deps,
+        "ensure_running",
+        lambda *args, **kwargs: ["research-agent: docker is on PATH but the Docker daemon isn't reachable"],
+    )
+    errors = []
+    monkeypatch.setattr(webui.deps, "log", lambda message, level="INFO": errors.append((level, message)))
+
+    assert webui.main([]) == 1
+    assert any(level == "ERROR" and "not starting the UI" in message for level, message in errors)
+    assert any("without --start-deps" in message for _, message in errors)
+
+
+def test_main_serves_when_requested_dependencies_start_cleanly(monkeypatch):
+    monkeypatch.setattr(webui.client, "requested_dependencies", lambda args: {"research-agent"})
+    monkeypatch.setattr(webui.deps, "ensure_running", lambda *args, **kwargs: [])
+    run_calls = []
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: run_calls.append((app, kwargs)))
+    monkeypatch.setattr(webui.deps, "log", lambda message, level="INFO": None)
+
+    assert webui.main([]) == 0
+    assert run_calls == [(webui.app, {"host": "127.0.0.1", "port": 8600})]
