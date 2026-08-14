@@ -303,6 +303,59 @@ display its diff, obtain human approval, and only then call the apply tool with 
 [reconciliation design](docs/reconciliation-design.md) for the trust boundary and backend
 requirements.
 
+### `allotmint_data_quality`
+
+Answers and acts on data-quality questions — e.g. "which instruments have no data?" — without an
+owner slug. The backend aggregates holdings across all owners server-side.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["issues", "series", "preview", "fix", "dedupe", "audit", "undo"]
+    },
+    "type": { "type": "string", "minLength": 1 },
+    "severity": { "type": "string", "minLength": 1 },
+    "owner": { "type": "string", "minLength": 1 },
+    "account": { "type": "string", "minLength": 1 },
+    "ticker": { "type": "string", "minLength": 1 },
+    "issue_id": { "type": "string", "minLength": 1 },
+    "exchange": { "type": "string", "minLength": 1 },
+    "audit_id": { "type": "string", "minLength": 1 },
+    "confirm": { "type": "boolean", "default": false }
+  },
+  "required": ["action"],
+  "additionalProperties": false
+}
+```
+
+Read actions (never trigger backend live fetches):
+
+- `issues` — aggregated issue list across all owners; optional `type`, `severity`, `owner`,
+  `account`, `ticker` filters. No owner argument is required.
+- `series` — per-series quality metrics (`GET /data-quality/timeseries`).
+- `preview` — review one issue's suggested fix (requires `issue_id`); always call this before `fix`.
+- `audit` — append-only fix history.
+
+Write actions (`fix`, `dedupe`, `undo`) are rejected unless `confirm=true`, and they additionally
+require the server's write capability (`ALLOTMINT_MCP_WRITE_ENABLED=true`, same gate as
+`allotmint_apply_reconciliation`):
+
+```bash
+export ALLOTMINT_MCP_WRITE_ENABLED=true
+java -jar target/allotmint-mcp-server.jar
+```
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ALLOTMINT_MCP_DATA_QUALITY_ENABLED` | `true` | Registers the data-quality tool (read actions)
+| `ALLOTMINT_MCP_WRITE_ENABLED` | `false` | Also permits the `fix`/`dedupe`/`undo` write actions |
+
+The backend enforces no-clobber, `.bak` backups, and atomic audit records on every fix. The data-quality
+admin endpoints are tracked in [leonarduk/allotmint#6724](https://github.com/leonarduk/allotmint/issues/6724).
+
 ### `allotmint_research` (opt-in)
 
 > **What's different from v0:** The four core query tools are deterministic REST wrappers with no external dependencies beyond the AllotMint backend. Enabling `allotmint_research` introduces the server's first LLM dependency, a pgvector retrieval store, and optional Langfuse observability — each with its own configuration, dependency, and egress path. The defaults stay local and free (Ollama + local embeddings), but switching to a hosted LLM or enabling Langfuse requires outbound internet access. See [Design: allotmint_research agentic/RAG MCP tool + LLM observability (Langfuse)](https://github.com/leonarduk/allotmint/discussions/4915) for the full rationale.

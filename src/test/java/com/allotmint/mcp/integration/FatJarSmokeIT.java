@@ -62,10 +62,12 @@ class FatJarSmokeIT {
             "allotmint_instrument",
             "allotmint_market",
             "allotmint_portfolio",
-            "allotmint_reconcile")
-        // allotmint_apply_reconciliation is the server's only write-capable tool; it must stay
-        // absent unless ALLOTMINT_MCP_WRITE_ENABLED is explicitly set, which this smoke test
-        // never does.
+            "allotmint_reconcile",
+            "allotmint_data_quality")
+        // allotmint_apply_reconciliation is registered only when ALLOTMINT_MCP_WRITE_ENABLED is
+        // explicitly set; allotmint_data_quality is registered by default but its write actions
+        // (fix/dedupe/undo) are likewise gated on write being enabled. This smoke test never sets
+        // the flag, so the apply tool must stay absent.
         .doesNotContain("allotmint_apply_reconciliation");
   }
 
