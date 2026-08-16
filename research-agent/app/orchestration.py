@@ -86,7 +86,7 @@ async def combine_reviews(
     reasons = list(deterministic.reasons)
     try:
         verifier = await asyncio.wait_for(verifier_call(), timeout=timeout_seconds)
-    except TimeoutError:
+    except asyncio.TimeoutError:
         reasons.append("verifier timed out; human review required")
         return ReviewVerdict(True, reasons)
     except Exception as exc:  # noqa: BLE001 - isolation boundary between agents

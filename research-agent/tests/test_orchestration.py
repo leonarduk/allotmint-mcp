@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from pydantic_ai.messages import ModelResponse, TextPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from app.guardrails import ReviewVerdict
-from app.orchestration import VerifierVerdict, combine_reviews
+from app.models import AskRequest
+from app.orchestration import VerifierVerdict, combine_reviews, run_verifier
 
 
 @pytest.mark.asyncio
@@ -32,11 +35,11 @@ async def test_disagreement_escalates_to_needs_review():
 
 @pytest.mark.asyncio
 async def test_verifier_timeout_escalates_to_needs_review():
-    async def slow_verifier():
-        await asyncio.sleep(0.1)
+    async def never_verifier():
+        await asyncio.Event().wait()
         return VerifierVerdict(False)
 
-    verdict = await combine_reviews(ReviewVerdict(False, []), slow_verifier, 0.001)
+    verdict = await combine_reviews(ReviewVerdict(False, []), never_verifier, 0.001)
     assert verdict.needs_review is True
     assert verdict.reasons == ["verifier timed out; human review required"]
 
@@ -49,3 +52,47 @@ async def test_verifier_failure_escalates_to_needs_review():
     verdict = await combine_reviews(ReviewVerdict(False, []), broken_verifier, 1)
     assert verdict.needs_review is True
     assert "verifier failed (RuntimeError)" in verdict.reasons[0]
+
+
+@pytest.mark.asyncio
+async def test_deterministic_needs_review_survives_verifier_approval():
+    async def approve():
+        return VerifierVerdict(False)
+
+    deterministic = ReviewVerdict(True, ["guardrail flagged: unsourced figure"])
+    verdict = await combine_reviews(deterministic, approve, 1)
+    assert verdict.needs_review is True
+    assert "guardrail flagged: unsourced figure" in verdict.reasons
+
+
+def _verifier_model(text: str) -> FunctionModel:
+    def respond(_messages, _info: AgentInfo) -> ModelResponse:
+        return ModelResponse(parts=[TextPart(text)])
+
+    return FunctionModel(respond)
+
+
+@pytest.mark.asyncio
+async def test_run_verifier_treats_malformed_output_as_needs_review():
+    verdict = await run_verifier(
+        AskRequest(question="What is my exposure?"),
+        answer="Your exposure is 12%.",
+        citations=[],
+        model=_verifier_model("APPROVE, though I have reservations"),
+        temperature=0.0,
+    )
+    assert verdict.needs_review is True
+    assert verdict.reason == "verifier returned a malformed verdict"
+
+
+@pytest.mark.asyncio
+async def test_run_verifier_treats_empty_output_as_needs_review():
+    verdict = await run_verifier(
+        AskRequest(question="What is my exposure?"),
+        answer="Your exposure is 12%.",
+        citations=[],
+        model=_verifier_model("   "),
+        temperature=0.0,
+    )
+    assert verdict.needs_review is True
+    assert verdict.reason == "verifier returned a malformed verdict"
