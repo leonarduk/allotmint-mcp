@@ -2,6 +2,9 @@
 
 Standalone MCP server for [AllotMint](https://github.com/leonarduk/allotmint), built with Spring Boot 4.1.0, Java 25, and the [MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk). It exposes the same tools over stdio (for Claude Desktop and MCP Inspector) and HTTP streamable transport (`/mcp`).
 
+For the intended users, product boundaries, build-versus-buy decisions, and rough running-cost
+profile, see [Product framing](docs/product-framing.md).
+
 ## Prerequisites
 
 - Java 25 or later on `PATH` (`java -version` should report 25+)
