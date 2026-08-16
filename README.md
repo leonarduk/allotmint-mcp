@@ -13,6 +13,17 @@ profile, see [Product framing](docs/product-framing.md).
 
 Maven does not need to be installed: the repository includes the Maven wrapper.
 
+## Versioning and releases
+
+This project uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`. Increment the
+major version for incompatible MCP tool or configuration changes, the minor version for backward-
+compatible functionality, and the patch version for backward-compatible fixes. Before tagging a
+release, move the relevant entries from `Unreleased` into a dated `MAJOR.MINOR.PATCH` section in
+[`CHANGELOG.md`](CHANGELOG.md), including any breaking changes, new tools, and migration steps.
+
+Releases are triggered by tags in the form `vMAJOR.MINOR.PATCH` (for example, `v1.2.3`). The release
+workflow requires a matching changelog section and uses that section as the GitHub release notes.
+
 ## Build
 
 From a fresh clone:
