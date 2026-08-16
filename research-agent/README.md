@@ -20,6 +20,8 @@ verdict, or a verifier/provider exception returns the answer with
 the grounded result for inspection without silently treating an unreviewed
 answer as safe. `tests/test_orchestration.py` exercises each hand-off failure
 mode without an external model.
+For intended use, limitations, risk classification, EU AI Act considerations,
+and NIST AI RMF alignment, see [Responsible AI and governance](../docs/governance.md).
 
 ```
 Claude/Inspector ──▶ allotmint-mcp (Java)
