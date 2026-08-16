@@ -105,7 +105,7 @@ jobs:
         run: |
           if [ -z "${CICAID_CORE_TOKEN:-}" ]; then
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipping cicaid-devtools install and verification because CICAID_CORE_TOKEN is unavailable (expected on fork pull requests)."
+            echo "::warning::Skipping cicaid-devtools install and verification because CICAID_CORE_TOKEN is unavailable (expected on fork pull requests). A broken cicaid-devtools release would go undetected until a same-repo branch build runs."
             exit 0
           fi
           bash .github/scripts/pip_install_cicaid_core.sh python -m pip install -r scripts/requirements-dev.txt
