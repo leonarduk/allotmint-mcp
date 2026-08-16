@@ -4,6 +4,22 @@ The agentic RAG loop behind the `allotmint_research` MCP tool ([issue #13](https
 
 A small FastAPI service. The Java MCP server calls it over local HTTP; it retrieves relevant context from pgvector, runs a [Pydantic AI](https://ai.pydantic.dev/) agent that chains the four read-only v0 MCP tools, and returns a grounded answer with citations.
 
+## Multi-agent orchestration
+
+The service uses a **sequential supervisor/worker** pattern. The research
+worker in `app/agent.py` retrieves context, calls MCP tools, and synthesizes an
+answer. It then hands the answer and the assembled (not model-invented)
+evidence to a distinct, tool-free verifier in `app/orchestration.py`. The
+verifier may approve the answer or request review; it cannot alter the answer
+or call tools.
+
+Approval is fail-closed: the existing deterministic guardrail and the verifier
+must both approve. A disagreement between them, a verifier timeout, a malformed
+verdict, or a verifier/provider exception returns the answer with
+`needs_review=true` and an actionable entry in `review_reasons`. This preserves
+the grounded result for inspection without silently treating an unreviewed
+answer as safe. `tests/test_orchestration.py` exercises each hand-off failure
+mode without an external model.
 For intended use, limitations, risk classification, EU AI Act considerations,
 and NIST AI RMF alignment, see [Responsible AI and governance](../docs/governance.md).
 
@@ -137,6 +153,7 @@ Every setting has a working local default; the default configuration costs nothi
 | `ALLOTMINT_RESEARCH_MCP_URL` | `http://localhost:8080/mcp` | The allotmint-mcp server's HTTP transport |
 | `ALLOTMINT_RESEARCH_MCP_TIMEOUT_SECONDS` | `30` | Per-tool-call timeout |
 | `ALLOTMINT_RESEARCH_MAX_TOOL_CALLS` | `6` | Bounds a runaway agent loop |
+| `ALLOTMINT_RESEARCH_VERIFIER_TIMEOUT_SECONDS` | `10` | Maximum time allowed for the second-agent evidence review |
 | `ALLOTMINT_RESEARCH_DB_DSN` | `postgresql://allotmint:allotmint@localhost:5432/allotmint_research` | Retrieval store |
 | `ALLOTMINT_RESEARCH_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Local sentence-transformer model |
 | `ALLOTMINT_RESEARCH_EMBEDDING_DIM` | `384` | Must match the model's output dimension |
