@@ -4,6 +4,9 @@ The agentic RAG loop behind the `allotmint_research` MCP tool ([issue #13](https
 
 A small FastAPI service. The Java MCP server calls it over local HTTP; it retrieves relevant context from pgvector, runs a [Pydantic AI](https://ai.pydantic.dev/) agent that chains the four read-only v0 MCP tools, and returns a grounded answer with citations.
 
+For intended use, limitations, risk classification, EU AI Act considerations,
+and NIST AI RMF alignment, see [Responsible AI and governance](../docs/governance.md).
+
 ```
 Claude/Inspector ──▶ allotmint-mcp (Java)
                         │  allotmint_research
