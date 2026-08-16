@@ -93,12 +93,26 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Fork pull requests cannot read repository secrets, so CICAID_CORE_TOKEN
+      # is unavailable to them. Skip the private-dependency install rather than
+      # hard-failing the job in that case -- this job's only purpose is to
+      # catch a broken cicaid-devtools release before a developer hits it
+      # locally, and that isn't checkable without the token anyway.
       - name: Install cicaid-devtools
+        id: install
         env:
           CICAID_CORE_TOKEN: ${{ secrets.CICAID_CORE_TOKEN }}
-        run: bash .github/scripts/pip_install_cicaid_core.sh python -m pip install -r scripts/requirements-dev.txt
+        run: |
+          if [ -z "${CICAID_CORE_TOKEN:-}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping cicaid-devtools install and verification because CICAID_CORE_TOKEN is unavailable (expected on fork pull requests)."
+            exit 0
+          fi
+          bash .github/scripts/pip_install_cicaid_core.sh python -m pip install -r scripts/requirements-dev.txt
+          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: Verify console scripts are importable
+        if: steps.install.outputs.available == 'true'
         run: |
           set -euo pipefail
           # Every console-script entry point (per the package's
