@@ -451,6 +451,14 @@ git config --global "url.https://x-access-token:<your-PAT>@github.com/leonarduk/
 pip install -r scripts/requirements-dev.txt
 ```
 
+Unlike CI, which scopes the credential to a single process via
+`.github/scripts/pip_install_cicaid_core.sh`, a `--global` config persists
+across shells. Unset it once you're done if you don't want it to stick around:
+
+```bash
+git config --global --unset "url.https://x-access-token:<your-PAT>@github.com/leonarduk/cicaid-core.insteadOf"
+```
+
 See [cicaid-core's README](https://github.com/leonarduk/cicaid-core#readme) for
 the full command list, e.g. `commit-and-push` and `publish-pr`. `run-ci-checks`
 reads its check list from [`.cicaid-checks.toml`](.cicaid-checks.toml) in this
