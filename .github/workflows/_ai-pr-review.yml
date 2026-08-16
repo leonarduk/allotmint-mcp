@@ -44,6 +44,9 @@ on:
       gh_token:
         description: "Token used for gh CLI calls (PR/issue read and write)"
         required: true
+      cicaid_core_token:
+        description: "Fine-grained PAT (Contents: Read-only) scoped to leonarduk/cicaid-core, used to install cicaid-devtools now that leonarduk/cicaid-core is private (leonarduk/allotmint#6754)"
+        required: true
 
 # github.workflow resolves to the *calling* workflow's name (DeepSeek/GPT PR
 # Review), so this groups per-provider without cross-cancelling other
@@ -71,8 +74,17 @@ jobs:
         with:
           python-version: '3.12'
 
+      # leonarduk/cicaid was renamed to leonarduk/cicaid-core (private) and its
+      # name reused for a new, unrelated, LLM-less public repo, so the old
+      # github.com/leonarduk/cicaid/releases/... wheel URL now 404s
+      # (leonarduk/allotmint#6754). cicaid-core still has the full package
+      # (incl. the LLM review integrations this workflow imports below) but is
+      # now private, so pip needs a scoped token rewritten in as git
+      # credentials to clone it.
       - name: Install cicaid-devtools
-        run: python -m pip install "cicaid-devtools @ https://github.com/leonarduk/cicaid/releases/download/v0.6.2/cicaid_devtools-0.6.2-py3-none-any.whl"
+        env:
+          CICAID_CORE_TOKEN: ${{ secrets.cicaid_core_token }}
+        run: bash .github/scripts/pip_install_cicaid_core.sh pip install --retries 10 "cicaid-devtools @ git+https://github.com/leonarduk/cicaid-core.git@v0.9.1"
 
       - name: Get linked issue body
         id: issue

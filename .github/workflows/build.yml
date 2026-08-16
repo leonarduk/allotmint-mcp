@@ -94,7 +94,9 @@ jobs:
           python-version: '3.12'
 
       - name: Install cicaid-devtools
-        run: python -m pip install -r scripts/requirements-dev.txt
+        env:
+          CICAID_CORE_TOKEN: ${{ secrets.CICAID_CORE_TOKEN }}
+        run: bash .github/scripts/pip_install_cicaid_core.sh python -m pip install -r scripts/requirements-dev.txt
 
       - name: Verify console scripts are importable
         run: |

@@ -438,15 +438,22 @@ Before committing Java changes, run:
 
 The issue/PR/review automation CLI (`sync-issues`, `work-on-issue`, `local-review`,
 `commit-and-push`, `run-ci-checks`, ...) is no longer vendored under
-`scripts/developer_tools/` — it's the shared
-[cicaid-devtools](https://github.com/leonarduk/cicaid) package now, installed with:
+`scripts/developer_tools/` — it's the shared `cicaid-devtools` package now, which
+lives in the private [`leonarduk/cicaid-core`](https://github.com/leonarduk/cicaid-core)
+repo (renamed from `leonarduk/cicaid`; that name was reused for a smaller,
+unrelated public repo — see leonarduk/allotmint#6754). Installing it requires
+read access to `cicaid-core` (ask a maintainer, or use a fine-grained PAT scoped
+to it with **Contents: Read-only**, the same kind of token CI uses as the
+`CICAID_CORE_TOKEN` secret):
 
 ```bash
+git config --global "url.https://x-access-token:<your-PAT>@github.com/leonarduk/cicaid-core.insteadOf" "https://github.com/leonarduk/cicaid-core"
 pip install -r scripts/requirements-dev.txt
 ```
 
-See [cicaid's README](https://github.com/leonarduk/cicaid#readme) for the full
-command list, e.g. `commit-and-push` and `publish-pr`. `run-ci-checks` reads its
-check list from [`.cicaid-checks.toml`](.cicaid-checks.toml) in this repo (Maven
-build + research-agent/mcp-client pytest, mirroring `.github/workflows/build.yml`).
-`scripts/g_run_tests.ps1` remains as a PowerShell wrapper around `./mvnw verify`.
+See [cicaid-core's README](https://github.com/leonarduk/cicaid-core#readme) for
+the full command list, e.g. `commit-and-push` and `publish-pr`. `run-ci-checks`
+reads its check list from [`.cicaid-checks.toml`](.cicaid-checks.toml) in this
+repo (Maven build + research-agent/mcp-client pytest, mirroring
+`.github/workflows/build.yml`). `scripts/g_run_tests.ps1` remains as a
+PowerShell wrapper around `./mvnw verify`.
