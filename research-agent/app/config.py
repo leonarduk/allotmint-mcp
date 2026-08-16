@@ -73,6 +73,12 @@ class Settings:
     mcp_timeout_seconds: float = 30.0
     max_tool_calls: int = 6
 
+    # --- Multi-agent review -----------------------------------------------
+    # The verifier is a second, tool-free agent that reviews the worker's
+    # answer after synthesis. Its deadline is deliberately separate from MCP
+    # tool timeouts so a slow critic cannot hold the request open indefinitely.
+    verifier_timeout_seconds: float = 10.0
+
     # --- Retrieval ---------------------------------------------------------
     db_dsn: str = "postgresql://allotmint:allotmint@localhost:5432/allotmint_research"
     embedding_model: str = "all-MiniLM-L6-v2"
@@ -118,6 +124,9 @@ def load_settings() -> Settings:
         mcp_url=_env_str("ALLOTMINT_RESEARCH_MCP_URL", "http://localhost:8080/mcp"),
         mcp_timeout_seconds=_env_float("ALLOTMINT_RESEARCH_MCP_TIMEOUT_SECONDS", 30.0),
         max_tool_calls=_env_int("ALLOTMINT_RESEARCH_MAX_TOOL_CALLS", 6),
+        verifier_timeout_seconds=_env_float(
+            "ALLOTMINT_RESEARCH_VERIFIER_TIMEOUT_SECONDS", 10.0
+        ),
         db_dsn=_env_str(
             "ALLOTMINT_RESEARCH_DB_DSN",
             "postgresql://allotmint:allotmint@localhost:5432/allotmint_research",

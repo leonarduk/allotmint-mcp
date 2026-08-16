@@ -418,13 +418,30 @@ async def run_research(
 
     from .guardrails import review
 
-    safety = review(
+    deterministic_review = review(
         request=request,
         answer=answer,
         documents=documents,
         tool_calls=tool_calls,
         grounded=grounded,
         warnings=warnings,
+    )
+
+    # Sequential supervisor/worker pattern: after the tool-calling research
+    # worker finishes, a distinct tool-free verifier reviews its evidence.
+    from .orchestration import combine_reviews, run_verifier
+
+    citations = build_citations(documents, tool_calls)
+    safety = await combine_reviews(
+        deterministic_review,
+        lambda: run_verifier(
+            request,
+            answer,
+            citations,
+            build_model(settings),
+            settings.llm_temperature,
+        ),
+        settings.verifier_timeout_seconds,
     )
 
     log.info(
@@ -434,8 +451,6 @@ async def run_research(
         len(tool_calls),
         grounded,
     )
-
-    citations = build_citations(documents, tool_calls)
 
     if trace_logger is not None:
         trace_logger.request_end(
