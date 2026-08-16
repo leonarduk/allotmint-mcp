@@ -68,6 +68,9 @@ To run the optional HTTP transport at `/mcp`, with Actuator health, info, and me
 java -jar target/allotmint-mcp-server.jar --spring.profiles.active=http
 ```
 
+For log locations, component restart procedures, first-response checks, and common failure
+signatures, see the [operational runbook](docs/runbook.md).
+
 ## Configure Claude Desktop
 
 Build the JAR, then add the following entry to Claude Desktop's configuration. Replace the JAR path with its absolute path; do not use a relative path because Claude Desktop does not launch servers from the repository directory.
