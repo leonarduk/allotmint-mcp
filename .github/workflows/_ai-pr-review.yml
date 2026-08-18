@@ -45,7 +45,7 @@ on:
         description: "Token used for gh CLI calls (PR/issue read and write)"
         required: true
       cicaid_core_token:
-        description: "Fine-grained PAT (Contents: Read-only) scoped to leonarduk/cicaid-core, used to install cicaid-devtools now that leonarduk/cicaid-core is private (leonarduk/allotmint#6754)"
+        description: "Fine-grained PAT (Contents: Read-only) scoped to leonarduk/cicaid-pro, used to install cicaid-devtools now that the repo is private (leonarduk/allotmint#6754). Secret name still says CORE; rename tracked in #550."
         required: true
 
 # github.workflow resolves to the *calling* workflow's name (DeepSeek/GPT PR
@@ -77,14 +77,17 @@ jobs:
       # leonarduk/cicaid was renamed to leonarduk/cicaid-core (private) and its
       # name reused for a new, unrelated, LLM-less public repo, so the old
       # github.com/leonarduk/cicaid/releases/... wheel URL now 404s
-      # (leonarduk/allotmint#6754). cicaid-core still has the full package
+      # (leonarduk/allotmint#6754). That repo has since been renamed again to
+      # cicaid-pro, which is the name used below -- deliberately, rather than
+      # leaning on GitHub's rename redirect, since #6754 is exactly what a
+      # reused old name causes. cicaid-pro still has the full package
       # (incl. the LLM review integrations this workflow imports below) but is
-      # now private, so pip needs a scoped token rewritten in as git
+      # private, so pip needs a scoped token rewritten in as git
       # credentials to clone it.
       - name: Install cicaid-devtools
         env:
           CICAID_CORE_TOKEN: ${{ secrets.cicaid_core_token }}
-        run: bash .github/scripts/pip_install_cicaid_core.sh pip install --retries 10 "cicaid-devtools @ git+https://github.com/leonarduk/cicaid-core.git@v0.9.1"
+        run: bash .github/scripts/pip_install_cicaid_pro.sh pip install --retries 10 "cicaid-devtools @ git+https://github.com/leonarduk/cicaid-pro.git@v0.9.1"
 
       - name: Get linked issue body
         id: issue
