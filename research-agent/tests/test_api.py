@@ -34,7 +34,7 @@ def test_health_reports_configuration_without_probing_anything(client):
 
 
 def test_ask_returns_the_shape_the_java_client_deserializes(client, monkeypatch):
-    async def fake_run(request, settings):
+    async def fake_run(request, settings, trace_logger=None, langfuse_tracer=None):
         return AskResponse(
             question=request.question,
             owner=request.owner,
@@ -84,7 +84,7 @@ def test_an_out_of_range_lookback_is_rejected(client):
 
 
 def test_a_misconfigured_provider_is_a_500_naming_the_variable(client, monkeypatch):
-    async def fail(request, settings):
+    async def fail(request, settings, trace_logger=None, langfuse_tracer=None):
         raise UnsupportedProvider("ALLOTMINT_RESEARCH_LLM_API_KEY is required")
 
     monkeypatch.setattr(main_module, "run_research", fail)
@@ -96,7 +96,7 @@ def test_a_misconfigured_provider_is_a_500_naming_the_variable(client, monkeypat
 
 
 def test_a_failed_run_is_a_502_with_the_cause(client, monkeypatch):
-    async def fail(request, settings):
+    async def fail(request, settings, trace_logger=None, langfuse_tracer=None):
         raise RuntimeError("MCP server unreachable")
 
     monkeypatch.setattr(main_module, "run_research", fail)

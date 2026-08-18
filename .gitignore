@@ -16,7 +16,7 @@ logs/
 .sts4-cache
 
 ### IntelliJ IDEA ###
-.idea
+.idea/shelf
 *.iws
 *.iml
 *.ipr
@@ -34,6 +34,7 @@ build/
 ### VS Code ###
 .vscode/
 .idea/
+.claude/
 
 ### Packaging ###
 *.zip
@@ -42,6 +43,8 @@ build/
 issues/
 __pycache__/
 *.pyc
+/.env
 **/.issue-*.md
 .venv/
 /scripts/spikes/pgvector_research/fixtures/key_findings.md
+.env

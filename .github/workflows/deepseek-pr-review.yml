@@ -15,9 +15,10 @@ jobs:
     with:
       provider_name: DeepSeek
       provider_id: deepseek
-      review_script: .github/scripts/deepseek_review.py
+      review_module: cicaid_devtools.lib.deepseek_review
       workflow_file: deepseek-pr-review.yml
     secrets:
       openai_api_key: ${{ secrets.OPENAI_API_KEY }}
       deepseek_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
       gh_token: ${{ secrets.GITHUB_TOKEN }}
+      cicaid_core_token: ${{ secrets.CICAID_CORE_TOKEN }}

@@ -28,6 +28,14 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
+		<!-- Keep every Log4j module on the patched release. In particular, Spring Boot
+		     4.1.0 otherwise manages log4j-to-slf4j at vulnerable version 2.25.4. -->
+		<log4j2.version>2.26.1</log4j2.version>
+		<!-- Excludes @Tag("integration") tests (see AllotMintClientIntegrationTest) from the
+		     default mvn test/verify run, since they require a live AWS-deployed backend and a
+		     real, short-lived auth token. The "integration" profile below clears this property
+		     to opt in explicitly. -->
+		<surefire.excludedGroups>integration</surefire.excludedGroups>
 	</properties>
 
 	<dependencyManagement>
@@ -61,11 +69,6 @@
 				<artifactId>tomcat-embed-websocket</artifactId>
 				<version>11.0.24</version>
 			</dependency>
-			<dependency>
-				<groupId>org.apache.logging.log4j</groupId>
-				<artifactId>log4j-api</artifactId>
-				<version>2.26.1</version>
-			</dependency>
 		</dependencies>
 	</dependencyManagement>
 
@@ -91,10 +94,21 @@
 			<artifactId>mcp</artifactId>
 		</dependency>
 
+		<!-- Exposes a local .env file as a low-priority Spring PropertySource. Real
+		     environment variables and JVM properties continue to take precedence. -->
+		<dependency>
+			<groupId>me.paulschwarz</groupId>
+			<artifactId>springboot4-dotenv</artifactId>
+			<version>5.1.0</version>
+			<optional>true</optional>
+		</dependency>
+
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
 			<scope>provided</scope>
+			<!-- Version needed for Java 25 -->
+			<version>1.18.46</version>
 		</dependency>
 
 		<dependency>
@@ -115,6 +129,20 @@
 	<build>
 		<finalName>allotmint-mcp-server</finalName>
 		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.15.0</version>
+				<configuration>
+					<annotationProcessorPaths>
+						<path>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok</artifactId>
+							<version>1.18.46</version>
+						</path>
+					</annotationProcessorPaths>
+				</configuration>
+			</plugin>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
@@ -151,6 +179,7 @@
 					     jacoco.exec runs - silently zeroing out the coverage the check goal below
 					     enforces. -->
 					<argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
+					<excludedGroups>${surefire.excludedGroups}</excludedGroups>
 				</configuration>
 			</plugin>
 
@@ -182,6 +211,10 @@
 				<configuration>
 					<java>
 						<googleJavaFormat/>
+						<removeUnusedImports/>
+						<importOrder>
+							<order>,javax,java,\#</order>
+						</importOrder>
 					</java>
 				</configuration>
 				<executions>
@@ -235,7 +268,7 @@
 			<plugin>
 				<groupId>org.owasp</groupId>
 				<artifactId>dependency-check-maven</artifactId>
-				<version>12.2.2</version>
+				<version>13.0.0</version>
 				<configuration>
 					<!-- Conservative starting threshold: fail only on critical findings until
 					     the existing dependency tree's baseline has been triaged. -->
@@ -262,5 +295,23 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<profiles>
+		<!--
+		Opts in to the @Tag("integration") tests (see AllotMintClientIntegrationTest) that the
+		default build excludes, since they need a live AWS-deployed AllotMint backend and a
+		real, short-lived auth token. Those tests skip themselves via Assumptions.assumeTrue
+		if the required env vars aren't set, so activating this profile without them is safe -
+		it just re-confirms the skip. Run explicitly with:
+
+		mvn test -Pintegration -DALLOTMINT_API_BASE=https://your-allotmint-backend.example.com -DALLOTMINT_MCP_AUTH_TOKEN=<backend-issued-jwt>
+		-->
+		<profile>
+			<id>integration</id>
+			<properties>
+				<surefire.excludedGroups/>
+			</properties>
+		</profile>
+	</profiles>
 
 </project>

@@ -64,6 +64,30 @@ async def test_none_valued_arguments_are_dropped(settings):
 
 
 @pytest.mark.asyncio
+async def test_null_and_none_string_arguments_are_dropped(settings):
+    fake = _FakeSession(_Result(structured={"ok": True}))
+    session = ToolSession(settings=settings, session=fake)
+
+    await session.call_tool(
+        "allotmint_portfolio",
+        {
+            "action": "summary",
+            "owner": "demo",
+            "account_type": "NULL",
+            "currency": " none ",
+            "label": "null-value",
+        },
+    )
+
+    assert fake.received == [
+        (
+            "allotmint_portfolio",
+            {"action": "summary", "owner": "demo", "label": "null-value"},
+        )
+    ]
+
+
+@pytest.mark.asyncio
 async def test_a_tool_outside_the_allowlist_is_refused(settings):
     session = ToolSession(settings=settings, session=_FakeSession(_Result(structured={})))
 

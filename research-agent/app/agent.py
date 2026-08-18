@@ -31,6 +31,8 @@ from .llm import build_model
 from .mcp_tools import ToolSession, open_session
 from .models import AskRequest, AskResponse, Citation, RetrievedDocument, ToolCallRecord
 from .retrieval import RetrievalUnavailable, search
+from .tracing import TraceLogger
+from .langfuse_tracing import LangfuseTracer, new_langfuse_tracer
 
 log = logging.getLogger(__name__)
 
@@ -51,7 +53,7 @@ real person's real money, so every number, ticker, and headline you state must \
 come from either the retrieved context below or a tool you actually called.
 
 Tools available to you (all read-only):
-- allotmint_portfolio(action, owner, account_type, currency): action is one of \
+- allotmint_portfolio(action, owner, account_type, currency, lookback_days): action is one of \
 summary, exposure, holdings. Use exposure for sector/asset-class/currency \
 weights, holdings for the per-position list, summary for totals and performance.
 - allotmint_instrument(action, query, ticker, exchange): action is one of \
@@ -65,9 +67,18 @@ How to work:
 portfolio needs allotmint_portfolio. A question asking "why" additionally \
 needs news or market data. A question about one instrument needs \
 allotmint_instrument. Do not call tools that cannot contribute.
-2. Call them. Read the JSON that comes back. If a call fails or returns \
-nothing, say so in your answer -- do not fill the gap with plausible content.
-3. Answer using only what the context and the tool responses contain.
+2. Call them. Read the JSON that comes back. Tool results can be large and \
+nested -- e.g. allotmint_portfolio(action=summary) returns a top-level \
+total_value_gbp alongside a long performance.history array of daily \
+snapshots. Identify the specific field(s) that answer the question before \
+writing anything; ignore fields the question didn't ask about, even large \
+or prominent ones. If a call fails or returns nothing, say so in your \
+answer -- do not fill the gap with plausible content.
+3. Open your answer with one direct sentence that states the actual answer \
+to the literal question asked, using the specific number or fact for it. \
+Add supporting detail -- breakdowns, trends, caveats -- only after that \
+sentence, and only if it clarifies rather than dilutes the answer.
+4. Answer using only what the context and the tool responses contain.
 
 Citing (required):
 - Cite a retrieved document as [n], using the number shown next to it.
@@ -140,8 +151,12 @@ def _make_agent(model: Any, tools: ToolSession, settings: Settings):
         owner: str,
         account_type: str | None = None,
         currency: str | None = None,
+        lookback_days: int | None = None,
     ) -> str:
-        """Read one owner's portfolio. action: summary, exposure, or holdings."""
+        """Read one owner's portfolio. action: summary, exposure, or holdings.
+
+        When action='exposure', lookback_days (default 365) adds a
+        weight_pct_year_ago field to each sector for historical comparison."""
         return await tools.call_tool(
             "allotmint_portfolio",
             {
@@ -149,6 +164,7 @@ def _make_agent(model: Any, tools: ToolSession, settings: Settings):
                 "owner": owner,
                 "account_type": account_type,
                 "currency": currency,
+                "lookback_days": lookback_days,
             },
         )
 
@@ -277,12 +293,37 @@ def resolve_markers(
     return rewritten, referenced, warnings
 
 
-async def run_research(request: AskRequest, settings: Settings) -> AskResponse:
+async def run_research(
+    request: AskRequest,
+    settings: Settings,
+    trace_logger: TraceLogger | None = None,
+    langfuse_tracer: LangfuseTracer | None = None,
+) -> AskResponse:
     """Runs one full research question end to end."""
     started = time.monotonic()
     warnings: list[str] = []
 
+    if trace_logger is not None:
+        trace_logger.request_start(
+            request.question,
+            request.owner,
+            request.lookback_days,
+            settings.model_label,
+        )
+    if langfuse_tracer is not None:
+        langfuse_tracer.request_start(
+            request.question,
+            request.owner,
+            request.lookback_days,
+            settings.model_label,
+        )
+
+    # --- retrieval ---------------------------------------------------------
     documents: list[RetrievedDocument] = []
+    if trace_logger is not None:
+        trace_logger.retrieval_start()
+    if langfuse_tracer is not None:
+        langfuse_tracer.retrieval_start()
     try:
         documents = await search(
             request.question,
@@ -295,16 +336,71 @@ async def run_research(request: AskRequest, settings: Settings) -> AskResponse:
         warnings.append(
             f"Retrieval store unavailable ({exc}); the answer rests on tool calls alone."
         )
+        if trace_logger is not None:
+            trace_logger.retrieval_end(0, [], unavailable=True)
+        if langfuse_tracer is not None:
+            langfuse_tracer.retrieval_end(0, [], unavailable=True)
+    else:
+        if trace_logger is not None:
+            trace_logger.retrieval_end(
+                len(documents),
+                [d.source for d in documents],
+                unavailable=False,
+            )
+        if langfuse_tracer is not None:
+            langfuse_tracer.retrieval_end(
+                len(documents),
+                [d.source for d in documents],
+                unavailable=False,
+            )
 
+    # --- agent run ---------------------------------------------------------
     model = build_model(settings)
     prompt = build_user_prompt(request, documents)
 
-    async with open_session(settings) as tools:
+    if trace_logger is not None:
+        trace_logger.agent_start(settings.model_label)
+    if langfuse_tracer is not None:
+        langfuse_tracer.agent_start(settings.model_label)
+
+    async with open_session(settings, trace_logger=trace_logger) as tools:
         agent = _make_agent(model, tools, settings)
         result = await agent.run(prompt)
         tool_calls = list(tools.calls)
 
     answer = strip_reasoning(str(result.output))
+
+    # Extract cumulative token usage from the pydantic_ai result.
+    # `result.usage()` returns a RunUsage (pydantic BaseModel) with
+    # input_tokens / output_tokens at the top level.  cost is Decimal|None.
+    agent_usage: dict[str, int] | None = None
+    try:
+        run_usage = result.usage()
+        total_input = getattr(run_usage, "input_tokens", 0) or 0
+        total_output = getattr(run_usage, "output_tokens", 0) or 0
+        if total_input > 0 or total_output > 0:
+            agent_usage = {"input": total_input, "output": total_output}
+            # Include total for Langfuse UI cost calculation when available.
+            total = getattr(run_usage, "total_tokens", 0) or 0
+            if total > 0:
+                agent_usage["total"] = total
+    except Exception:
+        log.debug("Failed to extract token usage from pydantic_ai result", exc_info=True)
+
+    if trace_logger is not None:
+        trace_logger.agent_end(
+            tool_call_count=len(tool_calls),
+            answer_length=len(answer),
+            grounded=bool(documents) or bool(tool_calls),
+        )
+    if langfuse_tracer is not None:
+        langfuse_tracer.agent_end(
+            tool_call_count=len(tool_calls),
+            answer_length=len(answer),
+            grounded=bool(documents) or bool(tool_calls),
+            usage=agent_usage,
+        )
+
     answer, referenced, marker_warnings = resolve_markers(answer, documents, tool_calls)
     warnings.extend(marker_warnings)
 
@@ -320,6 +416,34 @@ async def run_research(request: AskRequest, settings: Settings) -> AskResponse:
 
     grounded = bool(documents) or bool(tool_calls)
 
+    from .guardrails import review
+
+    deterministic_review = review(
+        request=request,
+        answer=answer,
+        documents=documents,
+        tool_calls=tool_calls,
+        grounded=grounded,
+        warnings=warnings,
+    )
+
+    # Sequential supervisor/worker pattern: after the tool-calling research
+    # worker finishes, a distinct tool-free verifier reviews its evidence.
+    from .orchestration import combine_reviews, run_verifier
+
+    citations = build_citations(documents, tool_calls)
+    safety = await combine_reviews(
+        deterministic_review,
+        lambda: run_verifier(
+            request,
+            answer,
+            citations,
+            build_model(settings),
+            settings.llm_temperature,
+        ),
+        settings.verifier_timeout_seconds,
+    )
+
     log.info(
         "research complete in %.1fs: %d document(s), %d tool call(s), grounded=%s",
         time.monotonic() - started,
@@ -328,15 +452,37 @@ async def run_research(request: AskRequest, settings: Settings) -> AskResponse:
         grounded,
     )
 
+    if trace_logger is not None:
+        trace_logger.request_end(
+            grounded=grounded,
+            answer_length=len(answer),
+            citation_count=len(citations),
+            tool_call_count=len(tool_calls),
+            document_count=len(documents),
+            warnings=warnings,
+        )
+    if langfuse_tracer is not None:
+        langfuse_tracer.request_end(
+            grounded=grounded,
+            answer_length=len(answer),
+            citation_count=len(citations),
+            tool_call_count=len(tool_calls),
+            document_count=len(documents),
+            warnings=warnings,
+        )
+
     return AskResponse(
         question=request.question,
         owner=request.owner,
         lookback_days=request.lookback_days,
         answer=answer,
-        citations=build_citations(documents, tool_calls),
+        citations=citations,
         tool_calls=tool_calls,
         retrieved_documents=documents,
         grounded=grounded,
+        needs_review=safety.needs_review,
+        review_reasons=safety.reasons,
         warnings=warnings,
         model=settings.model_label,
+        trace_id=trace_logger.trace_id if trace_logger is not None else None,
     )

@@ -2,6 +2,9 @@
 
 Standalone MCP server for [AllotMint](https://github.com/leonarduk/allotmint), built with Spring Boot 4.1.0, Java 25, and the [MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk). It exposes the same tools over stdio (for Claude Desktop and MCP Inspector) and HTTP streamable transport (`/mcp`).
 
+For the intended users, product boundaries, build-versus-buy decisions, and rough running-cost
+profile, see [Product framing](docs/product-framing.md).
+
 ## Prerequisites
 
 - Java 25 or later on `PATH` (`java -version` should report 25+)
@@ -9,6 +12,17 @@ Standalone MCP server for [AllotMint](https://github.com/leonarduk/allotmint), b
 - Claude Desktop if you want to use the stdio MCP integration
 
 Maven does not need to be installed: the repository includes the Maven wrapper.
+
+## Versioning and releases
+
+This project uses [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`. Increment the
+major version for incompatible MCP tool or configuration changes, the minor version for backward-
+compatible functionality, and the patch version for backward-compatible fixes. Before tagging a
+release, move the relevant entries from `Unreleased` into a dated `MAJOR.MINOR.PATCH` section in
+[`CHANGELOG.md`](CHANGELOG.md), including any breaking changes, new tools, and migration steps.
+
+Releases are triggered by tags in the form `vMAJOR.MINOR.PATCH` (for example, `v1.2.3`). The release
+workflow requires a matching changelog section and uses that section as the GitHub release notes.
 
 ## Build
 
@@ -36,11 +50,37 @@ java -jar target/allotmint-mcp-server.jar
 
 Set `ALLOTMINT_API_BASE` to use a backend other than `http://localhost:8000`.
 
+### Local environment configuration
+
+For local development, copy the committed template and edit the values you need:
+
+```bash
+cp .env.example .env
+java -jar target/allotmint-mcp-server.jar
+```
+
+The Java server loads `.env` from its current working directory automatically. The file uses
+`KEY=value` syntax, and the available settings and defaults are listed in `.env.example`. Values
+from the real process environment or JVM system properties take precedence over `.env`, so the
+same JAR can safely use deployment-provided environment variables in testing and production.
+Spring's normal defaults apply when a key is absent everywhere.
+
+The template also includes Spring's `SPRING_PROFILES_ACTIVE` setting and the optional MCP feature
+flags, so local stdio, HTTP, files-tool, and research-tool configuration can be kept in the same
+place. Leave `SPRING_PROFILES_ACTIVE` empty for stdio or set it to `http` for HTTP transport.
+
+The `.env` file is ignored by Git and must not be committed because it may contain the short-lived
+authentication token. Commit only non-secret additions to `.env.example`. To disable `.env`
+loading entirely, set `SPRINGDOTENV_ENABLED=false` in the process environment.
+
 To run the optional HTTP transport at `/mcp`, with Actuator health, info, and metrics endpoints:
 
 ```bash
 java -jar target/allotmint-mcp-server.jar --spring.profiles.active=http
 ```
+
+For log locations, component restart procedures, first-response checks, and common failure
+signatures, see the [operational runbook](docs/runbook.md).
 
 ## Configure Claude Desktop
 
@@ -82,7 +122,7 @@ On Windows, use an escaped absolute path, for example:
 }
 ```
 
-Restart Claude Desktop after saving the configuration. The `echo` tool is available as a transport smoke test; the four AllotMint tools are documented below, along with the opt-in `allotmint_research` tool.
+Restart Claude Desktop after saving the configuration. The `echo` tool is available as a transport smoke test; the AllotMint tools are documented below, including the opt-in write and research tools.
 
 ## Authentication
 
@@ -225,9 +265,119 @@ Returns one owner's summary, exposure breakdown, or flat holdings list.
 
 Get valid `owner` slugs from the AllotMint backend's `GET /owners` endpoint. `account_type` and `currency` are optional case-insensitive client-side filters.
 
+### `allotmint_reconcile`
+
+Produces a read-only structured diff between one account's stored holdings and an uploaded broker
+CSV. Broker parsing and ticker/currency normalization happen in the AllotMint backend.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "owner": { "type": "string", "minLength": 1 },
+    "account_type": { "type": "string", "minLength": 1 },
+    "csv_content": { "type": "string", "minLength": 1 }
+  },
+  "required": ["owner", "account_type", "csv_content"],
+  "additionalProperties": false
+}
+```
+
+The response includes added, removed, quantity/value-changed holdings, the cash delta, and an
+opaque `reconciliation_id`. Show the complete diff to the user before offering to apply it. This
+tool never writes, including when write support is enabled.
+
+### `allotmint_apply_reconciliation` (opt-in write)
+
+Applies exactly the previously returned diff identified by `reconciliation_id`. It does not accept
+replacement holdings or CSV content, so a client cannot change the reviewed payload during apply.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "reconciliation_id": { "type": "string", "minLength": 1 }
+  },
+  "required": ["reconciliation_id"],
+  "additionalProperties": false
+}
+```
+
+The write tool is not registered by default. Enable it only on a backend where portfolio mutation
+is intended:
+
+```bash
+export ALLOTMINT_MCP_WRITE_ENABLED=true
+java -jar target/allotmint-mcp-server.jar
+```
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ALLOTMINT_MCP_WRITE_ENABLED` | `false` | Registers the explicit reconciliation apply tool |
+
+Enabling the flag does not replace approval: an AI client must first call `allotmint_reconcile`,
+display its diff, obtain human approval, and only then call the apply tool with its ID. See the
+[reconciliation design](docs/reconciliation-design.md) for the trust boundary and backend
+requirements.
+
+### `allotmint_data_quality`
+
+Answers and acts on data-quality questions — e.g. "which instruments have no data?" — without an
+owner slug. The backend aggregates holdings across all owners server-side.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["issues", "series", "preview", "fix", "dedupe", "audit", "undo"]
+    },
+    "type": { "type": "string", "minLength": 1 },
+    "severity": { "type": "string", "minLength": 1 },
+    "owner": { "type": "string", "minLength": 1 },
+    "account": { "type": "string", "minLength": 1 },
+    "ticker": { "type": "string", "minLength": 1 },
+    "issue_id": { "type": "string", "minLength": 1 },
+    "exchange": { "type": "string", "minLength": 1 },
+    "audit_id": { "type": "string", "minLength": 1 },
+    "confirm": { "type": "boolean", "default": false }
+  },
+  "required": ["action"],
+  "additionalProperties": false
+}
+```
+
+Read actions (never trigger backend live fetches):
+
+- `issues` — aggregated issue list across all owners; optional `type`, `severity`, `owner`,
+  `account`, `ticker` filters. No owner argument is required.
+- `series` — per-series quality metrics (`GET /data-quality/timeseries`).
+- `preview` — review one issue's suggested fix (requires `issue_id`); always call this before `fix`.
+- `audit` — append-only fix history.
+
+Write actions (`fix`, `dedupe`, `undo`) are rejected unless `confirm=true`, and they additionally
+require the server's write capability (`ALLOTMINT_MCP_WRITE_ENABLED=true`, same gate as
+`allotmint_apply_reconciliation`):
+
+```bash
+export ALLOTMINT_MCP_WRITE_ENABLED=true
+java -jar target/allotmint-mcp-server.jar
+```
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ALLOTMINT_MCP_DATA_QUALITY_ENABLED` | `true` | Registers the data-quality tool (read actions)
+| `ALLOTMINT_MCP_WRITE_ENABLED` | `false` | Also permits the `fix`/`dedupe`/`undo` write actions |
+
+The backend enforces no-clobber, `.bak` backups, and atomic audit records on every fix. The data-quality
+admin endpoints are tracked in [leonarduk/allotmint#6724](https://github.com/leonarduk/allotmint/issues/6724).
+
 ### `allotmint_research` (opt-in)
 
-Answers a compound natural-language question by retrieving relevant embedded context and chaining the four read-only tools above as the question requires, returning a grounded answer whose `[n]` markers cite the retrieved documents and tool calls behind it.
+> **What's different from v0:** The four core query tools are deterministic REST wrappers with no external dependencies beyond the AllotMint backend. Enabling `allotmint_research` introduces the server's first LLM dependency, a pgvector retrieval store, and optional Langfuse observability — each with its own configuration, dependency, and egress path. The defaults stay local and free (Ollama + local embeddings), but switching to a hosted LLM or enabling Langfuse requires outbound internet access. See [Design: allotmint_research agentic/RAG MCP tool + LLM observability (Langfuse)](https://github.com/leonarduk/allotmint/discussions/4915) for the full rationale.
+
+Answers a compound natural-language question by retrieving relevant embedded context and chaining the four core read-only query tools as the question requires, returning a grounded answer whose `[n]` markers cite the retrieved documents and tool calls behind it.
 
 ```json
 {
@@ -260,7 +410,7 @@ Answers a compound natural-language question by retrieving relevant embedded con
 Unlike the tools above, this one is **off by default** and needs two things running alongside the server:
 
 - the [research agent sidecar](research-agent/README.md), which runs the agent loop (Python, Pydantic AI);
-- the HTTP transport, because the agent reaches the four v0 tools as an MCP client of this server's own `/mcp` endpoint. Both transports can run at once, so a stdio client still works.
+- the HTTP transport, because the agent reaches the four core query tools as an MCP client of this server's own `/mcp` endpoint. Both transports can run at once, so a stdio client still works.
 
 ```bash
 export ALLOTMINT_MCP_RESEARCH_ENABLED=true
@@ -278,6 +428,12 @@ The sidecar's own configuration — which LLM, which retrieval store — is docu
 
 The tool stays read-only: the sidecar allowlists exactly the four v0 tool names, so no write path is reachable through it, and `allotmint_research` is excluded from that allowlist so the agent cannot recurse into itself. An answer with no retrieved context and no tool calls behind it is returned as an error, not as prose.
 
+To exercise this tool without Claude Desktop or the MCP Inspector, use the [mcp-client](mcp-client/README.md) — a minimal CLI that connects over MCP and asks it questions directly, plus an optional [locally hosted browser UI](mcp-client/README.md#web-ui) (`python webui.py`) on the same client.
+
+### Multiple checkouts of this repo
+
+When more than one clone of this repo runs on the same machine, `docker-compose.yml` no longer sets hardcoded `container_name` values — Compose derives per-project names automatically (`${COMPOSE_PROJECT_NAME}-pgvector-1`, etc.), so two checkouts can run their own pgvector and research-agent containers without colliding. Use `docker compose ps` to find the actual container names in your checkout. If you have old containers from before this change, remove them first: `docker rm -f allotmint-mcp-pgvector allotmint-mcp-research-agent`.
+
 ## Build and quality gates
 
 ```bash
@@ -291,3 +447,35 @@ Before committing Java changes, run:
 ```bash
 ./mvnw spotless:apply
 ```
+
+## Developer tooling
+
+The issue/PR/review automation CLI (`sync-issues`, `work-on-issue`, `local-review`,
+`commit-and-push`, `run-ci-checks`, ...) is no longer vendored under
+`scripts/developer_tools/` — it's the shared `cicaid-devtools` package now, which
+lives in the private [`leonarduk/cicaid-core`](https://github.com/leonarduk/cicaid-core)
+repo (renamed from `leonarduk/cicaid`; that name was reused for a smaller,
+unrelated public repo — see leonarduk/allotmint#6754). Installing it requires
+read access to `cicaid-core` (ask a maintainer, or use a fine-grained PAT scoped
+to it with **Contents: Read-only**, the same kind of token CI uses as the
+`CICAID_CORE_TOKEN` secret):
+
+```bash
+git config --global "url.https://x-access-token:<your-PAT>@github.com/leonarduk/cicaid-core.insteadOf" "https://github.com/leonarduk/cicaid-core"
+pip install -r scripts/requirements-dev.txt
+```
+
+Unlike CI, which scopes the credential to a single process via
+`.github/scripts/pip_install_cicaid_core.sh`, a `--global` config persists
+across shells. Unset it once you're done if you don't want it to stick around:
+
+```bash
+git config --global --unset "url.https://x-access-token:<your-PAT>@github.com/leonarduk/cicaid-core.insteadOf"
+```
+
+See [cicaid-core's README](https://github.com/leonarduk/cicaid-core#readme) for
+the full command list, e.g. `commit-and-push` and `publish-pr`. `run-ci-checks`
+reads its check list from [`.cicaid-checks.toml`](.cicaid-checks.toml) in this
+repo (Maven build + research-agent/mcp-client pytest, mirroring
+`.github/workflows/build.yml`). `scripts/g_run_tests.ps1` remains as a
+PowerShell wrapper around `./mvnw verify`.

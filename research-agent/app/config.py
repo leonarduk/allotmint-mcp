@@ -73,6 +73,12 @@ class Settings:
     mcp_timeout_seconds: float = 30.0
     max_tool_calls: int = 6
 
+    # --- Multi-agent review -----------------------------------------------
+    # The verifier is a second, tool-free agent that reviews the worker's
+    # answer after synthesis. Its deadline is deliberately separate from MCP
+    # tool timeouts so a slow critic cannot hold the request open indefinitely.
+    verifier_timeout_seconds: float = 10.0
+
     # --- Retrieval ---------------------------------------------------------
     db_dsn: str = "postgresql://allotmint:allotmint@localhost:5432/allotmint_research"
     embedding_model: str = "all-MiniLM-L6-v2"
@@ -84,6 +90,20 @@ class Settings:
     # 0.85 keeps those and cuts the tail.
     max_distance: float = 0.85
     retrieval_enabled: bool = True
+
+    # --- Tracing -----------------------------------------------------------
+    # Where structured JSON trace events are written (one line per event).
+    # An empty string disables trace logging entirely.
+    trace_file: str = ""
+
+    # --- Langfuse ----------------------------------------------------------
+    # Observability via Langfuse (cloud or self-hosted). When both
+    # LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are set, each
+    # allotmint_research invocation is sent as a Langfuse trace with distinct
+    # spans for retrieval, each tool call, and synthesis.
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://cloud.langfuse.com"
 
     tools: tuple[str, ...] = V0_TOOL_ALLOWLIST
 
@@ -104,6 +124,9 @@ def load_settings() -> Settings:
         mcp_url=_env_str("ALLOTMINT_RESEARCH_MCP_URL", "http://localhost:8080/mcp"),
         mcp_timeout_seconds=_env_float("ALLOTMINT_RESEARCH_MCP_TIMEOUT_SECONDS", 30.0),
         max_tool_calls=_env_int("ALLOTMINT_RESEARCH_MAX_TOOL_CALLS", 6),
+        verifier_timeout_seconds=_env_float(
+            "ALLOTMINT_RESEARCH_VERIFIER_TIMEOUT_SECONDS", 10.0
+        ),
         db_dsn=_env_str(
             "ALLOTMINT_RESEARCH_DB_DSN",
             "postgresql://allotmint:allotmint@localhost:5432/allotmint_research",
@@ -114,4 +137,8 @@ def load_settings() -> Settings:
         max_distance=_env_float("ALLOTMINT_RESEARCH_MAX_DISTANCE", 0.85),
         retrieval_enabled=_env_str("ALLOTMINT_RESEARCH_RETRIEVAL_ENABLED", "true").lower()
         not in ("false", "0", "no"),
+        trace_file=_env_str("ALLOTMINT_RESEARCH_TRACE_FILE", ""),
+        langfuse_public_key=_env_str("LANGFUSE_PUBLIC_KEY", ""),
+        langfuse_secret_key=_env_str("LANGFUSE_SECRET_KEY", ""),
+        langfuse_host=_env_str("LANGFUSE_HOST", "https://cloud.langfuse.com"),
     )

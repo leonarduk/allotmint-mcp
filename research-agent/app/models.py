@@ -72,5 +72,8 @@ class AskResponse(BaseModel):
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
     retrieved_documents: list[RetrievedDocument] = Field(default_factory=list)
     grounded: bool = False
+    needs_review: bool = False
+    review_reasons: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     model: str = ""
+    trace_id: str | None = None

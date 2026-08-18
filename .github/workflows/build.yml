@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v5.6.0
+        uses: actions/setup-java@v5.7.0
         with:
           distribution: temurin
           java-version: '25'
@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -57,3 +57,93 @@ jobs:
       - name: Test
         working-directory: research-agent
         run: python -m pytest -q
+
+  mcp-client:
+    # The CLI client for testing allotmint_research (issue #256). Its tests use
+    # a fake MCP session, so this job needs no running server, sidecar, or model.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: mcp-client/requirements-dev.txt
+
+      - name: Install test dependencies
+        working-directory: mcp-client
+        run: pip install -r requirements-dev.txt
+
+      - name: Test
+        working-directory: mcp-client
+        run: python -m pytest -q
+
+  dev-tools:
+    # Verify the shared cicaid-devtools package installs and its console
+    # scripts are functional. This catches a broken release wheel, missing
+    # asset, or import error before a developer hits it locally.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      # Fork pull requests cannot read repository secrets, so CICAID_CORE_TOKEN
+      # is unavailable to them. Skip the private-dependency install rather than
+      # hard-failing the job in that case -- this job's only purpose is to
+      # catch a broken cicaid-devtools release before a developer hits it
+      # locally, and that isn't checkable without the token anyway.
+      - name: Install cicaid-devtools
+        id: install
+        env:
+          CICAID_CORE_TOKEN: ${{ secrets.CICAID_CORE_TOKEN }}
+        run: |
+          if [ -z "${CICAID_CORE_TOKEN:-}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping cicaid-devtools install and verification because CICAID_CORE_TOKEN is unavailable (expected on fork pull requests). A broken cicaid-devtools release would go undetected until a same-repo branch build runs."
+            exit 0
+          fi
+          bash .github/scripts/pip_install_cicaid_core.sh python -m pip install -r scripts/requirements-dev.txt
+          echo "available=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify console scripts are importable
+        if: steps.install.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          # Every console-script entry point (per the package's
+          # entry_points.txt) must import without error (catches missing
+          # modules, broken wheels, dependency issues). Only cli.main() is
+          # called with --help here because it accepts an explicit argv
+          # parameter; other commands read sys.argv directly and would try
+          # to act on a CI runner.
+          python -c "import cicaid_devtools.cli; cicaid_devtools.cli.main(['--help'])"
+          python -c "import cicaid_devtools.sync_issues"
+          python -c "import cicaid_devtools.create_issue"
+          python -c "import cicaid_devtools.triage_issues"
+          python -c "import cicaid_devtools.work_on_issue"
+          python -c "import cicaid_devtools.work_on_pr"
+          python -c "import cicaid_devtools.implement_issue_with_aider"
+          python -c "import cicaid_devtools.run_ci_checks"
+          python -c "import cicaid_devtools.local_review"
+          python -c "import cicaid_devtools.pr_review"
+          python -c "import cicaid_devtools.dependabot_auto_merge"
+          python -c "import cicaid_devtools.review_issue"
+          python -c "import cicaid_devtools.add_issue_to_pr"
+          python -c "import cicaid_devtools.clear_ai_slop_issues"
+          python -c "import cicaid_devtools.lib.commit_and_push"
+          python -c "import cicaid_devtools.lib.publish_pr"
+          python -c "import cicaid_devtools.lib.review_common"
+          python -c "import cicaid_devtools.lib.deepseek_review"
+          python -c "import cicaid_devtools.lib.gpt_review"
+          python -c "import cicaid_devtools.lib.verdict"
+          python -c "import cicaid_devtools.lib.followups"
+          python -c "import cicaid_devtools.lib.llm_labels"
+          python -c "import cicaid_devtools.lib.review_diff"
+          python -c "import cicaid_devtools.lib.review_discussion"
+          python -c "import cicaid_devtools.lib.verified_symbols"
+          python -c "import cicaid_devtools.lib.followup_issues"

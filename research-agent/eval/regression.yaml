@@ -1,0 +1,155 @@
+# Regression eval set for allotmint_research.
+#
+# These cases exercise the three design-doc categories and are expected to
+# *pass* under a correctly functioning agent loop.  Failures here signal a
+# regression in grounding, tool selection, or citation assembly.
+#
+# Every expectation is checkable programmatically — no subjective quality
+# judgments.
+
+# ---------------------------------------------------------------------------
+# Pure-retrieval: questions answerable from the vector store alone.
+# The agent should cite retrieved documents and may optionally call tools,
+# but the core answer comes from context.
+# ---------------------------------------------------------------------------
+
+- id: "retrieval-tech-exposure-trend"
+  question: "How has technology sector exposure changed over the past year?"
+  owner: "demo"
+  expect:
+    grounded: true
+    citations_min: 1
+    answer_contains: ["%", "Technology"]
+    answer_not_contains: ["[tool:"]
+
+- id: "retrieval-sector-comparison"
+  question: "Compare the technology and financials sector allocations."
+  owner: "demo"
+  expect:
+    grounded: true
+    citations_min: 1
+    answer_contains: ["Technology", "Financials"]
+
+- id: "retrieval-key-findings"
+  question: "What are the key findings from the latest portfolio report?"
+  owner: "demo"
+  expect:
+    grounded: true
+    citations_min: 1
+    answer_not_contains: ["I could not", "I cannot"]
+
+- id: "retrieval-document-content"
+  question: "What does the key_findings document say about sector exposure?"
+  owner: "demo"
+  expect:
+    grounded: true
+    citations_min: 1
+    answer_contains: ["key_findings"]
+
+# ---------------------------------------------------------------------------
+# Pure-current-data: questions that require live tool calls.
+# The agent must call at least one v0 tool; answering from retrieval alone is
+# the failure mode.
+# ---------------------------------------------------------------------------
+
+- id: "current-data-portfolio-summary"
+  question: "Give me a summary of my portfolio."
+  owner: "demo"
+  expect:
+    grounded: true
+    tools_called: ["allotmint_portfolio"]
+    citations_min: 1
+
+- id: "current-data-instrument-news"
+  question: "What is the latest news about NVDA?"
+  owner: ~
+  expect:
+    grounded: true
+    tools_called: ["allotmint_instrument"]
+    citations_min: 1
+
+- id: "current-data-market-overview"
+  question: "How are the markets doing today?"
+  owner: ~
+  expect:
+    grounded: true
+    tools_called: ["allotmint_market"]
+    citations_min: 1
+
+- id: "current-data-holdings-list"
+  question: "List my current holdings."
+  owner: "demo"
+  expect:
+    grounded: true
+    tools_called: ["allotmint_portfolio"]
+    citations_min: 1
+
+- id: "current-data-instrument-search"
+  question: "Search for Apple stock."
+  owner: ~
+  expect:
+    grounded: true
+    tools_called: ["allotmint_instrument"]
+    citations_min: 1
+
+- id: "current-data-health-check"
+  question: "Is the AllotMint backend reachable?"
+  owner: ~
+  expect:
+    grounded: true
+    tools_called: ["allotmint_health"]
+    citations_min: 1
+
+# ---------------------------------------------------------------------------
+# Compound tool-chaining: questions that naturally require two or more tools
+# to answer completely.  The agent must choose the right combination, not a
+# single tool.
+# ---------------------------------------------------------------------------
+
+- id: "compound-exposure-plus-news"
+  question: "How has my tech exposure changed this year, and why?"
+  owner: "demo"
+  expect:
+    grounded: true
+    tools_called: ["allotmint_portfolio", "allotmint_instrument"]
+    citations_min: 2
+    answer_contains: ["%"]
+
+- id: "compound-portfolio-plus-market"
+  question: "Show my portfolio exposure alongside the current market sentiment."
+  owner: "demo"
+  expect:
+    grounded: true
+    tools_called: ["allotmint_portfolio", "allotmint_market"]
+    citations_min: 2
+
+- id: "compound-instrument-detail-plus-news"
+  question: "What is NVDA's current price and the latest news about it?"
+  owner: ~
+  expect:
+    grounded: true
+    tools_called: ["allotmint_instrument"]
+    citations_min: 1
+    # A well-designed agent might call news and prices separately; either way,
+    # the instrument tool should be called at least once.
+
+- id: "compound-movers-plus-detail"
+  question: "What are the top market movers and can you give me details on the top one?"
+  owner: ~
+  expect:
+    grounded: true
+    tools_called: ["allotmint_market", "allotmint_instrument"]
+    citations_min: 2
+
+# ---------------------------------------------------------------------------
+# Edge case: no owner supplied.  The agent should refuse gracefully rather
+# than guessing.
+# ---------------------------------------------------------------------------
+
+- id: "edge-no-owner-refuses-gracefully"
+  question: "What is my portfolio exposure?"
+  owner: ~
+  expect:
+    grounded: false
+    answer_contains: ["owner"]
+    tools_not_called: ["allotmint_portfolio"]
