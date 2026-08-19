@@ -453,27 +453,27 @@ Before committing Java changes, run:
 The issue/PR/review automation CLI (`sync-issues`, `work-on-issue`, `local-review`,
 `commit-and-push`, `run-ci-checks`, ...) is no longer vendored under
 `scripts/developer_tools/` — it's the shared `cicaid-devtools` package now, which
-lives in the private [`leonarduk/cicaid-core`](https://github.com/leonarduk/cicaid-core)
-repo (renamed from `leonarduk/cicaid`; that name was reused for a smaller,
-unrelated public repo — see leonarduk/allotmint#6754). Installing it requires
-read access to `cicaid-core` (ask a maintainer, or use a fine-grained PAT scoped
-to it with **Contents: Read-only**, the same kind of token CI uses as the
-`CICAID_CORE_TOKEN` secret):
+lives in the private [`leonarduk/cicaid-pro`](https://github.com/leonarduk/cicaid-pro)
+repo (renamed from `leonarduk/cicaid`, whose old name was then reused for a
+smaller, unrelated public repo — see leonarduk/allotmint#6754). Installing it
+requires read access to `cicaid-pro` (ask a maintainer, or use a fine-grained
+PAT scoped to it with **Contents: Read-only**, the same kind of token CI uses as the
+`CICAID_PRO_TOKEN` secret):
 
 ```bash
-git config --global "url.https://x-access-token:<your-PAT>@github.com/leonarduk/cicaid-core.insteadOf" "https://github.com/leonarduk/cicaid-core"
+git config --global "url.https://x-access-token:<your-PAT>@github.com/leonarduk/cicaid-pro.insteadOf" "https://github.com/leonarduk/cicaid-pro"
 pip install -r scripts/requirements-dev.txt
 ```
 
 Unlike CI, which scopes the credential to a single process via
-`.github/scripts/pip_install_cicaid_core.sh`, a `--global` config persists
+`.github/scripts/pip_install_cicaid_pro.sh`, a `--global` config persists
 across shells. Unset it once you're done if you don't want it to stick around:
 
 ```bash
-git config --global --unset "url.https://x-access-token:<your-PAT>@github.com/leonarduk/cicaid-core.insteadOf"
+git config --global --unset "url.https://x-access-token:<your-PAT>@github.com/leonarduk/cicaid-pro.insteadOf"
 ```
 
-See [cicaid-core's README](https://github.com/leonarduk/cicaid-core#readme) for
+See [cicaid-pro's README](https://github.com/leonarduk/cicaid-pro#readme) for
 the full command list, e.g. `commit-and-push` and `publish-pr`. `run-ci-checks`
 reads its check list from [`.cicaid-checks.toml`](.cicaid-checks.toml) in this
 repo (Maven build + research-agent/mcp-client pytest, mirroring
