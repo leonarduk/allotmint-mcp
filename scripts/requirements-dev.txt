@@ -1,9 +1,8 @@
 # Shared issue/PR/review automation CLI (sync-issues, work-on-issue, local-review,
 # commit-and-push, run-ci-checks, etc.). Previously lived at
-# https://github.com/leonarduk/cicaid; that repo was renamed to the now-private
-# leonarduk/cicaid-core (its old name was reused by a smaller, unrelated public
-# repo) and then renamed again to leonarduk/cicaid-pro, so installing this
-# requires a CICAID_CORE_TOKEN with read access --
+# https://github.com/leonarduk/cicaid; that repo is now the private
+# leonarduk/cicaid-pro (and its old name was reused by a smaller, unrelated
+# public repo), so installing this requires a CICAID_PRO_TOKEN with read access --
 # see .github/scripts/pip_install_cicaid_pro.sh and leonarduk/allotmint#6754.
 #
 # Pinned to a tag for reproducible installs; check

@@ -454,12 +454,11 @@ The issue/PR/review automation CLI (`sync-issues`, `work-on-issue`, `local-revie
 `commit-and-push`, `run-ci-checks`, ...) is no longer vendored under
 `scripts/developer_tools/` — it's the shared `cicaid-devtools` package now, which
 lives in the private [`leonarduk/cicaid-pro`](https://github.com/leonarduk/cicaid-pro)
-repo (renamed from `leonarduk/cicaid` to `cicaid-core` and then to `cicaid-pro`;
-the `cicaid` name was reused for a smaller, unrelated public repo — see
-leonarduk/allotmint#6754). Installing it requires
-read access to `cicaid-pro` (ask a maintainer, or use a fine-grained PAT scoped
-to it with **Contents: Read-only**, the same kind of token CI uses as the
-`CICAID_CORE_TOKEN` secret):
+repo (renamed from `leonarduk/cicaid`, whose old name was then reused for a
+smaller, unrelated public repo — see leonarduk/allotmint#6754). Installing it
+requires read access to `cicaid-pro` (ask a maintainer, or use a fine-grained
+PAT scoped to it with **Contents: Read-only**, the same kind of token CI uses as the
+`CICAID_PRO_TOKEN` secret):
 
 ```bash
 git config --global "url.https://x-access-token:<your-PAT>@github.com/leonarduk/cicaid-pro.insteadOf" "https://github.com/leonarduk/cicaid-pro"
