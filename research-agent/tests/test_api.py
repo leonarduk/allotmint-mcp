@@ -25,6 +25,8 @@ def test_health_reports_configuration_without_probing_anything(client):
 
     assert body["status"] == "ok"
     assert body["model"] == "ollama:llama3.2"
+    assert body["llm_provider"] == "ollama"
+    assert body["available_llm_providers"] == ["ollama"]
     assert body["tools"] == [
         "allotmint_portfolio",
         "allotmint_instrument",
@@ -73,6 +75,32 @@ def test_ask_returns_the_shape_the_java_client_deserializes(client, monkeypatch)
 
 def test_a_blank_question_is_rejected_before_any_llm_call(client):
     assert client.post("/research/ask", json={"question": ""}).status_code == 422
+
+
+def test_ask_uses_an_advertised_provider(client, monkeypatch):
+    monkeypatch.setenv("ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS", "ollama,deepseek")
+    monkeypatch.setenv("ALLOTMINT_RESEARCH_DEEPSEEK_API_KEY", "secret")
+
+    async def fake_run(request, settings, trace_logger=None, langfuse_tracer=None):
+        assert settings.llm_provider == "deepseek"
+        assert settings.llm_model == "deepseek-chat"
+        assert settings.llm_api_key == "secret"
+        return AskResponse(question=request.question, answer="answer", grounded=True)
+
+    monkeypatch.setattr(main_module, "run_research", fake_run)
+
+    response = client.post(
+        "/research/ask", json={"question": "why?", "llm_provider": "deepseek"}
+    )
+    assert response.status_code == 200
+
+
+def test_ask_rejects_an_unadvertised_provider(client):
+    response = client.post(
+        "/research/ask", json={"question": "why?", "llm_provider": "deepseek"}
+    )
+    assert response.status_code == 422
+    assert "not available" in response.json()["detail"]
 
 
 def test_an_out_of_range_lookback_is_rejected(client):

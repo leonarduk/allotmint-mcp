@@ -177,7 +177,7 @@ def requested_dependencies(args: argparse.Namespace) -> set[str]:
 
 
 def build_research_arguments(
-    question: str, owner: str | None, lookback_days: int | None
+    question: str, owner: str | None, lookback_days: int | None, llm_provider: str | None = None
 ) -> dict[str, Any]:
     """Builds the allotmint_research 'ask' arguments the server's schema expects."""
     arguments: dict[str, Any] = {"action": "ask", "question": question}
@@ -185,6 +185,8 @@ def build_research_arguments(
         arguments["owner"] = owner
     if lookback_days is not None:
         arguments["lookback_days"] = lookback_days
+    if llm_provider:
+        arguments["llm_provider"] = llm_provider
     return arguments
 
 
@@ -410,8 +412,11 @@ async def preflight(session, research_url: str, timeout_seconds: float) -> list[
     return []
 
 
-async def ask(session, question: str, owner: str | None, lookback_days: int | None) -> str:
-    arguments = build_research_arguments(question, owner, lookback_days)
+async def ask(
+    session, question: str, owner: str | None, lookback_days: int | None,
+    llm_provider: str | None = None,
+) -> str:
+    arguments = build_research_arguments(question, owner, lookback_days, llm_provider)
     result = await session.call_tool(RESEARCH_TOOL, arguments)
     text = result_text(result)
     return f"Error: {text}" if result_is_error(result) else text

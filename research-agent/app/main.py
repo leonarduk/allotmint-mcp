@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 
 from .agent import run_research
-from .config import load_settings
+from .config import load_settings, select_llm_provider
 from .langfuse_tracing import new_langfuse_tracer
 from .llm import UnsupportedProvider
 from .models import AskRequest, AskResponse
@@ -43,6 +43,8 @@ async def health() -> dict:
     return {
         "status": "ok",
         "model": settings.model_label,
+        "llm_provider": settings.llm_provider,
+        "available_llm_providers": list(settings.available_llm_providers),
         "mcp_url": settings.mcp_url,
         "retrieval_enabled": settings.retrieval_enabled,
         "trace_file": settings.trace_file or "(disabled)",
@@ -64,6 +66,10 @@ def _trace_file(settings) -> Path | None:
 async def ask(request: AskRequest) -> AskResponse:
     """Answers one question with a grounded, cited response."""
     settings = load_settings()
+    try:
+        settings = select_llm_provider(settings, request.llm_provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     trace_logger = new_trace(_trace_file(settings))
     trace_id = trace_logger.trace_id if trace_logger is not None else str(uuid.uuid4())
     lf_tracer = new_langfuse_tracer(trace_id, settings)

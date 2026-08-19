@@ -48,6 +48,7 @@ public final class AllotMintResearchTool {
   static final String QUESTION = "question";
   static final String OWNER = "owner";
   static final String LOOKBACK_DAYS = "lookback_days";
+  static final String LLM_PROVIDER = "llm_provider";
 
   /** The only supported action. Kept as a list so adding a second one stays a one-line change. */
   private static final List<String> ACTIONS = List.of("ask");
@@ -100,6 +101,13 @@ public final class AllotMintResearchTool {
             DEFAULT_LOOKBACK_DAYS,
             "description",
             "How far back dated documents are considered during retrieval"));
+    properties.put(
+        LLM_PROVIDER,
+        Map.of(
+            "type", "string",
+            "minLength", 1,
+            "description",
+                "Optional LLM provider advertised by the research-agent health endpoint"));
 
     Map<String, Object> inputSchema =
         Map.of(
@@ -141,6 +149,7 @@ public final class AllotMintResearchTool {
     }
 
     String owner = optionalString(arguments, OWNER);
+    String llmProvider = optionalString(arguments, LLM_PROVIDER);
 
     Object rawLookback = arguments.get(LOOKBACK_DAYS);
     Integer lookbackDays = optionalInteger(rawLookback);
@@ -155,7 +164,10 @@ public final class AllotMintResearchTool {
 
     ResearchAnswer answer;
     try {
-      answer = client.ask(question, owner, lookbackDays);
+      answer =
+          llmProvider == null
+              ? client.ask(question, owner, lookbackDays)
+              : client.ask(question, owner, lookbackDays, llmProvider);
     } catch (AllotMintApiException e) {
       return error(e.getMessage());
     } catch (RestClientException e) {

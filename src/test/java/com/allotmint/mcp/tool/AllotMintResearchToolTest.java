@@ -74,7 +74,8 @@ class AllotMintResearchToolTest {
     @SuppressWarnings("unchecked")
     Map<String, Object> properties = (Map<String, Object>) schema.get("properties");
 
-    assertThat(properties).containsOnlyKeys("action", "question", "owner", "lookback_days");
+    assertThat(properties)
+        .containsOnlyKeys("action", "question", "owner", "lookback_days", "llm_provider");
     assertThat(schema.get("required")).isEqualTo(List.of("action", "question"));
     assertThat(schema.get("additionalProperties")).isEqualTo(false);
 

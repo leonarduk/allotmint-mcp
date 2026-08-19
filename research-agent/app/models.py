@@ -20,6 +20,7 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1)
     owner: str | None = None
     lookback_days: int = Field(default=DEFAULT_LOOKBACK_DAYS, ge=1, le=3650)
+    llm_provider: str | None = Field(default=None, min_length=1)
 
 
 class Citation(BaseModel):
