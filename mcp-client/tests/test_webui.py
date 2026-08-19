@@ -51,6 +51,21 @@ def test_index_serves_the_form(test_client):
     assert response.status_code == 200
     assert "Ask allotmint_research" in response.text
     assert "List tools" in response.text
+    assert "Account Owner" in response.text
+    assert 'select name="owner"' in response.text
+
+
+def test_api_owners_returns_dropdown_choices(monkeypatch, test_client):
+    result = _result("Found 2 account owner(s)")
+    result.structuredContent = {"owners": [{"slug": "alice"}, {"name": "bob"}]}
+    session = FakeSession(result=result)
+    monkeypatch.setattr(client_module, "open_session", _fake_open_session(session))
+
+    response = test_client.post("/api/owners", json={})
+
+    assert response.status_code == 200
+    assert response.json() == {"owners": ["alice", "bob"]}
+    assert session.calls == [("allotmint_owners", {})]
 
 
 # -------------------------------------------------------------- POST /api/ask

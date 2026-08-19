@@ -51,7 +51,7 @@ DEFAULTS = {"url": client.DEFAULT_MCP_URL, "research_url": client.DEFAULT_RESEAR
 
 async def ui_ask(
     question: str,
-    owner: str,
+    owner: str | None,
     lookback_days: float | None,
     url: str,
     research_url: str,
@@ -72,7 +72,7 @@ async def ui_ask(
             return await client.ask(
                 session,
                 question,
-                owner.strip() or None,
+                owner.strip() if owner else None,
                 int(lookback_days) if lookback_days else None,
             )
     except Exception as exc:  # noqa: BLE001 - reported to the caller, not swallowed
@@ -86,6 +86,16 @@ async def ui_list_tools(url: str, timeout: float) -> str:
             return await client.list_tools(session)
     except Exception as exc:  # noqa: BLE001
         return client.format_exception(exc)
+
+
+async def ui_account_owners(url: str, timeout: float):
+    """Loads valid account-owner choices when the chat UI opens."""
+    try:
+        async with client.open_session(url.strip() or DEFAULTS["url"], timeout) as session:
+            owners = await client.list_account_owners(session)
+        return gr.update(choices=owners, value=owners[0] if owners else None)
+    except Exception:  # noqa: BLE001 - keep the UI usable when discovery is unavailable
+        return gr.update(choices=[], value=None)
 
 
 async def ui_call_tool(tool: str, args_json: str, url: str, timeout: float) -> str:
@@ -117,7 +127,7 @@ def build_app(defaults: dict[str, str] | None = None) -> gr.Blocks:
                 placeholder="How has my tech exposure changed this year, and why?",
             )
             with gr.Row():
-                owner = gr.Textbox(label="Owner", placeholder="demo")
+                owner = gr.Dropdown(label="Account Owner", choices=[], allow_custom_value=False)
                 lookback_days = gr.Number(label="Lookback days", precision=0)
             with gr.Accordion("Advanced", open=False):
                 ask_url = gr.Textbox(label="allotmint-mcp URL", value=defaults["url"])
@@ -138,6 +148,7 @@ def build_app(defaults: dict[str, str] | None = None) -> gr.Blocks:
                 inputs=[question, owner, lookback_days, ask_url, ask_research_url, ask_timeout, skip_preflight],
                 outputs=ask_result,
             )
+            demo.load(ui_account_owners, inputs=[ask_url, ask_timeout], outputs=owner)
 
         with gr.Tab("List tools"):
             tools_url = gr.Textbox(label="allotmint-mcp URL", value=defaults["url"])

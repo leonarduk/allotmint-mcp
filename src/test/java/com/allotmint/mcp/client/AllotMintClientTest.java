@@ -21,6 +21,23 @@ public class AllotMintClientTest {
   private static final String BASE_URL = "https://api.example.test";
 
   @Test
+  void listsAvailableAccountOwners() {
+    RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+    MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+    RestClient restClient = builder.build();
+    AllotMintClient client = new AllotMintClient(restClient, restClient, BASE_URL);
+    server
+        .expect(requestTo(BASE_URL + "/owners"))
+        .andRespond(
+            withSuccess("[{\"slug\":\"alice\"},{\"slug\":\"bob\"}]", MediaType.APPLICATION_JSON));
+
+    assertThat(client.owners())
+        .extracting(owner -> owner.get("slug"))
+        .containsExactly("alice", "bob");
+    server.verify();
+  }
+
+  @Test
   void reportsBackendVersionWhenReachable() {
     RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
     MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
