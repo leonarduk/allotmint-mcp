@@ -103,6 +103,17 @@ def test_ask_rejects_an_unadvertised_provider(client):
     assert "not available" in response.json()["detail"]
 
 
+def test_ask_rejects_an_advertised_provider_with_no_api_key(client, monkeypatch):
+    monkeypatch.setenv("ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS", "ollama,deepseek")
+    monkeypatch.delenv("ALLOTMINT_RESEARCH_DEEPSEEK_API_KEY", raising=False)
+
+    response = client.post(
+        "/research/ask", json={"question": "why?", "llm_provider": "deepseek"}
+    )
+    assert response.status_code == 422
+    assert "ALLOTMINT_RESEARCH_DEEPSEEK_API_KEY" in response.json()["detail"]
+
+
 def test_an_out_of_range_lookback_is_rejected(client):
     response = client.post(
         "/research/ask", json={"question": "why?", "lookback_days": 99999}

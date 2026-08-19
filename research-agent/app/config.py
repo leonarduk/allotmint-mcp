@@ -170,6 +170,11 @@ def select_llm_provider(settings: Settings, provider: str | None) -> Settings:
         return settings
 
     prefix = f"ALLOTMINT_RESEARCH_{selected.upper().replace('-', '_')}"
+    if selected != "ollama" and not os.environ.get(f"{prefix}_API_KEY", "").strip():
+        raise ValueError(
+            f"LLM provider {selected!r} is advertised but has no "
+            f"{prefix}_API_KEY configured; set it before selecting this provider."
+        )
     defaults = {
         "ollama": ("llama3.2", "http://localhost:11434/v1"),
         "deepseek": ("deepseek-chat", "https://api.deepseek.com"),
