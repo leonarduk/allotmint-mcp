@@ -129,6 +129,20 @@ async def test_ui_load_llm_providers_uses_sidecar_health(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_ui_account_owners_populates_dropdown(monkeypatch):
+    result = _result("Found 2 account owner(s)")
+    result.structuredContent = {"owners": [{"slug": "alice"}, {"owner": "bob"}]}
+    session = FakeSession(result=result)
+    monkeypatch.setattr(client_module, "open_session", _fake_open_session(session))
+
+    update = await gradio_ui.ui_account_owners(client_module.DEFAULT_MCP_URL, 30.0)
+
+    assert update["choices"] == ["alice", "bob"]
+    assert update["value"] == "alice"
+    assert session.calls == [("allotmint_owners", {})]
+
+
+@pytest.mark.asyncio
 async def test_ui_list_tools_lists_names_and_descriptions(monkeypatch):
     session = FakeSession(
         tools=[

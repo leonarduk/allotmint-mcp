@@ -68,6 +68,7 @@ class McpHttpTransportIntegrationTest {
             "allotmint_health",
             "allotmint_instrument",
             "allotmint_market",
+            "allotmint_owners",
             "allotmint_portfolio",
             "allotmint_reconcile",
             "allotmint_data_quality");

@@ -422,6 +422,31 @@ async def ask(
     return f"Error: {text}" if result_is_error(result) else text
 
 
+async def list_account_owners(session) -> list[str]:
+    """Returns owner slugs from the read-only discovery tool."""
+    result = await session.call_tool("allotmint_owners", {})
+    if result_is_error(result):
+        raise RuntimeError(result_text(result))
+    structured = getattr(result, "structured_content", None) or getattr(
+        result, "structuredContent", None
+    )
+    owners = structured.get("owners", []) if isinstance(structured, dict) else []
+    values: list[str] = []
+    for owner in owners:
+        if isinstance(owner, str):
+            value = owner
+        elif isinstance(owner, dict):
+            value = next(
+                (owner[key] for key in ("slug", "owner", "name") if owner.get(key)), ""
+            )
+        else:
+            value = ""
+        value = str(value).strip()
+        if value and value not in values:
+            values.append(value)
+    return values
+
+
 async def call_tool(session, name: str, arguments: dict[str, Any]) -> str:
     result = await session.call_tool(name, arguments)
     text = result_display(result)

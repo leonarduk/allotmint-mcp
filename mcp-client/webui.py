@@ -84,6 +84,17 @@ class CallRequest(BaseModel):
     timeout: float = 180.0
 
 
+@app.post("/api/owners")
+async def api_owners(payload: ToolsRequest) -> dict:
+    """Returns valid account owners for the chat form's dropdown."""
+    try:
+        async with client.open_session(payload.url, payload.timeout) as session:
+            owners = await client.list_account_owners(session)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=client.format_exception(exc)) from exc
+    return {"owners": owners}
+
+
 @app.post("/api/ask")
 async def api_ask(payload: AskRequest) -> dict:
     """Same path as the CLI's one-shot/REPL question: preflight, then ask."""
@@ -161,7 +172,7 @@ _INDEX_TEMPLATE = """<!doctype html>
   h1 { font-size: 1.3rem; }
   fieldset { border: 1px solid #ccc; border-radius: 6px; margin-bottom: 1.5rem; }
   label { display: block; margin-top: 0.6rem; font-size: 0.9rem; }
-  input[type=text], input[type=number], input[type=url], textarea {
+  input[type=text], input[type=number], input[type=url], select, textarea {
     width: 100%; box-sizing: border-box; padding: 0.4rem; margin-top: 0.2rem;
     font-family: inherit; font-size: 0.95rem;
   }
@@ -185,7 +196,7 @@ _INDEX_TEMPLATE = """<!doctype html>
     <textarea name="question" required placeholder="How has my tech exposure changed this year, and why?"></textarea>
   </label>
   <div class="row">
-    <div><label>Owner <input type="text" name="owner" placeholder="demo"></label></div>
+    <div><label>Account Owner <select name="owner"><option value="">Loading account owners...</option></select></label></div>
     <div><label>Lookback days <input type="number" name="lookback_days" min="1" max="3650"></label></div>
   </div>
   <details>
@@ -225,6 +236,17 @@ _INDEX_TEMPLATE = """<!doctype html>
 <script>
 /* Injected by render_index() via json.dumps — safe for any URL chars */
 const DEFAULTS = __DEFAULTS_JSON__;
+
+async function loadAccountOwners() {
+  const select = document.querySelector('select[name="owner"]');
+  const {ok, data} = await postJSON("/api/owners", {url: DEFAULTS.url, timeout: 30.0});
+  select.replaceChildren();
+  if (!ok || !data.owners || data.owners.length === 0) {
+    select.append(new Option("No account owners available", ""));
+    return;
+  }
+  data.owners.forEach(owner => select.append(new Option(owner, owner)));
+}
 
 async function postJSON(url, body) {
   const response = await fetch(url, {
@@ -298,6 +320,7 @@ document.getElementById("call-form").addEventListener("submit", async (event) =>
   const {ok, data} = await postJSON("/api/call", body);
   showResult(el, ok && !data.detail, data.detail || data.output);
 });
+loadAccountOwners();
 </script>
 </body>
 </html>

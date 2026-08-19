@@ -51,7 +51,7 @@ DEFAULTS = {"url": client.DEFAULT_MCP_URL, "research_url": client.DEFAULT_RESEAR
 
 async def ui_ask(
     question: str,
-    owner: str,
+    owner: str | None,
     lookback_days: float | None,
     url: str,
     research_url: str,
@@ -73,7 +73,7 @@ async def ui_ask(
             return await client.ask(
                 session,
                 question,
-                owner.strip() or None,
+                owner.strip() if owner else None,
                 int(lookback_days) if lookback_days else None,
                 llm_provider,
             )
@@ -107,6 +107,16 @@ async def ui_load_llm_providers(research_url: str, timeout: float):
         return gr.Dropdown(choices=choices, value=current or (choices[0] if choices else None))
     except Exception:  # noqa: BLE001 - an unavailable sidecar is reported by preflight on Ask
         return gr.Dropdown(choices=[], value=None)
+
+
+async def ui_account_owners(url: str, timeout: float):
+    """Loads valid account-owner choices when the chat UI opens."""
+    try:
+        async with client.open_session(url.strip() or DEFAULTS["url"], timeout) as session:
+            owners = await client.list_account_owners(session)
+        return gr.update(choices=owners, value=owners[0] if owners else None)
+    except Exception:  # noqa: BLE001 - keep the UI usable when discovery is unavailable
+        return gr.update(choices=[], value=None)
 
 
 async def ui_call_tool(tool: str, args_json: str, url: str, timeout: float) -> str:
@@ -144,7 +154,7 @@ def build_app(defaults: dict[str, str] | None = None) -> gr.Blocks:
                 placeholder="How has my tech exposure changed this year, and why?",
             )
             with gr.Row():
-                owner = gr.Textbox(label="Owner", placeholder="demo")
+                owner = gr.Dropdown(label="Account Owner", choices=[], allow_custom_value=False)
                 lookback_days = gr.Number(label="Lookback days", precision=0)
             with gr.Accordion("Advanced", open=False):
                 ask_url = gr.Textbox(label="allotmint-mcp URL", value=defaults["url"])
@@ -193,6 +203,7 @@ def build_app(defaults: dict[str, str] | None = None) -> gr.Blocks:
                 inputs=[ask_research_url, ask_timeout],
                 outputs=llm_provider,
             )
+            demo.load(ui_account_owners, inputs=[ask_url, ask_timeout], outputs=owner)
 
         with gr.Tab("List tools"):
             tools_url = gr.Textbox(label="allotmint-mcp URL", value=defaults["url"])
