@@ -83,6 +83,18 @@ public class AllotMintClient {
     return getObject("portfolio", owner);
   }
 
+  /** Returns the account owners available to the authenticated user. */
+  public List<Map<String, Object>> owners() {
+    List<Map<String, Object>> response =
+        restClient
+            .get()
+            .uri("/owners")
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(LIST_RESPONSE);
+    return response == null ? List.of() : response;
+  }
+
   public List<Map<String, Object>> portfolioSectors(String owner) {
     List<Map<String, Object>> response =
         restClient
