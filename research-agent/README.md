@@ -149,6 +149,10 @@ Every setting has a working local default; the default configuration costs nothi
 | `ALLOTMINT_RESEARCH_LLM_MODEL` | `llama3.2` | Model name for that provider |
 | `ALLOTMINT_RESEARCH_LLM_BASE_URL` | `http://localhost:11434/v1` | For `ollama` and `openai-compatible` |
 | `ALLOTMINT_RESEARCH_LLM_API_KEY` | *(empty)* | Required only for `deepseek` |
+| `ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS` | current provider | Comma-separated providers offered for per-question selection in clients |
+| `ALLOTMINT_RESEARCH_<PROVIDER>_MODEL` | provider default | Model for an alternative selectable provider (for example `DEEPSEEK`) |
+| `ALLOTMINT_RESEARCH_<PROVIDER>_BASE_URL` | provider default | Base URL for an alternative selectable provider |
+| `ALLOTMINT_RESEARCH_<PROVIDER>_API_KEY` | generic API key | Credential for an alternative selectable provider |
 | `ALLOTMINT_RESEARCH_LLM_TEMPERATURE` | `0.0` | Determinism over variety, for a tool quoting real numbers |
 | `ALLOTMINT_RESEARCH_MCP_URL` | `http://localhost:8080/mcp` | The allotmint-mcp server's HTTP transport |
 | `ALLOTMINT_RESEARCH_MCP_TIMEOUT_SECONDS` | `30` | Per-tool-call timeout |
@@ -173,6 +177,14 @@ Switching to the low-cost hosted option is configuration only:
 export ALLOTMINT_RESEARCH_LLM_PROVIDER=deepseek
 export ALLOTMINT_RESEARCH_LLM_MODEL=deepseek-chat
 export ALLOTMINT_RESEARCH_LLM_API_KEY=sk-...
+```
+
+To keep Ollama as the default while allowing each Gradio UI question to choose
+DeepSeek, advertise both and configure DeepSeek independently:
+
+```bash
+export ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS=ollama,deepseek
+export ALLOTMINT_RESEARCH_DEEPSEEK_API_KEY=sk-...
 ```
 
 ### Tracing

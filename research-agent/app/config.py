@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from dataclasses import replace
 
 # The four read-only v0 tools the agent is allowed to call. This is an
 # allowlist, not documentation: `mcp_tools.py` refuses to invoke anything
@@ -107,6 +108,11 @@ class Settings:
 
     tools: tuple[str, ...] = V0_TOOL_ALLOWLIST
 
+    # Providers exposed to clients for per-question selection. The configured
+    # default is always included, while hosted alternatives are opt-in so the
+    # UI never offers a choice that has no credentials behind it.
+    available_llm_providers: tuple[str, ...] = ("ollama",)
+
     @property
     def model_label(self) -> str:
         """Human-readable model identifier echoed back in the response."""
@@ -115,8 +121,13 @@ class Settings:
 
 def load_settings() -> Settings:
     """Builds `Settings` from the environment."""
+    provider = _env_str("ALLOTMINT_RESEARCH_LLM_PROVIDER", "ollama").lower()
+    configured = _env_str("ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS", provider)
+    available = tuple(dict.fromkeys(p.strip().lower() for p in configured.split(",") if p.strip()))
+    if provider not in available:
+        available = (provider, *available)
     return Settings(
-        llm_provider=_env_str("ALLOTMINT_RESEARCH_LLM_PROVIDER", "ollama").lower(),
+        llm_provider=provider,
         llm_model=_env_str("ALLOTMINT_RESEARCH_LLM_MODEL", "llama3.2"),
         llm_base_url=_env_str("ALLOTMINT_RESEARCH_LLM_BASE_URL", "http://localhost:11434/v1"),
         llm_api_key=_env_str("ALLOTMINT_RESEARCH_LLM_API_KEY", ""),
@@ -141,4 +152,39 @@ def load_settings() -> Settings:
         langfuse_public_key=_env_str("LANGFUSE_PUBLIC_KEY", ""),
         langfuse_secret_key=_env_str("LANGFUSE_SECRET_KEY", ""),
         langfuse_host=_env_str("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        available_llm_providers=available,
+    )
+
+
+def select_llm_provider(settings: Settings, provider: str | None) -> Settings:
+    """Return request-scoped settings for an advertised provider."""
+    if not provider:
+        return settings
+    selected = provider.strip().lower()
+    if selected not in settings.available_llm_providers:
+        raise ValueError(
+            f"LLM provider {selected!r} is not available; choose one of: "
+            + ", ".join(settings.available_llm_providers)
+        )
+    if selected == settings.llm_provider:
+        return settings
+
+    prefix = f"ALLOTMINT_RESEARCH_{selected.upper().replace('-', '_')}"
+    if selected != "ollama" and not os.environ.get(f"{prefix}_API_KEY", "").strip():
+        raise ValueError(
+            f"LLM provider {selected!r} is advertised but has no "
+            f"{prefix}_API_KEY configured; set it before selecting this provider."
+        )
+    defaults = {
+        "ollama": ("llama3.2", "http://localhost:11434/v1"),
+        "deepseek": ("deepseek-chat", "https://api.deepseek.com"),
+        "openai-compatible": (settings.llm_model, settings.llm_base_url),
+    }
+    model, base_url = defaults.get(selected, (settings.llm_model, settings.llm_base_url))
+    return replace(
+        settings,
+        llm_provider=selected,
+        llm_model=_env_str(f"{prefix}_MODEL", model),
+        llm_base_url=_env_str(f"{prefix}_BASE_URL", base_url),
+        llm_api_key=_env_str(f"{prefix}_API_KEY", settings.llm_api_key),
     )

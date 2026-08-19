@@ -57,6 +57,7 @@ async def ui_ask(
     research_url: str,
     timeout: float,
     skip_preflight: bool,
+    llm_provider: str | None = None,
 ) -> str:
     """Same path as the CLI's one-shot/REPL question: preflight, then ask."""
     if not question or not question.strip():
@@ -74,6 +75,7 @@ async def ui_ask(
                 question,
                 owner.strip() if owner else None,
                 int(lookback_days) if lookback_days else None,
+                llm_provider,
             )
     except Exception as exc:  # noqa: BLE001 - reported to the caller, not swallowed
         return client.format_exception(exc)
@@ -86,6 +88,25 @@ async def ui_list_tools(url: str, timeout: float) -> str:
             return await client.list_tools(session)
     except Exception as exc:  # noqa: BLE001
         return client.format_exception(exc)
+
+
+async def ui_load_llm_providers(research_url: str, timeout: float):
+    """Populate the provider dropdown from the running sidecar's health data."""
+    try:
+        health = await client.fetch_research_agent_health(
+            research_url.strip() or DEFAULTS["research_url"], timeout
+        )
+        choices = health.get("available_llm_providers") or []
+        current = health.get("llm_provider")
+        if not choices and current:
+            choices = [current]
+        if not choices:
+            # Backward compatibility with a sidecar predating issue #554.
+            model = health.get("model", "")
+            choices = [model.split(":", 1)[0]] if ":" in model else []
+        return gr.Dropdown(choices=choices, value=current or (choices[0] if choices else None))
+    except Exception:  # noqa: BLE001 - an unavailable sidecar is reported by preflight on Ask
+        return gr.Dropdown(choices=[], value=None)
 
 
 async def ui_account_owners(url: str, timeout: float):
@@ -121,6 +142,12 @@ def build_app(defaults: dict[str, str] | None = None) -> gr.Blocks:
         gr.Markdown("# AllotMint MCP client")
 
         with gr.Tab("Ask allotmint_research"):
+            llm_provider = gr.Dropdown(
+                label="LLM provider",
+                choices=[],
+                value=None,
+                info="Available choices are loaded from the research agent.",
+            )
             question = gr.Textbox(
                 label="Question",
                 lines=3,
@@ -140,13 +167,41 @@ def build_app(defaults: dict[str, str] | None = None) -> gr.Blocks:
             ask_result = gr.Textbox(label="Answer", lines=10, interactive=False)
             ask_button.click(
                 ui_ask,
-                inputs=[question, owner, lookback_days, ask_url, ask_research_url, ask_timeout, skip_preflight],
+                inputs=[
+                    question,
+                    owner,
+                    lookback_days,
+                    ask_url,
+                    ask_research_url,
+                    ask_timeout,
+                    skip_preflight,
+                    llm_provider,
+                ],
                 outputs=ask_result,
             )
             question.submit(
                 ui_ask,
-                inputs=[question, owner, lookback_days, ask_url, ask_research_url, ask_timeout, skip_preflight],
+                inputs=[
+                    question,
+                    owner,
+                    lookback_days,
+                    ask_url,
+                    ask_research_url,
+                    ask_timeout,
+                    skip_preflight,
+                    llm_provider,
+                ],
                 outputs=ask_result,
+            )
+            demo.load(
+                ui_load_llm_providers,
+                inputs=[ask_research_url, ask_timeout],
+                outputs=llm_provider,
+            )
+            ask_research_url.change(
+                ui_load_llm_providers,
+                inputs=[ask_research_url, ask_timeout],
+                outputs=llm_provider,
             )
             demo.load(ui_account_owners, inputs=[ask_url, ask_timeout], outputs=owner)
 

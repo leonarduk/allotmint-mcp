@@ -154,7 +154,7 @@ python gradio_ui.py
 
 Then open [http://localhost:8601](http://localhost:8601). The page has three tabs, one per CLI mode:
 
-- **Ask allotmint_research** — question, owner, lookback days, plus an *Advanced* section for the allotmint-mcp/research-agent URLs, timeout, and skipping preflight — mirrors `python client.py "..." --owner ...`.
+- **Ask allotmint_research** — question, owner, lookback days, and an LLM provider dropdown populated from the running research agent, plus an *Advanced* section for the allotmint-mcp/research-agent URLs, timeout, and skipping preflight — mirrors `python client.py "..." --owner ...`. Set `ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS` to a comma-separated allowlist (for example `ollama,deepseek`); only advertised providers can be selected per question. Alternative providers can use provider-specific settings such as `ALLOTMINT_RESEARCH_DEEPSEEK_API_KEY`, `ALLOTMINT_RESEARCH_DEEPSEEK_MODEL`, and `ALLOTMINT_RESEARCH_DEEPSEEK_BASE_URL`, leaving the local default's settings unchanged.
 - **List tools** — connects to the configured allotmint-mcp URL (with its own URL and timeout fields) and lists the tools it exposes — mirrors `--list-tools`.
 - **Call a tool directly** — tool name, JSON arguments, URL, and timeout — mirrors `--call TOOL --args JSON`.
 

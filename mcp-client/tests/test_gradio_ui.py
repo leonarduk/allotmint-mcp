@@ -114,6 +114,21 @@ async def test_ui_ask_reports_connection_failures(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_ui_load_llm_providers_uses_sidecar_health(monkeypatch):
+    async def healthy(research_url, timeout_seconds):
+        return {
+            "llm_provider": "ollama",
+            "available_llm_providers": ["ollama", "deepseek"],
+        }
+
+    monkeypatch.setattr(client_module, "fetch_research_agent_health", healthy)
+    update = await gradio_ui.ui_load_llm_providers(client_module.DEFAULT_RESEARCH_URL, 30.0)
+
+    assert update.choices == [("ollama", "ollama"), ("deepseek", "deepseek")]
+    assert update.value == "ollama"
+
+
+@pytest.mark.asyncio
 async def test_ui_account_owners_populates_dropdown(monkeypatch):
     result = _result("Found 2 account owner(s)")
     result.structuredContent = {"owners": [{"slug": "alice"}, {"owner": "bob"}]}

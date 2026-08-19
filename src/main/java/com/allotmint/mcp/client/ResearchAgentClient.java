@@ -49,12 +49,19 @@ public class ResearchAgentClient {
    * @throws AllotMintApiException if the sidecar answers 4xx/5xx
    */
   public ResearchAnswer ask(String question, String owner, int lookbackDays) {
+    return ask(question, owner, lookbackDays, null);
+  }
+
+  public ResearchAnswer ask(String question, String owner, int lookbackDays, String llmProvider) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("question", question);
     if (owner != null) {
       payload.put("owner", owner);
     }
     payload.put("lookback_days", lookbackDays);
+    if (llmProvider != null) {
+      payload.put("llm_provider", llmProvider);
+    }
 
     log.debug(
         "Asking research agent at {} (owner={}, lookback_days={})", baseUrl, owner, lookbackDays);
