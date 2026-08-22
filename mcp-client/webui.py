@@ -250,6 +250,9 @@ async function loadAccountOwners() {
       return;
     }
     data.owners.forEach(owner => select.append(new Option(owner, owner)));
+  } catch (err) {
+    select.replaceChildren();
+    select.append(new Option("No account owners available", ""));
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = "Ask";
