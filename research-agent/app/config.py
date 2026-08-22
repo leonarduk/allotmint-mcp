@@ -74,6 +74,16 @@ class Settings:
     mcp_timeout_seconds: float = 30.0
     max_tool_calls: int = 6
 
+    # --- Multi-turn conversation sessions (#548) ---------------------------
+    # A session is an in-memory pydantic_ai message history keyed by the
+    # client-supplied `session_id`, scoped to this process only -- see
+    # `app/sessions.py`. Both caps exist so a long-running sidecar handling
+    # many/long conversations cannot grow that in-memory map unbounded, the
+    # same "must exist, even a simple fixed cap" requirement #466/#578 applied
+    # to single-request tool-result size.
+    max_conversation_sessions: int = 200
+    max_conversation_messages: int = 40
+
     # --- Multi-agent review -----------------------------------------------
     # The verifier is a second, tool-free agent that reviews the worker's
     # answer after synthesis. Its deadline is deliberately separate from MCP
@@ -135,6 +145,8 @@ def load_settings() -> Settings:
         mcp_url=_env_str("ALLOTMINT_RESEARCH_MCP_URL", "http://localhost:8080/mcp"),
         mcp_timeout_seconds=_env_float("ALLOTMINT_RESEARCH_MCP_TIMEOUT_SECONDS", 30.0),
         max_tool_calls=_env_int("ALLOTMINT_RESEARCH_MAX_TOOL_CALLS", 6),
+        max_conversation_sessions=_env_int("ALLOTMINT_RESEARCH_MAX_CONVERSATION_SESSIONS", 200),
+        max_conversation_messages=_env_int("ALLOTMINT_RESEARCH_MAX_CONVERSATION_MESSAGES", 40),
         verifier_timeout_seconds=_env_float(
             "ALLOTMINT_RESEARCH_VERIFIER_TIMEOUT_SECONDS", 10.0
         ),

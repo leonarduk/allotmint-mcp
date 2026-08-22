@@ -157,6 +157,8 @@ Every setting has a working local default; the default configuration costs nothi
 | `ALLOTMINT_RESEARCH_MCP_URL` | `http://localhost:8080/mcp` | The allotmint-mcp server's HTTP transport |
 | `ALLOTMINT_RESEARCH_MCP_TIMEOUT_SECONDS` | `30` | Per-tool-call timeout |
 | `ALLOTMINT_RESEARCH_MAX_TOOL_CALLS` | `6` | Bounds a runaway agent loop |
+| `ALLOTMINT_RESEARCH_MAX_CONVERSATION_SESSIONS` | `200` | Max concurrent multi-turn conversation sessions held in memory (#548); oldest evicted first |
+| `ALLOTMINT_RESEARCH_MAX_CONVERSATION_MESSAGES` | `40` | Max messages kept per conversation session; oldest dropped first |
 | `ALLOTMINT_RESEARCH_VERIFIER_TIMEOUT_SECONDS` | `10` | Maximum time allowed for the second-agent evidence review |
 | `ALLOTMINT_RESEARCH_DB_DSN` | `postgresql://allotmint:allotmint@localhost:5432/allotmint_research` | Retrieval store |
 | `ALLOTMINT_RESEARCH_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Local sentence-transformer model |
@@ -186,6 +188,28 @@ DeepSeek, advertise both and configure DeepSeek independently:
 export ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS=ollama,deepseek
 export ALLOTMINT_RESEARCH_DEEPSEEK_API_KEY=sk-...
 ```
+
+### Multi-turn conversations (#548)
+
+`POST /research/ask` accepts an optional `session_id`. Reusing the same value across
+calls threads the earlier turns into the agent run as `pydantic_ai` `message_history`,
+so a follow-up like "what about last month?" resolves against what was asked before
+instead of starting from nothing every time. Omitting `session_id` is unchanged,
+single-shot behavior.
+
+History lives in an in-memory map inside this sidecar process only:
+
+- **Not durable.** A sidecar restart drops every session. An unrecognized or expired
+  `session_id` silently starts a fresh, empty history rather than erroring, so a client
+  doesn't need to special-case "session expired".
+- **Not shared across instances.** If the sidecar is horizontally scaled, each instance
+  has its own session map with no cross-instance sharing; a client whose calls land on
+  different instances effectively loses continuity. Out of scope for #548.
+- **Bounded**, not unbounded: `ALLOTMINT_RESEARCH_MAX_CONVERSATION_SESSIONS` caps how
+  many conversations are held at once (oldest evicted first), and
+  `ALLOTMINT_RESEARCH_MAX_CONVERSATION_MESSAGES` caps how many messages one conversation
+  keeps (oldest dropped first). `GET /health` reports the current session count and both
+  caps under `conversation_sessions`.
 
 ### Tracing
 

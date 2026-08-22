@@ -49,10 +49,23 @@ public class ResearchAgentClient {
    * @throws AllotMintApiException if the sidecar answers 4xx/5xx
    */
   public ResearchAnswer ask(String question, String owner, int lookbackDays) {
-    return ask(question, owner, lookbackDays, null);
+    return ask(question, owner, lookbackDays, null, null);
   }
 
   public ResearchAnswer ask(String question, String owner, int lookbackDays, String llmProvider) {
+    return ask(question, owner, lookbackDays, llmProvider, null);
+  }
+
+  /**
+   * Asks the agent one natural-language question, optionally as part of a multi-turn
+   * conversation.
+   *
+   * @param sessionId optional client-chosen id (#548); reusing the same value across calls lets
+   *     the sidecar thread prior turns into this one as context, held in-memory only and capped
+   *     on the sidecar side. {@code null} preserves single-shot behavior.
+   */
+  public ResearchAnswer ask(
+      String question, String owner, int lookbackDays, String llmProvider, String sessionId) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("question", question);
     if (owner != null) {
@@ -61,6 +74,9 @@ public class ResearchAgentClient {
     payload.put("lookback_days", lookbackDays);
     if (llmProvider != null) {
       payload.put("llm_provider", llmProvider);
+    }
+    if (sessionId != null) {
+      payload.put("session_id", sessionId);
     }
 
     log.debug(

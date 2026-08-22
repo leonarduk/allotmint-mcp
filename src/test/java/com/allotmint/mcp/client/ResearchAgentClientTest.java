@@ -111,6 +111,32 @@ class ResearchAgentClientTest {
   }
 
   @Test
+  void includesTheSessionIdInThePayloadWhenSupplied() {
+    server
+        .expect(requestTo(BASE_URL + "/research/ask"))
+        .andExpect(jsonPath("$.session_id").value("conv-42"))
+        .andRespond(
+            withSuccess("{\"answer\":\"ok\",\"grounded\":true}", MediaType.APPLICATION_JSON));
+
+    client.ask("what about last month?", "demo", 365, null, "conv-42");
+
+    server.verify();
+  }
+
+  @Test
+  void omitsSessionIdFromThePayloadWhenAbsent() {
+    server
+        .expect(requestTo(BASE_URL + "/research/ask"))
+        .andExpect(jsonPath("$.session_id").doesNotExist())
+        .andRespond(
+            withSuccess("{\"answer\":\"ok\",\"grounded\":true}", MediaType.APPLICATION_JSON));
+
+    client.ask("why?", "demo", 365);
+
+    server.verify();
+  }
+
+  @Test
   void mapsAnErrorResponseToAReadableException() {
     server
         .expect(requestTo(BASE_URL + "/research/ask"))

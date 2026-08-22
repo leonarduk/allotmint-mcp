@@ -21,6 +21,22 @@ class AskRequest(BaseModel):
     owner: str | None = None
     lookback_days: int = Field(default=DEFAULT_LOOKBACK_DAYS, ge=1, le=3650)
     llm_provider: str | None = Field(default=None, min_length=1)
+    session_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Opaque client-chosen id used to hold a multi-turn conversation across "
+            "separate /research/ask calls (#548). When supplied, the previous turns' "
+            "message history for this id is threaded into the agent run via "
+            "pydantic_ai's message_history, and the updated history is stored back "
+            "under the same id afterwards. History is held in-memory only, capped "
+            "and evicted per Settings.max_conversation_sessions / "
+            "max_conversation_messages, and is lost on sidecar restart -- an "
+            "unrecognized or expired session_id starts a fresh empty history rather "
+            "than erroring. Omitting session_id preserves the original single-shot "
+            "behavior exactly."
+        ),
+    )
 
 
 class Citation(BaseModel):
