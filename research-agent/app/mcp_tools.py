@@ -18,6 +18,7 @@ Two safety properties are enforced in `call_tool`, not left to the prompt:
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -45,6 +46,14 @@ MAX_TOOL_RESULT_CHARS = 4000
 # eat the whole budget and, more importantly, doesn't get cut mid-element
 # into invalid JSON.
 MAX_ARRAY_ITEMS = 3
+
+# Exception messages can be arbitrarily long (e.g. a stack trace embedded in
+# a driver's error text). Cap the message itself before it goes into the
+# error envelope so the `error` key survives -- routing an already-oversized
+# message through _json_safe_cap would replace the whole envelope with a
+# generic {"_truncated": ..., "preview": ...} shape, losing the `error` key
+# the model expects on a failed tool call.
+MAX_ERROR_MESSAGE_CHARS = 2000
 
 
 class ToolCallRejected(RuntimeError):
@@ -101,7 +110,16 @@ class ToolSession:
         try:
             result = await self.session.call_tool(name, cleaned)
         except Exception as exc:  # noqa: BLE001 - surfaced to the model, not swallowed
-            text, truncated = _json_safe_cap(json.dumps({"error": f"tool call failed: {exc}"}))
+            exc_text = str(exc)
+            if len(exc_text) > MAX_ERROR_MESSAGE_CHARS:
+                omitted = len(exc_text) - MAX_ERROR_MESSAGE_CHARS
+                exc_text = (
+                    exc_text[:MAX_ERROR_MESSAGE_CHARS]
+                    + f"... [truncated, {omitted} chars omitted]"
+                )
+            text, truncated = _json_safe_cap(
+                json.dumps({"error": f"tool call failed: {exc_text}"})
+            )
             self.calls.append(
                 ToolCallRecord(tool=name, arguments=cleaned, result_excerpt=text[:MAX_EXCERPT_CHARS])
             )
@@ -125,9 +143,13 @@ def _cap_text(text: str, max_chars: int = MAX_TOOL_RESULT_CHARS) -> tuple[str, b
     text after the cut, so the result is not guaranteed to be valid JSON. For
     text that must remain parseable JSON, use `_json_safe_cap` instead.
 
-    The marker itself counts against `max_chars` -- the returned string
-    (preview + marker) never exceeds `max_chars`, so the caller's budget is
-    honoured even after the marker is appended.
+    The marker itself counts against `max_chars`: once `max_chars` is at
+    least the marker's length (~32 chars, depending on the digit count of
+    `omitted`), the returned string (preview + marker) never exceeds
+    `max_chars`. For a `max_chars` smaller than that, `preview_len` clamps to
+    0 but the marker text alone can still exceed `max_chars` -- this fallback
+    is meant for the library's own multi-thousand-char budgets, not for
+    arbitrarily tiny ones.
     """
     if len(text) <= max_chars:
         return text, False
@@ -147,7 +169,11 @@ def _cap_text(text: str, max_chars: int = MAX_TOOL_RESULT_CHARS) -> tuple[str, b
     return text[:preview_len] + marker, True
 
 
-def _json_safe_cap(text: str, max_chars: int = MAX_TOOL_RESULT_CHARS) -> tuple[str, bool]:
+def _json_safe_cap(
+    text: str,
+    max_chars: int = MAX_TOOL_RESULT_CHARS,
+    original_length: int | None = None,
+) -> tuple[str, bool]:
     """Fallback for text that must remain valid JSON (e.g. the serialized
     structured-content payload, after array elision still doesn't fit).
 
@@ -157,15 +183,22 @@ def _json_safe_cap(text: str, max_chars: int = MAX_TOOL_RESULT_CHARS) -> tuple[s
     model's ability to parse the result (issue #546's acceptance criterion).
     Instead, this wraps a truncated preview of `text` as a *string value*
     inside a small JSON envelope, so the envelope itself always parses.
+
+    `original_length` lets a caller report the size of some earlier form of
+    the payload (e.g. the pre-elision serialization) instead of `len(text)`
+    -- useful when `text` passed in here has already been shrunk by an
+    earlier truncation pass and `len(text)` would understate the real size.
     """
     if len(text) <= max_chars:
         return text, False
+    if original_length is None:
+        original_length = len(text)
     preview_len = max_chars
     while True:
         envelope = json.dumps(
             {
                 "_truncated": True,
-                "original_length": len(text),
+                "original_length": original_length,
                 "preview": text[:preview_len],
             },
             default=str,
@@ -179,34 +212,80 @@ def _json_safe_cap(text: str, max_chars: int = MAX_TOOL_RESULT_CHARS) -> tuple[s
         preview_len = max(0, preview_len - (len(envelope) - max_chars))
 
 
-def _elide_long_arrays(value: Any) -> tuple[Any, bool]:
-    """Recursively replaces arrays longer than MAX_ARRAY_ITEMS with a head
-    slice plus a "[truncated, N item(s) omitted]" marker.
+def _iter_arrays(value: Any, path: tuple = ()):
+    """Yields (path, list) for every list anywhere in `value`, including
+    lists nested inside other lists' elements, so the caller can rank them
+    by size regardless of depth.
+    """
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield from _iter_arrays(item, path + (key,))
+    elif isinstance(value, list):
+        yield path, value
+        for index, item in enumerate(value):
+            yield from _iter_arrays(item, path + (index,))
+
+
+def _set_by_path(root: Any, path: tuple, new_value: Any) -> None:
+    """Replaces the value at `path` (as yielded by `_iter_arrays`) in place."""
+    obj = root
+    for key in path[:-1]:
+        obj = obj[key]
+    obj[path[-1]] = new_value
+
+
+def _elide_one_array(value: list) -> list:
+    """Replaces a single array with a head slice plus a
+    "[truncated, N item(s) omitted]" marker.
+    """
+    omitted = len(value) - MAX_ARRAY_ITEMS
+    return list(value[:MAX_ARRAY_ITEMS]) + [f"[truncated, {omitted} item(s) omitted]"]
+
+
+def _elide_long_arrays(value: Any, max_chars: int = MAX_TOOL_RESULT_CHARS) -> tuple[Any, bool]:
+    """Progressively elides the largest array(s) in `value` until the
+    serialized result fits `max_chars`, leaving smaller arrays untouched
+    whenever possible.
 
     This is the structure-aware half of the truncation strategy: eliding a
     long array (e.g. `performance.history`) keeps the rest of the payload's
     JSON valid, unlike a blind character cut that can slice mid-element.
+
+    Earlier versions cut *every* array over MAX_ARRAY_ITEMS as soon as the
+    whole payload was over budget -- so a 40-item `holdings` list lost 37
+    items even when eliding one oversized `performance.history` field would
+    have been enough. This instead re-serializes after each elision and
+    stops as soon as the payload fits, targeting the largest remaining array
+    first each round.
     """
+    working = copy.deepcopy(value)
+    if len(json.dumps(working, default=str)) <= max_chars:
+        return working, False
+
     truncated = False
-    if isinstance(value, dict):
-        result: dict[str, Any] = {}
-        for key, item in value.items():
-            elided, item_truncated = _elide_long_arrays(item)
-            result[key] = elided
-            truncated = truncated or item_truncated
-        return result, truncated
-    if isinstance(value, list):
-        if len(value) > MAX_ARRAY_ITEMS:
-            omitted = len(value) - MAX_ARRAY_ITEMS
-            head = [_elide_long_arrays(item)[0] for item in value[:MAX_ARRAY_ITEMS]]
-            return head + [f"[truncated, {omitted} item(s) omitted]"], True
-        result_list = []
-        for item in value:
-            elided, item_truncated = _elide_long_arrays(item)
-            result_list.append(elided)
-            truncated = truncated or item_truncated
-        return result_list, truncated
-    return value, False
+    elided_paths: set[tuple] = set()
+    while True:
+        candidates = [
+            (path, arr)
+            for path, arr in _iter_arrays(working)
+            if len(arr) > MAX_ARRAY_ITEMS and path not in elided_paths
+        ]
+        if not candidates:
+            break
+        # Largest array first: eliding it buys back the most budget per
+        # array touched, so small arrays (e.g. a handful of sectors) are
+        # left alone whenever eliding the big offender is enough on its own.
+        path, arr = max(candidates, key=lambda pa: len(pa[1]))
+        elided = _elide_one_array(arr)
+        if path:
+            _set_by_path(working, path, elided)
+        else:
+            working = elided
+        elided_paths.add(path)
+        truncated = True
+        if len(json.dumps(working, default=str)) <= max_chars:
+            break
+    return working, truncated
 
 
 def _result_to_text(result: Any) -> tuple[str, bool]:
@@ -241,8 +320,10 @@ def _result_to_text(result: Any) -> tuple[str, bool]:
         # character cut here would slice the JSON text itself and append a
         # non-JSON marker, producing a string that no longer parses. Wrap a
         # truncated preview in a small JSON envelope instead, so the result
-        # is always valid JSON.
-        text, _ = _json_safe_cap(text)
+        # is always valid JSON. `original_length` is the true pre-elision
+        # size (`full`), not `len(text)` which already reflects the elided,
+        # smaller payload.
+        text, _ = _json_safe_cap(text, original_length=len(full))
         return text, True
 
     parts = []
@@ -251,7 +332,31 @@ def _result_to_text(result: Any) -> tuple[str, bool]:
         if text:
             parts.append(text)
     if parts:
-        return _cap_text("\n".join(parts))
+        joined = "\n".join(parts)
+        if len(joined) <= MAX_TOOL_RESULT_CHARS:
+            return joined, False
+        # Per this module's own docstring, MCP tool responses are typically
+        # JSON-shaped text content -- so an oversized text block is very
+        # likely JSON too, and `_cap_text`'s blind slice-plus-marker would
+        # reintroduce the exact invalid-JSON hazard this fix exists to avoid.
+        # Detect that case and route it through the JSON-safe paths instead;
+        # only genuinely non-JSON plain text falls through to `_cap_text`.
+        if joined.lstrip().startswith(("{", "[")):
+            try:
+                parsed = json.loads(joined)
+            except (json.JSONDecodeError, ValueError):
+                parsed = None
+            if parsed is not None:
+                elided, array_truncated = _elide_long_arrays(parsed)
+                text = json.dumps(elided, default=str)
+                if len(text) <= MAX_TOOL_RESULT_CHARS:
+                    return text, array_truncated
+                text, _ = _json_safe_cap(text, original_length=len(joined))
+                return text, True
+            # Looks like JSON but doesn't parse (e.g. already truncated
+            # upstream) -- still avoid `_cap_text`'s non-JSON marker suffix.
+            return _json_safe_cap(joined)
+        return _cap_text(joined)
     return json.dumps({"error": "tool returned no content"}), False
 
 
