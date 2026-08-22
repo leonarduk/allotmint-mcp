@@ -131,6 +131,53 @@ java -jar target/allotmint-mcp-server.jar --spring.profiles.active=http
 For log locations, component restart procedures, first-response checks, and common failure
 signatures, see the [operational runbook](docs/runbook.md).
 
+## Logging
+
+Logging is configured in `src/main/resources/logback-spring.xml`. Because the default profile
+uses the stdio MCP transport (`StdioMcpServerConfig`), log output is written to a file only —
+never to stdout/stderr, which would corrupt the newline-delimited JSON-RPC stream the transport
+reads and writes on standard input/output. This constraint applies to both encoders below.
+
+- **Location**: `LOG_FILE` (default `${user.home}/.allotmint-mcp/logs/allotmint-mcp.log`). Must
+  be an absolute path — an MCP client like Claude Desktop launches this process with its own
+  working directory, not the project directory.
+- **Rotation**: a `SizeAndTimeBasedRollingPolicy` rotates the file daily and whenever it reaches
+  10MB, keeps up to 30 days of history (`maxHistory`), and caps total log storage at 10GB
+  (`totalSizeCap`). Rotated files are gzip-compressed.
+- **Structured (JSON) logging**: set `ALLOTMINT_MCP_LOG_JSON=true` in the process environment to
+  switch the file encoder to JSON (via `logstash-logback-encoder`) for log aggregation tooling.
+  Leaving it unset (the default) keeps the existing plain-text pattern
+  (`%d %-5level [%thread] %logger - %msg%n`) with no behavior change.
+
+## Reliability
+
+This server has three external dependencies. None currently has a built-in retry — a failure on
+any of them surfaces immediately as an MCP tool error rather than being retried transparently:
+
+- **AllotMint backend** (`AllotMintClient`, via Spring's `RestClient`): no built-in retry or
+  circuit breaker. A 4xx/5xx response is mapped to `AllotMintApiException` and a connection
+  failure (refused, timeout, DNS) surfaces as a `RestClientException`
+  (`ResourceAccessException`). Both are caught per-tool (see e.g. `AllotMintPortfolioTool#call`)
+  and turned into a `CallToolResult` with `isError(true)` and a readable message, instead of an
+  unhandled exception propagating out of the MCP call handler.
+- **research-agent sidecar** (`ResearchAgentClient`, via `ALLOTMINT_RESEARCH_BASE_URL`): a plain
+  HTTP call with no retry. The research tool is opt-in (see [`allotmint_research`](#allotmint_research-opt-in))
+  and reports the sidecar being unreachable as a tool error the same way.
+- **LLM provider**: used only by the `mcp-client` CLI and the research-agent, via `pydantic_ai`.
+  Timeout/retry behavior there is delegated entirely to the `pydantic_ai` provider client — this
+  repo does not add its own retry/backoff layer on top of it.
+
+**Known scaling limits**: the default profile runs as a single stdio process (one MCP client per
+process, per `StdioMcpServerConfig`) — there is no built-in concurrency or horizontal scaling in
+that mode. The optional HTTP transport (`--spring.profiles.active=http`) is the only path to
+running more than one instance (e.g. behind a load balancer); stdio mode cannot be scaled
+horizontally at all since it is bound to a single client's stdin/stdout pipe.
+
+A degraded-path test (`AllotMintPortfolioToolTest#unreachableBackendSurfacesAsMcpErrorInsteadOfUnhandledException`)
+exercises the AllotMint backend being unreachable (mocked as a connection-refused
+`ResourceAccessException`) and asserts the tool call returns a clear MCP error instead of letting
+the exception propagate.
+
 ## Configure Claude Desktop
 
 Build the JAR, then add the following entry to Claude Desktop's configuration. Replace the JAR path with its absolute path; do not use a relative path because Claude Desktop does not launch servers from the repository directory.
@@ -566,4 +613,8 @@ the full command list, e.g. `commit-and-push` and `publish-pr`. `run-ci-checks`
 reads its check list from [`.cicaid-checks.toml`](.cicaid-checks.toml) in this
 repo (Maven build + research-agent/mcp-client pytest, mirroring
 `.github/workflows/build.yml`). `scripts/g_run_tests.ps1` remains as a
-PowerShell wrapper around `./mvnw verify`.
+PowerShell wrapper around `./mvnw verify`, and
+[`mcp-client/run_tests.ps1`](mcp-client/run_tests.ps1) is the equivalent
+wrapper for the `mcp-client` pytest suite — it installs
+`mcp-client/requirements-dev.txt` and then runs `pytest` against
+`mcp-client/tests/`, propagating `$LASTEXITCODE` on failure.

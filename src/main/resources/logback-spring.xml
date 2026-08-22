@@ -3,7 +3,8 @@
     <!--
         The stdio MCP transport (StdioMcpServerConfig) reads/writes newline-delimited
         JSON-RPC on the process's own stdin/stdout. Any log line written to stdout would
-        corrupt that stream, so logging goes to a file only - never to the console.
+        corrupt that stream, so logging goes to a file only - never to the console. This
+        holds for both the plain-text and JSON encoders below.
     -->
     <!--
         Must be absolute: an MCP client (e.g. Claude Desktop) launches this process with
@@ -12,12 +13,39 @@
     -->
     <property name="LOG_FILE" value="${LOG_FILE:-${user.home}/.allotmint-mcp/logs/allotmint-mcp.log}"/>
 
-    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-        <file>${LOG_FILE}</file>
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
+    <!--
+        ALLOTMINT_MCP_LOG_JSON=true switches the FILE appender's encoder to structured
+        JSON (logstash-logback-encoder) for log aggregation tooling. Unset (default)
+        keeps the original plain-text pattern with no behavior change.
+    -->
+    <if condition='"true".equalsIgnoreCase(System.getenv("ALLOTMINT_MCP_LOG_JSON"))'>
+        <then>
+            <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <file>${LOG_FILE}</file>
+                <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                    <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+                    <maxFileSize>10MB</maxFileSize>
+                    <maxHistory>30</maxHistory>
+                    <totalSizeCap>10GB</totalSizeCap>
+                </rollingPolicy>
+                <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
+            </appender>
+        </then>
+        <else>
+            <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <file>${LOG_FILE}</file>
+                <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                    <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+                    <maxFileSize>10MB</maxFileSize>
+                    <maxHistory>30</maxHistory>
+                    <totalSizeCap>10GB</totalSizeCap>
+                </rollingPolicy>
+                <encoder>
+                    <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+                </encoder>
+            </appender>
+        </else>
+    </if>
 
     <root level="INFO">
         <appender-ref ref="FILE"/>
