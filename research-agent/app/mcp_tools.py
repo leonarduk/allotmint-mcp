@@ -31,6 +31,21 @@ log = logging.getLogger(__name__)
 
 MAX_EXCERPT_CHARS = 400
 
+# Bounds the text that actually enters the agent's context on every
+# subsequent turn (as opposed to MAX_EXCERPT_CHARS, which only bounds the
+# citation copy). Mirrors the MAX_DOC_CHARS convention used for retrieved
+# RAG documents in agent.py -- tool results get a larger budget because they
+# are often structured JSON rather than prose, but the principle is the same:
+# a bounded amount of content per source, regardless of how large the
+# underlying payload is.
+MAX_TOOL_RESULT_CHARS = 4000
+
+# Arrays longer than this are elided (kept-head + a marker) before falling
+# back to a character cut, so a long list like performance.history doesn't
+# eat the whole budget and, more importantly, doesn't get cut mid-element
+# into invalid JSON.
+MAX_ARRAY_ITEMS = 3
+
 
 class ToolCallRejected(RuntimeError):
     """Raised when the agent asks for a tool outside the read-only allowlist."""
@@ -86,36 +101,93 @@ class ToolSession:
         try:
             result = await self.session.call_tool(name, cleaned)
         except Exception as exc:  # noqa: BLE001 - surfaced to the model, not swallowed
-            text = json.dumps({"error": f"tool call failed: {exc}"})
+            text, truncated = _cap_text(json.dumps({"error": f"tool call failed: {exc}"}))
             self.calls.append(
                 ToolCallRecord(tool=name, arguments=cleaned, result_excerpt=text[:MAX_EXCERPT_CHARS])
             )
             if self.trace_logger is not None:
-                self.trace_logger.tool_call_end(name, len(text), success=False)
+                self.trace_logger.tool_call_end(name, len(text), success=False, truncated=truncated)
             return text
 
-        text = _result_to_text(result)
+        text, truncated = _result_to_text(result)
         self.calls.append(
             ToolCallRecord(tool=name, arguments=cleaned, result_excerpt=text[:MAX_EXCERPT_CHARS])
         )
         if self.trace_logger is not None:
-            self.trace_logger.tool_call_end(name, len(text), success=True)
+            self.trace_logger.tool_call_end(name, len(text), success=True, truncated=truncated)
         return text
 
 
-def _result_to_text(result: Any) -> str:
-    """Flattens an MCP `CallToolResult` into the text the model should see.
+def _cap_text(text: str, max_chars: int = MAX_TOOL_RESULT_CHARS) -> tuple[str, bool]:
+    """Blind character-cap fallback with a visible marker, never a silent cut."""
+    if len(text) <= max_chars:
+        return text, False
+    omitted = len(text) - max_chars
+    return text[:max_chars] + f"... [truncated, {omitted} chars omitted]", True
+
+
+def _elide_long_arrays(value: Any) -> tuple[Any, bool]:
+    """Recursively replaces arrays longer than MAX_ARRAY_ITEMS with a head
+    slice plus a "[truncated, N item(s) omitted]" marker.
+
+    This is the structure-aware half of the truncation strategy: eliding a
+    long array (e.g. `performance.history`) keeps the rest of the payload's
+    JSON valid, unlike a blind character cut that can slice mid-element.
+    """
+    truncated = False
+    if isinstance(value, dict):
+        result: dict[str, Any] = {}
+        for key, item in value.items():
+            elided, item_truncated = _elide_long_arrays(item)
+            result[key] = elided
+            truncated = truncated or item_truncated
+        return result, truncated
+    if isinstance(value, list):
+        if len(value) > MAX_ARRAY_ITEMS:
+            omitted = len(value) - MAX_ARRAY_ITEMS
+            head = [_elide_long_arrays(item)[0] for item in value[:MAX_ARRAY_ITEMS]]
+            return head + [f"[truncated, {omitted} item(s) omitted]"], True
+        result_list = []
+        for item in value:
+            elided, item_truncated = _elide_long_arrays(item)
+            result_list.append(elided)
+            truncated = truncated or item_truncated
+        return result_list, truncated
+    return value, False
+
+
+def _result_to_text(result: Any) -> tuple[str, bool]:
+    """Flattens an MCP `CallToolResult` into the text the model should see,
+    bounded to `MAX_TOOL_RESULT_CHARS` so a single oversized tool response
+    cannot consume an unbounded share of the agent's context.
 
     Prefers structured content when the tool provides it (the v0 tools mostly
     do, and it is the machine-readable half), falling back to concatenated text
     content blocks otherwise. Both spellings of the field are checked: the
     Python MCP SDK renamed `structuredContent` to `structured_content`.
+
+    Returns `(text, truncated)`: `truncated` is True whenever the returned
+    text differs from the full untruncated serialization, whether that came
+    from eliding long arrays, a fallback character cut, or both.
     """
     structured = getattr(result, "structured_content", None) or getattr(
         result, "structuredContent", None
     )
     if structured:
-        return json.dumps(structured, default=str)
+        full = json.dumps(structured, default=str)
+        if len(full) <= MAX_TOOL_RESULT_CHARS:
+            return full, False
+        # Structure-aware pass first: elide long arrays (e.g.
+        # performance.history) so the result stays valid, parseable JSON
+        # rather than being cut mid-token.
+        elided, array_truncated = _elide_long_arrays(structured)
+        text = json.dumps(elided, default=str)
+        if len(text) <= MAX_TOOL_RESULT_CHARS:
+            return text, array_truncated
+        # Still too large (e.g. a single huge scalar field) -- fall back to
+        # a blind character cut with a visible marker as a last resort.
+        text, _ = _cap_text(text)
+        return text, True
 
     parts = []
     for item in getattr(result, "content", None) or []:
@@ -123,8 +195,8 @@ def _result_to_text(result: Any) -> str:
         if text:
             parts.append(text)
     if parts:
-        return "\n".join(parts)
-    return json.dumps({"error": "tool returned no content"})
+        return _cap_text("\n".join(parts))
+    return json.dumps({"error": "tool returned no content"}), False
 
 
 def _streamable_http_client():

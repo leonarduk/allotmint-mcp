@@ -135,12 +135,14 @@ class TraceLogger:
         tool: str,
         result_length: int,
         success: bool,
+        truncated: bool = False,
     ) -> None:
         self._emit(
             "tool_call.end",
             tool=tool,
             result_length=result_length,
             success=success,
+            truncated=truncated,
         )
 
 

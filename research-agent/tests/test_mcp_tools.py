@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from app.mcp_tools import ToolCallRejected, ToolSession
+from app.mcp_tools import MAX_TOOL_RESULT_CHARS, ToolCallRejected, ToolSession
 
 
 @dataclass
@@ -138,3 +138,71 @@ async def test_text_content_is_used_when_there_is_no_structured_content(settings
     session = ToolSession(settings=settings, session=fake)
 
     assert await session.call_tool("allotmint_health", {}) == "AllotMint backend reachable"
+
+
+class _FakeTraceLogger:
+    """Records the arguments `tool_call_end` was invoked with."""
+
+    def __init__(self):
+        self.tool_call_end_calls: list[dict] = []
+
+    def tool_call_start(self, tool, arguments):
+        pass
+
+    def tool_call_end(self, tool, result_length, success, truncated=False):
+        self.tool_call_end_calls.append(
+            {
+                "tool": tool,
+                "result_length": result_length,
+                "success": success,
+                "truncated": truncated,
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_structured_result_is_truncated_with_a_marker(settings):
+    # A long performance.history array is exactly the shape called out in the
+    # issue: a payload dominated by one big array alongside small scalars.
+    oversized = {
+        "action": "summary",
+        "total_value_gbp": 123456.78,
+        "performance": {
+            "history": [
+                {"date": f"2024-{(day % 12) + 1:02d}-{(day % 28) + 1:02d}", "value": 1000.0 + day, "note": "daily snapshot"}
+                for day in range(1, 400)
+            ]
+        },
+    }
+    trace_logger = _FakeTraceLogger()
+    fake = _FakeSession(_Result(structured=oversized))
+    session = ToolSession(settings=settings, session=fake, trace_logger=trace_logger)
+
+    text = await session.call_tool("allotmint_portfolio", {"action": "summary", "owner": "demo"})
+
+    assert len(text) <= MAX_TOOL_RESULT_CHARS + 100  # marker adds a little overhead
+    assert "truncated" in text
+    # The result must still be valid, parseable JSON -- the whole point of
+    # eliding arrays instead of cutting mid-token.
+    parsed = json.loads(text)
+    assert parsed["total_value_gbp"] == 123456.78
+    assert parsed["action"] == "summary"
+    history = parsed["performance"]["history"]
+    assert len(history) == 4  # 3 kept items + one elision marker
+    assert "truncated" in history[-1]
+
+    # Observable via tracing: truncated=True is recorded, not silent.
+    assert trace_logger.tool_call_end_calls[-1]["truncated"] is True
+    assert trace_logger.tool_call_end_calls[-1]["result_length"] == len(text)
+
+
+@pytest.mark.asyncio
+async def test_a_small_structured_result_is_not_truncated(settings):
+    trace_logger = _FakeTraceLogger()
+    fake = _FakeSession(_Result(structured={"action": "exposure", "sectors": []}))
+    session = ToolSession(settings=settings, session=fake, trace_logger=trace_logger)
+
+    text = await session.call_tool("allotmint_portfolio", {"action": "exposure", "owner": "demo"})
+
+    assert "truncated" not in text
+    assert trace_logger.tool_call_end_calls[-1]["truncated"] is False

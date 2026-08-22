@@ -199,6 +199,7 @@ class LangfuseTracer:
         tool: str,
         result_length: int,
         success: bool,
+        truncated: bool = False,
     ) -> None:
         stack = self._tool_spans.get(tool, [])
         if not stack:
@@ -209,6 +210,7 @@ class LangfuseTracer:
                 output={
                     "result_length": result_length,
                     "success": success,
+                    "truncated": truncated,
                 }
             )
         except Exception as exc:
