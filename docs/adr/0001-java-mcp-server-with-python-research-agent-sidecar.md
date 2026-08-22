@@ -6,11 +6,11 @@ Accepted
 
 ## Context
 
-`allotmint-mcp` is a Java/Spring Boot MCP server (see `README.md`) exposing four
-deterministic, dependency-free REST-wrapper tools (`allotmint_health`,
-`allotmint_instrument`, `allotmint_market`, `allotmint_portfolio`, plus the
-later `allotmint_reconcile`/`allotmint_data_quality` tools) against the
-AllotMint backend.
+`allotmint-mcp` is a Java/Spring Boot MCP server (see `README.md`) exposing
+deterministic, dependency-free REST-wrapper tools against the AllotMint
+backend: the original four v0 tools (`allotmint_health`,
+`allotmint_instrument`, `allotmint_market`, `allotmint_portfolio`) plus the
+later `allotmint_reconcile` and `allotmint_data_quality` tools.
 
 The `allotmint_research` tool (issue design in
 [leonarduk/allotmint#4915](https://github.com/leonarduk/allotmint/discussions/4915))
