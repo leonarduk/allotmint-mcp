@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from app.mcp_tools import ToolCallRejected, ToolSession
+from app.mcp_tools import MAX_TOOL_RESULT_CHARS, ToolCallRejected, ToolSession
 
 
 @dataclass
@@ -138,3 +138,169 @@ async def test_text_content_is_used_when_there_is_no_structured_content(settings
     session = ToolSession(settings=settings, session=fake)
 
     assert await session.call_tool("allotmint_health", {}) == "AllotMint backend reachable"
+
+
+@pytest.mark.asyncio
+async def test_oversized_json_text_content_is_capped_without_breaking_json(settings):
+    # Some tools return a JSON payload as a text content block instead of
+    # structuredContent. An oversized one must go through the same JSON-safe
+    # truncation as the structured path, not `_cap_text`'s blind slice --
+    # otherwise the exact hazard issue #546 fixed comes back on this path.
+    payload = {
+        "action": "news",
+        "ticker": "NVDA",
+        "articles": [{"headline": f"Story {i}", "body": "x" * 50} for i in range(200)],
+    }
+    fake = _FakeSession(_Result(content=[_Content(json.dumps(payload))]))
+    session = ToolSession(settings=settings, session=fake)
+
+    text = await session.call_tool("allotmint_instrument", {"action": "news", "ticker": "NVDA"})
+
+    assert len(text) <= MAX_TOOL_RESULT_CHARS
+    parsed = json.loads(text)  # must still parse
+    assert parsed["action"] == "news"
+
+
+@pytest.mark.asyncio
+async def test_a_failing_tool_call_keeps_the_error_key_for_a_long_exception(settings):
+    # A long exception message must not push the truncation into
+    # `_json_safe_cap`'s generic {"_truncated": ..., "preview": ...} envelope
+    # -- that would drop the `error` key the model expects on tool failures.
+    fake = _FakeSession(error=RuntimeError("boom: " + "x" * 10_000))
+    session = ToolSession(settings=settings, session=fake)
+
+    text = await session.call_tool("allotmint_health", {})
+
+    parsed = json.loads(text)
+    assert "error" in parsed
+    assert "tool call failed" in parsed["error"]
+    assert "truncated" in parsed["error"]
+    assert len(text) <= MAX_TOOL_RESULT_CHARS
+
+
+class _FakeTraceLogger:
+    """Records the arguments `tool_call_end` was invoked with."""
+
+    def __init__(self):
+        self.tool_call_end_calls: list[dict] = []
+
+    def tool_call_start(self, tool, arguments):
+        pass
+
+    def tool_call_end(self, tool, result_length, success, truncated=False):
+        self.tool_call_end_calls.append(
+            {
+                "tool": tool,
+                "result_length": result_length,
+                "success": success,
+                "truncated": truncated,
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_structured_result_is_truncated_with_a_marker(settings):
+    # A long performance.history array is exactly the shape called out in the
+    # issue: a payload dominated by one big array alongside small scalars.
+    oversized = {
+        "action": "summary",
+        "total_value_gbp": 123456.78,
+        "performance": {
+            "history": [
+                {"date": f"2024-{(day % 12) + 1:02d}-{(day % 28) + 1:02d}", "value": 1000.0 + day, "note": "daily snapshot"}
+                for day in range(1, 400)
+            ]
+        },
+    }
+    trace_logger = _FakeTraceLogger()
+    fake = _FakeSession(_Result(structured=oversized))
+    session = ToolSession(settings=settings, session=fake, trace_logger=trace_logger)
+
+    text = await session.call_tool("allotmint_portfolio", {"action": "summary", "owner": "demo"})
+
+    assert len(text) <= MAX_TOOL_RESULT_CHARS
+    assert "truncated" in text
+    # The result must still be valid, parseable JSON -- the whole point of
+    # eliding arrays instead of cutting mid-token.
+    parsed = json.loads(text)
+    assert parsed["total_value_gbp"] == 123456.78
+    assert parsed["action"] == "summary"
+    history = parsed["performance"]["history"]
+    assert len(history) == 4  # 3 kept items + one elision marker
+    assert "truncated" in history[-1]
+
+    # Observable via tracing: truncated=True is recorded, not silent.
+    assert trace_logger.tool_call_end_calls[-1]["truncated"] is True
+    assert trace_logger.tool_call_end_calls[-1]["result_length"] == len(text)
+
+
+@pytest.mark.asyncio
+async def test_only_the_oversized_array_is_elided_not_every_array(settings):
+    # One huge array (performance.history) alongside a small one (sectors).
+    # Eliding the huge array alone is enough to fit the budget, so the small
+    # array must survive completely untouched -- eliding every array in the
+    # payload (the old all-or-nothing behaviour) would needlessly gut it too.
+    small_sectors = ["Technology", "Healthcare", "Energy", "Financials", "Industrials"]
+    oversized = {
+        "action": "summary",
+        "sectors": list(small_sectors),
+        "performance": {
+            "history": [
+                {"date": f"2024-{(day % 12) + 1:02d}-{(day % 28) + 1:02d}", "value": 1000.0 + day, "note": "daily snapshot"}
+                for day in range(1, 400)
+            ]
+        },
+    }
+    session = ToolSession(settings=settings, session=_FakeSession(_Result(structured=oversized)))
+
+    text = await session.call_tool("allotmint_portfolio", {"action": "summary", "owner": "demo"})
+
+    assert len(text) <= MAX_TOOL_RESULT_CHARS
+    parsed = json.loads(text)
+    # The small array is untouched -- same length, same contents, no marker.
+    assert parsed["sectors"] == small_sectors
+    # The oversized array is the one that got elided.
+    history = parsed["performance"]["history"]
+    assert len(history) == 4  # 3 kept items + one elision marker
+    assert "truncated" in history[-1]
+
+
+@pytest.mark.asyncio
+async def test_a_huge_scalar_field_falls_back_to_a_json_safe_envelope(settings):
+    # Array elision alone can't help here: the oversized content is one huge
+    # scalar string, not a long array. This is exactly the fallback path
+    # DeepSeek's review flagged -- `_cap_text`'s old blind slice-plus-marker
+    # would cut this JSON text mid-token and append a non-JSON suffix,
+    # producing a string the model could no longer parse (issue #546).
+    oversized = {
+        "action": "news",
+        "ticker": "NVDA",
+        "summary": "x" * (MAX_TOOL_RESULT_CHARS * 3),
+    }
+    trace_logger = _FakeTraceLogger()
+    fake = _FakeSession(_Result(structured=oversized))
+    session = ToolSession(settings=settings, session=fake, trace_logger=trace_logger)
+
+    text = await session.call_tool("allotmint_instrument", {"action": "news", "ticker": "NVDA"})
+
+    # The implementation guarantees the exact bound, not just "close to it".
+    assert len(text) <= MAX_TOOL_RESULT_CHARS
+    # Must still be valid, parseable JSON -- the whole point of the fix.
+    parsed = json.loads(text)
+    assert parsed["_truncated"] is True
+    assert parsed["original_length"] > MAX_TOOL_RESULT_CHARS
+    assert isinstance(parsed["preview"], str)
+
+    assert trace_logger.tool_call_end_calls[-1]["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_small_structured_result_is_not_truncated(settings):
+    trace_logger = _FakeTraceLogger()
+    fake = _FakeSession(_Result(structured={"action": "exposure", "sectors": []}))
+    session = ToolSession(settings=settings, session=fake, trace_logger=trace_logger)
+
+    text = await session.call_tool("allotmint_portfolio", {"action": "exposure", "owner": "demo"})
+
+    assert "truncated" not in text
+    assert trace_logger.tool_call_end_calls[-1]["truncated"] is False

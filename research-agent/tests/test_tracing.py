@@ -127,6 +127,18 @@ def test_tool_call_failure_is_recorded(tmp_path):
 
     events = read_trace("trace-1", trace_file)
     assert events[1]["data"]["success"] is False
+    assert events[1]["data"]["truncated"] is False
+
+
+def test_tool_call_truncation_is_recorded(tmp_path):
+    trace_file = tmp_path / "traces.jsonl"
+    logger = TraceLogger("trace-1", trace_file)
+
+    logger.tool_call_start("allotmint_portfolio", {"action": "summary", "owner": "demo"})
+    logger.tool_call_end("allotmint_portfolio", 4000, success=True, truncated=True)
+
+    events = read_trace("trace-1", trace_file)
+    assert events[1]["data"]["truncated"] is True
 
 
 # ——— integration tests: agent loop with tracing ————————————————————————————

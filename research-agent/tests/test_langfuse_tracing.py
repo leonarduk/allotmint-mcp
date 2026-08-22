@@ -263,6 +263,21 @@ def test_tool_call_failure_is_recorded():
     tracer.flush()
 
 
+def test_tool_call_end_records_truncated_flag_in_span_output():
+    """truncated defaults to False and is passed through to the span output,
+    so a truncated tool result is observable in the Langfuse UI, not silent."""
+    tracer = LangfuseTracer("trace-truncated", _settings())
+
+    mock_span = MagicMock()
+    tracer._tool_spans["allotmint_portfolio"] = [mock_span]
+
+    tracer.tool_call_end("allotmint_portfolio", 4000, success=True, truncated=True)
+
+    mock_span.end.assert_called_once_with(
+        output={"result_length": 4000, "success": True, "truncated": True}
+    )
+
+
 # ---------------------------------------------------------------------------
 # exception safety: methods must not propagate exceptions
 # ---------------------------------------------------------------------------
