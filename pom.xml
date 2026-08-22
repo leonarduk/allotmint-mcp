@@ -111,6 +111,24 @@
 			<version>1.18.46</version>
 		</dependency>
 
+		<!-- Optional JSON encoder for logback-spring.xml, toggled at runtime via
+		     ALLOTMINT_MCP_LOG_JSON=true (default: unset, plain-text logging). -->
+		<dependency>
+			<groupId>net.logstash.logback</groupId>
+			<artifactId>logstash-logback-encoder</artifactId>
+			<version>8.0</version>
+			<optional>true</optional>
+		</dependency>
+
+		<!-- Required for the <if>/<then>/<else> conditional in logback-spring.xml that
+		     switches the encoder based on ALLOTMINT_MCP_LOG_JSON. Not pulled in
+		     transitively by spring-boot-starter-logging. -->
+		<dependency>
+			<groupId>org.codehaus.janino</groupId>
+			<artifactId>janino</artifactId>
+			<optional>true</optional>
+		</dependency>
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>

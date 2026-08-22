@@ -131,6 +131,24 @@ java -jar target/allotmint-mcp-server.jar --spring.profiles.active=http
 For log locations, component restart procedures, first-response checks, and common failure
 signatures, see the [operational runbook](docs/runbook.md).
 
+## Logging
+
+Logging is configured in `src/main/resources/logback-spring.xml`. Because the default profile
+uses the stdio MCP transport (`StdioMcpServerConfig`), log output is written to a file only —
+never to stdout/stderr, which would corrupt the newline-delimited JSON-RPC stream the transport
+reads and writes on standard input/output. This constraint applies to both encoders below.
+
+- **Location**: `LOG_FILE` (default `${user.home}/.allotmint-mcp/logs/allotmint-mcp.log`). Must
+  be an absolute path — an MCP client like Claude Desktop launches this process with its own
+  working directory, not the project directory.
+- **Rotation**: a `SizeAndTimeBasedRollingPolicy` rotates the file daily and whenever it reaches
+  10MB, keeps up to 30 days of history (`maxHistory`), and caps total log storage at 10GB
+  (`totalSizeCap`). Rotated files are gzip-compressed.
+- **Structured (JSON) logging**: set `ALLOTMINT_MCP_LOG_JSON=true` in the process environment to
+  switch the file encoder to JSON (via `logstash-logback-encoder`) for log aggregation tooling.
+  Leaving it unset (the default) keeps the existing plain-text pattern
+  (`%d %-5level [%thread] %logger - %msg%n`) with no behavior change.
+
 ## Configure Claude Desktop
 
 Build the JAR, then add the following entry to Claude Desktop's configuration. Replace the JAR path with its absolute path; do not use a relative path because Claude Desktop does not launch servers from the repository directory.
