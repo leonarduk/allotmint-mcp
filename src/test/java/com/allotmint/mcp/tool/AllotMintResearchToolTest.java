@@ -307,6 +307,32 @@ class AllotMintResearchToolTest {
   }
 
   @Test
+  void reportsAGroundedAnswerWithNullTextAsAnError() {
+    // A grounded answer with null text is a sidecar protocol violation; it must not
+    // silently render as an empty text block (issue #255).
+    ResearchAnswer nullAnswer =
+        new ResearchAnswer(null, List.of(), List.of(), true, List.of(), "ollama:llama3.2");
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(nullAnswer);
+
+    McpSchema.CallToolResult result = call(Map.of("action", "ask", "question", "why?"));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(textOf(result)).contains("grounded answer with no text");
+  }
+
+  @Test
+  void reportsAGroundedAnswerWithBlankTextAsAnError() {
+    ResearchAnswer blankAnswer =
+        new ResearchAnswer("   ", List.of(), List.of(), true, List.of(), "ollama:llama3.2");
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(blankAnswer);
+
+    McpSchema.CallToolResult result = call(Map.of("action", "ask", "question", "why?"));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(textOf(result)).contains("grounded answer with no text");
+  }
+
+  @Test
   void reportsAnUnreachableSidecarWithItsUrl() {
     when(client.ask(eq("why?"), any(), anyInt(), any(), any()))
         .thenThrow(new ResourceAccessException("Connection refused"));

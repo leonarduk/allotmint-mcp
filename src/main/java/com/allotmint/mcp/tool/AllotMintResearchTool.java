@@ -216,7 +216,13 @@ public final class AllotMintResearchTool {
                   : " Agent warnings: " + String.join("; ", answer.warningsOrEmpty())));
     }
 
-    StringBuilder text = new StringBuilder(answer.answer() == null ? "" : answer.answer());
+    if (!StringUtils.hasText(answer.answer())) {
+      return error(
+          "The research agent returned a grounded answer with no text. This is a sidecar"
+              + " protocol violation: a grounded response must carry non-null answer text.");
+    }
+
+    StringBuilder text = new StringBuilder(answer.answer());
     if (!citations.isEmpty()) {
       text.append("\n\nSources:");
       for (ResearchAnswer.Citation citation : citations) {
