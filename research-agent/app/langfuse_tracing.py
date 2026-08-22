@@ -180,6 +180,28 @@ class LangfuseTracer:
         except Exception as exc:
             log.warning("Langfuse agent span end failed: %s", exc)
 
+    # -- verifier (#549: may run a different model than the worker) --------
+
+    def verifier_start(self, model: str) -> None:
+        if not self.enabled or self._trace is None:
+            return
+        try:
+            self._active_spans["verifier"] = self._trace.span(
+                name="verifier",
+                input={"model": model},
+            )
+        except Exception as exc:
+            log.warning("Langfuse verifier span start failed: %s", exc)
+
+    def verifier_end(self, needs_review: bool, reason: str) -> None:
+        span = self._active_spans.pop("verifier", None)
+        if span is None:
+            return
+        try:
+            span.end(output={"needs_review": needs_review, "reason": reason})
+        except Exception as exc:
+            log.warning("Langfuse verifier span end failed: %s", exc)
+
     # -- tool calls ---------------------------------------------------------
 
     def tool_call_start(self, tool: str, arguments: dict[str, Any]) -> None:

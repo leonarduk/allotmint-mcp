@@ -44,6 +44,9 @@ async def health() -> dict:
     return {
         "status": "ok",
         "model": settings.model_label,
+        # Additive (#549): reports the same value as "model" unless a
+        # verifier-specific provider/model override is configured.
+        "verifier_model": settings.verifier_model_label,
         "llm_provider": settings.llm_provider,
         "available_llm_providers": list(settings.available_llm_providers),
         "mcp_url": settings.mcp_url,

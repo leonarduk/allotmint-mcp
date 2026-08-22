@@ -125,6 +125,14 @@ class TraceLogger:
             grounded=grounded,
         )
 
+    # -- verifier (#549: may run a different model than the worker) --------
+
+    def verifier_start(self, model: str) -> None:
+        self._emit("verifier.start", model=model)
+
+    def verifier_end(self, needs_review: bool, reason: str) -> None:
+        self._emit("verifier.end", needs_review=needs_review, reason=reason)
+
     # -- tool calls ---------------------------------------------------------
 
     def tool_call_start(self, tool: str, arguments: dict[str, Any]) -> None:

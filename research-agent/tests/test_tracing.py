@@ -46,6 +46,26 @@ def test_new_trace_creates_a_unique_uuid():
         path.unlink(missing_ok=True)
 
 
+def test_verifier_events_record_its_own_model_and_verdict(tmp_path):
+    """#549: the verifier can run a different model than the worker, so its
+    trace event carries the verifier's own model label, not the worker's."""
+    trace_file = tmp_path / "traces.jsonl"
+    logger = TraceLogger("trace-verifier", trace_file)
+
+    logger.agent_start("ollama:llama3.2")
+    logger.verifier_start("deepseek:deepseek-chat")
+    logger.verifier_end(True, "claim is not supported by citation [1]")
+
+    events = read_trace("trace-verifier", trace_file)
+    event_names = [e["event"] for e in events]
+    assert event_names == ["agent.start", "verifier.start", "verifier.end"]
+
+    assert events[0]["data"]["model"] == "ollama:llama3.2"
+    assert events[1]["data"]["model"] == "deepseek:deepseek-chat"
+    assert events[2]["data"]["needs_review"] is True
+    assert events[2]["data"]["reason"] == "claim is not supported by citation [1]"
+
+
 def test_read_trace_returns_empty_for_missing_file(tmp_path):
     trace_file = tmp_path / "nonexistent.jsonl"
     assert read_trace("any-id", trace_file) == []

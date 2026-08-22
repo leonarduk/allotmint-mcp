@@ -32,8 +32,21 @@ class UnsupportedProvider(ValueError):
     """Raised for an `ALLOTMINT_RESEARCH_LLM_PROVIDER` value we don't know."""
 
 
-def build_model(settings: Settings) -> Any:
-    """Returns a Pydantic AI model for the configured provider."""
+def build_model(
+    settings: Settings,
+    *,
+    provider_env_var: str = "ALLOTMINT_RESEARCH_LLM_PROVIDER",
+    api_key_env_var: str = "ALLOTMINT_RESEARCH_LLM_API_KEY",
+) -> Any:
+    """Returns a Pydantic AI model for the configured provider.
+
+    `provider_env_var`/`api_key_env_var` only affect error message text, not
+    behavior -- they let a caller building a model for a different role (the
+    #549 verifier, via `settings.verifier_settings()`) name the env var a
+    user should actually go set, instead of always pointing at the worker's
+    `ALLOTMINT_RESEARCH_LLM_*` names even when the misconfiguration is in the
+    verifier's own (or its worker-fallback) settings.
+    """
     from pydantic_ai.models.openai import OpenAIChatModel
 
     provider = settings.llm_provider
@@ -51,8 +64,7 @@ def build_model(settings: Settings) -> Any:
 
         if not settings.llm_api_key:
             raise UnsupportedProvider(
-                "ALLOTMINT_RESEARCH_LLM_API_KEY is required when "
-                "ALLOTMINT_RESEARCH_LLM_PROVIDER=deepseek"
+                f"{api_key_env_var} is required when {provider_env_var}=deepseek"
             )
         return OpenAIChatModel(
             settings.llm_model,
@@ -74,6 +86,6 @@ def build_model(settings: Settings) -> Any:
         )
 
     raise UnsupportedProvider(
-        f"unknown ALLOTMINT_RESEARCH_LLM_PROVIDER {provider!r}; "
+        f"unknown {provider_env_var} {provider!r}; "
         "expected 'ollama', 'deepseek', or 'openai-compatible'"
     )

@@ -67,6 +67,29 @@ def test_unparseable_numeric_settings_fall_back_to_the_default(monkeypatch):
     assert load_settings().top_k == 5
 
 
+def test_build_model_error_names_the_caller_supplied_env_vars():
+    """The verifier call site (#549) passes its own env var names so a
+    misconfiguration error points at ALLOTMINT_RESEARCH_VERIFIER_LLM_* rather
+    than the worker's names, even though the underlying settings object still
+    exposes plain `llm_provider`/`llm_api_key`."""
+    settings = Settings(llm_provider="deepseek", llm_model="deepseek-chat", llm_api_key="")
+
+    with pytest.raises(UnsupportedProvider, match="ALLOTMINT_RESEARCH_VERIFIER_LLM_API_KEY"):
+        build_model(
+            settings,
+            provider_env_var="ALLOTMINT_RESEARCH_VERIFIER_LLM_PROVIDER",
+            api_key_env_var="ALLOTMINT_RESEARCH_VERIFIER_LLM_API_KEY",
+        )
+
+
+def test_build_model_error_defaults_to_worker_env_vars():
+    """Without an explicit override, error text is unchanged from before #549."""
+    settings = Settings(llm_provider="anthropic-premium")
+
+    with pytest.raises(UnsupportedProvider, match="ALLOTMINT_RESEARCH_LLM_PROVIDER"):
+        build_model(settings)
+
+
 def test_the_tool_allowlist_excludes_the_research_tool_itself():
     settings = load_settings()
 

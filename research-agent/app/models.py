@@ -93,4 +93,9 @@ class AskResponse(BaseModel):
     review_reasons: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     model: str = ""
+    # Worker/verifier can run different models since #549. `model` above is
+    # unchanged (worker only, matching the pre-#549 response shape); this is
+    # additive so existing consumers reading `model` see no change, while a
+    # consumer that cares can compare the two to see whether they diverged.
+    verifier_model: str = ""
     trace_id: str | None = None
