@@ -111,13 +111,16 @@
 			<version>1.18.46</version>
 		</dependency>
 
-		<!-- Optional JSON encoder for logback-spring.xml, toggled at runtime via
-		     ALLOTMINT_MCP_LOG_JSON=true (default: unset, plain-text logging). -->
+		<!-- JSON encoder for logback-spring.xml, toggled at runtime via
+		     ALLOTMINT_MCP_LOG_JSON=true (default: unset, plain-text logging).
+		     Not marked optional: spring-boot-maven-plugin's repackage goal drops
+		     optional dependencies from the executable fat jar, which would leave
+		     this (and janino, below) off the runtime classpath entirely and crash
+		     logback's config parsing on startup regardless of the env var. -->
 		<dependency>
 			<groupId>net.logstash.logback</groupId>
 			<artifactId>logstash-logback-encoder</artifactId>
 			<version>8.0</version>
-			<optional>true</optional>
 		</dependency>
 
 		<!-- Required for the <if>/<then>/<else> conditional in logback-spring.xml that
@@ -126,7 +129,6 @@
 		<dependency>
 			<groupId>org.codehaus.janino</groupId>
 			<artifactId>janino</artifactId>
-			<optional>true</optional>
 		</dependency>
 
 		<dependency>
