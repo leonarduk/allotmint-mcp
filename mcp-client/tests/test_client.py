@@ -100,6 +100,21 @@ def test_result_text_ignores_structured_content_even_when_present():
     assert result_text(result) == "Your portfolio is worth £625,156.28 [1]."
 
 
+def test_result_text_marks_non_text_content_blocks_instead_of_dropping_them():
+    image_block = SimpleNamespace(type="image", data="base64...", mimeType="image/png")
+    result = SimpleNamespace(content=[_content("caption"), image_block])
+
+    assert result_text(result) == "caption\n[non-text content: image]"
+
+
+def test_result_text_strict_mode_raises_on_non_text_content_blocks():
+    image_block = SimpleNamespace(type="image", data="base64...", mimeType="image/png")
+    result = SimpleNamespace(content=[image_block])
+
+    with pytest.raises(ValueError, match="image"):
+        result_text(result, strict=True)
+
+
 def test_result_is_error_checks_both_field_spellings():
     assert result_is_error(SimpleNamespace(isError=True)) is True
     assert result_is_error(SimpleNamespace(is_error=True)) is True

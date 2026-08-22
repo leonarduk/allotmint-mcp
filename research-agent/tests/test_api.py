@@ -33,6 +33,12 @@ def test_health_reports_configuration_without_probing_anything(client):
         "allotmint_market",
         "allotmint_health",
     ]
+    # "active" is a process-wide counter shared across tests, so only assert
+    # the configured caps here; session-count behavior is covered directly
+    # against app.sessions in test_sessions.py.
+    assert body["conversation_sessions"]["max_sessions"] == 200
+    assert body["conversation_sessions"]["max_messages_per_session"] == 40
+    assert body["conversation_sessions"]["active"] >= 0
 
 
 def test_ask_returns_the_shape_the_java_client_deserializes(client, monkeypatch):
@@ -71,6 +77,37 @@ def test_ask_returns_the_shape_the_java_client_deserializes(client, monkeypatch)
     assert body["citations"][0]["ref"] == "report:portfolio.sectors"
     assert body["tool_calls"][0]["tool"] == "allotmint_portfolio"
     assert body["model"] == "ollama:llama3.2"
+
+
+def test_session_id_reaches_run_research_unchanged(client, monkeypatch):
+    seen = {}
+
+    async def fake_run(request, settings, trace_logger=None, langfuse_tracer=None):
+        seen["session_id"] = request.session_id
+        return AskResponse(question=request.question, answer="answer", grounded=True)
+
+    monkeypatch.setattr(main_module, "run_research", fake_run)
+
+    response = client.post(
+        "/research/ask", json={"question": "what about last month?", "session_id": "conv-42"}
+    )
+
+    assert response.status_code == 200
+    assert seen["session_id"] == "conv-42"
+
+
+def test_session_id_is_optional_and_defaults_to_none(client, monkeypatch):
+    seen = {}
+
+    async def fake_run(request, settings, trace_logger=None, langfuse_tracer=None):
+        seen["session_id"] = request.session_id
+        return AskResponse(question=request.question, answer="answer", grounded=True)
+
+    monkeypatch.setattr(main_module, "run_research", fake_run)
+
+    client.post("/research/ask", json={"question": "why?"})
+
+    assert seen["session_id"] is None
 
 
 def test_a_blank_question_is_rejected_before_any_llm_call(client):

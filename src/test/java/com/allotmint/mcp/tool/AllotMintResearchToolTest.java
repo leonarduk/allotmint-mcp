@@ -75,7 +75,8 @@ class AllotMintResearchToolTest {
     Map<String, Object> properties = (Map<String, Object>) schema.get("properties");
 
     assertThat(properties)
-        .containsOnlyKeys("action", "question", "owner", "lookback_days", "llm_provider");
+        .containsOnlyKeys(
+            "action", "question", "owner", "lookback_days", "llm_provider", "session_id");
     assertThat(schema.get("required")).isEqualTo(List.of("action", "question"));
     assertThat(schema.get("additionalProperties")).isEqualTo(false);
 
@@ -87,6 +88,29 @@ class AllotMintResearchToolTest {
     Map<String, Object> lookback = (Map<String, Object>) properties.get("lookback_days");
     assertThat(lookback.get("type")).isEqualTo("integer");
     assertThat(lookback.get("default")).isEqualTo(365);
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> sessionId = (Map<String, Object>) properties.get("session_id");
+    assertThat(sessionId.get("type")).isEqualTo("string");
+    assertThat(sessionId.get("minLength")).isEqualTo(1);
+  }
+
+  @Test
+  void passesTheSessionIdThroughToTheSidecarClient() {
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(groundedAnswer());
+
+    call(Map.of("action", "ask", "question", "what about last month?", "session_id", "conv-42"));
+
+    verify(client).ask("what about last month?", null, 365, null, "conv-42");
+  }
+
+  @Test
+  void omittingSessionIdPreservesSingleShotBehavior() {
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(groundedAnswer());
+
+    call(Map.of("action", "ask", "question", "why?"));
+
+    verify(client).ask("why?", null, 365, null, null);
   }
 
   @Test
@@ -143,26 +167,60 @@ class AllotMintResearchToolTest {
 
   @Test
   void defaultsLookbackToOneYearWhenAbsent() {
-    when(client.ask(any(), any(), anyInt())).thenReturn(groundedAnswer());
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(groundedAnswer());
 
     call(Map.of("action", "ask", "question", "how has my tech exposure changed?"));
 
-    verify(client).ask("how has my tech exposure changed?", null, 365);
+    verify(client).ask("how has my tech exposure changed?", null, 365, null, null);
+  }
+
+  @Test
+  void rejectsANonIntegralLookback() {
+    // The Number path must be as strict as the String path: Integer.valueOf("30.5")
+    // already throws, so a Double/Float carrying a fractional value should be
+    // rejected too, instead of being silently truncated to 30.
+    McpSchema.CallToolResult result =
+        call(Map.of("action", "ask", "question", "why?", "lookback_days", 30.5));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(textOf(result)).contains("lookback_days must be an integer");
   }
 
   @Test
   void acceptsALookbackSentAsAJsonDouble() {
     // MCP clients are inconsistent about number types; 30 can arrive as 30.0.
-    when(client.ask(any(), any(), anyInt())).thenReturn(groundedAnswer());
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(groundedAnswer());
 
     call(Map.of("action", "ask", "question", "why?", "owner", "demo", "lookback_days", 30.0));
 
-    verify(client).ask("why?", "demo", 30);
+    verify(client).ask("why?", "demo", 30, null, null);
+  }
+
+  @Test
+  void acceptsANearIntegralLookbackWithinFloatingPointTolerance() {
+    // JSON parsing of a double can leave a representation artifact
+    // (30.000000000000004 instead of 30.0) that is mathematically integral but
+    // fails exact equality against Math.rint. This must still be accepted, unlike
+    // the genuinely fractional 30.5 above.
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(groundedAnswer());
+
+    call(
+        Map.of(
+            "action",
+            "ask",
+            "question",
+            "why?",
+            "owner",
+            "demo",
+            "lookback_days",
+            30.000000000000004));
+
+    verify(client).ask("why?", "demo", 30, null, null);
   }
 
   @Test
   void rendersTheAnswerWithANumberedSourceList() {
-    when(client.ask(any(), any(), anyInt())).thenReturn(groundedAnswer());
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(groundedAnswer());
 
     McpSchema.CallToolResult result =
         call(
@@ -207,7 +265,7 @@ class AllotMintResearchToolTest {
             true,
             List.of("Retrieval store unavailable (connection refused)"),
             "ollama:llama3.2");
-    when(client.ask(any(), any(), anyInt())).thenReturn(answer);
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(answer);
 
     McpSchema.CallToolResult result = call(Map.of("action", "ask", "question", "why?"));
 
@@ -226,7 +284,7 @@ class AllotMintResearchToolTest {
             false,
             List.of("Retrieval store unavailable (connection refused)"),
             "ollama:llama3.2");
-    when(client.ask(any(), any(), anyInt())).thenReturn(ungrounded);
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(ungrounded);
 
     McpSchema.CallToolResult result = call(Map.of("action", "ask", "question", "why?"));
 
@@ -239,7 +297,7 @@ class AllotMintResearchToolTest {
 
   @Test
   void reportsASidecarErrorReadably() {
-    when(client.ask(any(), any(), anyInt()))
+    when(client.ask(any(), any(), anyInt(), any(), any()))
         .thenThrow(new AllotMintApiException(500, "Research agent returned 500: boom"));
 
     McpSchema.CallToolResult result = call(Map.of("action", "ask", "question", "why?"));
@@ -250,7 +308,7 @@ class AllotMintResearchToolTest {
 
   @Test
   void reportsAnUnreachableSidecarWithItsUrl() {
-    when(client.ask(eq("why?"), any(), anyInt()))
+    when(client.ask(eq("why?"), any(), anyInt(), any(), any()))
         .thenThrow(new ResourceAccessException("Connection refused"));
 
     McpSchema.CallToolResult result = call(Map.of("action", "ask", "question", "why?"));

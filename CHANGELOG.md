@@ -15,6 +15,18 @@ changes and required migrations explicitly.
 
 ### Added
 
+- `allotmint_research` accepts an optional `session_id` to hold a multi-turn conversation
+  across separate calls (#548): the research-agent sidecar threads the prior turns into
+  the agent run via `pydantic_ai`'s `message_history`, keyed by `session_id`, in-memory
+  only and capped by the new `ALLOTMINT_RESEARCH_MAX_CONVERSATION_SESSIONS` /
+  `ALLOTMINT_RESEARCH_MAX_CONVERSATION_MESSAGES` settings. Omitting `session_id`
+  preserves the original single-shot behavior unchanged. **Migration**: no action
+  required for existing callers; clients that want conversational context should
+  generate a `session_id` per conversation and pass it on every `ask` call. Sessions do
+  not survive a sidecar restart and are not shared across horizontally-scaled sidecar
+  instances -- both are known, documented limitations, not bugs. This is a
+  backward-compatible addition; bump the minor version at the next release.
+
 ### Changed
 
 ### Deprecated
@@ -22,6 +34,13 @@ changes and required migrations explicitly.
 ### Removed
 
 ### Fixed
+
+- `AllotMintResearchTool`'s `optionalInteger` (the #250 non-integral `lookback_days`
+  rejection) now compares against `Math.rint` with a small tolerance instead of exact
+  floating-point equality, so a mathematically-integral value with a JSON-parsing
+  representation artifact (e.g. `30.000000000000004`) is accepted instead of wrongly
+  rejected as non-integral, while genuinely fractional values (e.g. `30.5`) are still
+  rejected.
 
 ### Security
 

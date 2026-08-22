@@ -31,6 +31,7 @@ from .llm import build_model
 from .mcp_tools import ToolSession, open_session
 from .models import AskRequest, AskResponse, Citation, RetrievedDocument, ToolCallRecord
 from .retrieval import RetrievalUnavailable, search
+from .sessions import get_history, save_history
 from .tracing import TraceLogger
 from .langfuse_tracing import LangfuseTracer, new_langfuse_tracer
 
@@ -363,10 +364,19 @@ async def run_research(
     if langfuse_tracer is not None:
         langfuse_tracer.agent_start(settings.model_label)
 
+    message_history = get_history(request.session_id)
+
     async with open_session(settings, trace_logger=trace_logger) as tools:
         agent = _make_agent(model, tools, settings)
-        result = await agent.run(prompt)
+        result = await agent.run(prompt, message_history=message_history or None)
         tool_calls = list(tools.calls)
+
+    save_history(
+        request.session_id,
+        result.all_messages(),
+        settings.max_conversation_sessions,
+        settings.max_conversation_messages,
+    )
 
     answer = strip_reasoning(str(result.output))
 

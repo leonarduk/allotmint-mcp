@@ -49,6 +49,7 @@ public final class AllotMintResearchTool {
   static final String OWNER = "owner";
   static final String LOOKBACK_DAYS = "lookback_days";
   static final String LLM_PROVIDER = "llm_provider";
+  static final String SESSION_ID = "session_id";
 
   /** The only supported action. Kept as a list so adding a second one stays a one-line change. */
   private static final List<String> ACTIONS = List.of("ask");
@@ -108,6 +109,19 @@ public final class AllotMintResearchTool {
             "minLength", 1,
             "description",
                 "Optional LLM provider advertised by the research-agent health endpoint"));
+    properties.put(
+        SESSION_ID,
+        Map.of(
+            "type",
+            "string",
+            "minLength",
+            1,
+            "description",
+            "Optional client-chosen id to hold a multi-turn conversation across separate"
+                + " calls (#548). Reuse the same value on a follow-up question to give the"
+                + " agent the prior turns as context; omit it for today's single-shot"
+                + " behavior. Sessions are held in-memory by the sidecar only, are capped,"
+                + " and do not survive a sidecar restart."));
 
     Map<String, Object> inputSchema =
         Map.of(
@@ -150,6 +164,7 @@ public final class AllotMintResearchTool {
 
     String owner = optionalString(arguments, OWNER);
     String llmProvider = optionalString(arguments, LLM_PROVIDER);
+    String sessionId = optionalString(arguments, SESSION_ID);
 
     Object rawLookback = arguments.get(LOOKBACK_DAYS);
     Integer lookbackDays = optionalInteger(rawLookback);
@@ -164,10 +179,7 @@ public final class AllotMintResearchTool {
 
     ResearchAnswer answer;
     try {
-      answer =
-          llmProvider == null
-              ? client.ask(question, owner, lookbackDays)
-              : client.ask(question, owner, lookbackDays, llmProvider);
+      answer = client.ask(question, owner, lookbackDays, llmProvider, sessionId);
     } catch (AllotMintApiException e) {
       return error(e.getMessage());
     } catch (RestClientException e) {
@@ -274,9 +286,25 @@ public final class AllotMintResearchTool {
    * left the client as {@code 30} can arrive as an Integer, a Double, or a String - so all three
    * are accepted, and anything else is treated as absent.
    */
+  // Tolerance for the integral-value check below: JSON parsing of a double can introduce a
+  // representation artifact (e.g. 30.000000000000004 instead of 30.0) that is mathematically
+  // integral but fails exact equality against Math.rint. 1e-9 is comfortably larger than that
+  // class of floating-point noise while still rejecting genuinely non-integral input like 30.5.
+  private static final double INTEGRAL_TOLERANCE = 1e-9;
+
   private static Integer optionalInteger(Object value) {
     if (value instanceof Number number) {
-      return number.intValue();
+      // Reject non-integral values (e.g. 30.5) instead of silently truncating them,
+      // so this matches the String path below, where Integer.valueOf("30.5") throws.
+      double doubleValue = number.doubleValue();
+      double rounded = Math.rint(doubleValue);
+      if (Math.abs(doubleValue - rounded) > INTEGRAL_TOLERANCE) {
+        return null;
+      }
+      // Use the rounded value, not number.intValue(): intValue() truncates toward zero, so a
+      // within-tolerance artifact just under a whole number (e.g. 29.999999999999996) would
+      // otherwise be reported as 29 instead of 30.
+      return (int) rounded;
     }
     if (value instanceof String text && !text.isBlank()) {
       try {

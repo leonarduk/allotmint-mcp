@@ -18,6 +18,7 @@ from .config import load_settings, select_llm_provider
 from .langfuse_tracing import new_langfuse_tracer
 from .llm import UnsupportedProvider
 from .models import AskRequest, AskResponse
+from .sessions import session_count
 from .tracing import new_trace, read_trace
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -49,6 +50,11 @@ async def health() -> dict:
         "retrieval_enabled": settings.retrieval_enabled,
         "trace_file": settings.trace_file or "(disabled)",
         "tools": list(settings.tools),
+        "conversation_sessions": {
+            "active": session_count(),
+            "max_sessions": settings.max_conversation_sessions,
+            "max_messages_per_session": settings.max_conversation_messages,
+        },
     }
 
 

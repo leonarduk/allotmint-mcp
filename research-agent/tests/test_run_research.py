@@ -308,3 +308,171 @@ async def test_tool_arguments_reach_the_v0_tools_unchanged(monkeypatch, settings
     # account_type defaulted to None in the wrapper and must not be forwarded.
     assert arguments == {"action": "holdings", "owner": "demo", "currency": "GBP"}
     assert json.dumps(arguments)  # serializable, as the MCP transport requires
+
+
+# --- multi-turn conversation sessions (#548) --------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _clear_session_store():
+    """Isolates each test's session_id from ones used by earlier tests.
+
+    `app.sessions` is a process-wide singleton by design (#548's "in-memory
+    dict, scoped to the running process" decision), so without this a session
+    id reused across tests could leak history between them.
+    """
+    from app import sessions as sessions_module
+
+    yield
+    sessions_module._store._sessions.clear()  # noqa: SLF001 - test-only cleanup
+
+
+@pytest.mark.asyncio
+async def test_a_second_call_with_the_same_session_id_carries_the_first_turns_history(
+    monkeypatch, settings, patched, documents
+):
+    """A follow-up question that only makes sense with prior context (#548's
+    own example: "what about last month?" after a dated question) must reach
+    the worker agent with the earlier turn's messages in `message_history`,
+    not as a fresh, context-free run.
+
+    Spies on `agent_module.get_history`/`save_history` rather than counting
+    messages the scripted model sees: `run_research` also runs a second,
+    independent verifier agent through the same `build_model` (see
+    `orchestration.run_verifier`), so a plain message-count assertion on the
+    model would conflate the worker's and the verifier's turns.
+    """
+    _stub_search(monkeypatch, documents)
+    _use_model(monkeypatch, _scripted_model("Technology rose to 27% as of that period [1]."))
+
+    get_history_calls: list[str | None] = []
+    save_history_calls: list[tuple[str | None, int]] = []
+    real_get_history = agent_module.get_history
+    real_save_history = agent_module.save_history
+
+    def spy_get_history(session_id):
+        get_history_calls.append(session_id)
+        return real_get_history(session_id)
+
+    def spy_save_history(session_id, messages, max_sessions, max_messages):
+        save_history_calls.append((session_id, len(messages)))
+        return real_save_history(session_id, messages, max_sessions, max_messages)
+
+    monkeypatch.setattr(agent_module, "get_history", spy_get_history)
+    monkeypatch.setattr(agent_module, "save_history", spy_save_history)
+
+    first = await agent_module.run_research(
+        AskRequest(
+            question="How did my tech exposure change in August 2026?",
+            owner="demo",
+            session_id="conv-followup",
+        ),
+        settings,
+    )
+    second = await agent_module.run_research(
+        AskRequest(question="what about last month?", owner="demo", session_id="conv-followup"),
+        settings,
+    )
+
+    assert first.grounded is True
+    assert second.grounded is True
+    assert get_history_calls == ["conv-followup", "conv-followup"]
+    assert save_history_calls[0][0] == "conv-followup"
+    assert save_history_calls[1][0] == "conv-followup"
+    first_saved_len = save_history_calls[0][1]
+    assert first_saved_len >= 2  # at least one request/response pair
+    # The second call's saved history is strictly longer than the first's --
+    # it had to include the first turn's messages (fetched via get_history and
+    # threaded into agent.run as message_history) plus its own new turn.
+    assert save_history_calls[1][1] > first_saved_len
+
+
+@pytest.mark.asyncio
+async def test_a_different_session_id_starts_with_no_history(
+    monkeypatch, settings, patched, documents
+):
+    _stub_search(monkeypatch, documents)
+    _use_model(monkeypatch, _scripted_model("Technology is 27% [1]."))
+
+    save_history_calls: list[tuple[str | None, int]] = []
+    real_save_history = agent_module.save_history
+
+    def spy_save_history(session_id, messages, max_sessions, max_messages):
+        save_history_calls.append((session_id, len(messages)))
+        return real_save_history(session_id, messages, max_sessions, max_messages)
+
+    monkeypatch.setattr(agent_module, "save_history", spy_save_history)
+
+    await agent_module.run_research(
+        AskRequest(question="q1", owner="demo", session_id="conv-a"), settings
+    )
+    await agent_module.run_research(
+        AskRequest(question="q2", owner="demo", session_id="conv-b"), settings
+    )
+
+    # A brand-new session_id ("conv-b") starts with exactly as many messages
+    # saved as the very first call to "conv-a" did -- no history leaked in
+    # from the unrelated session.
+    assert save_history_calls[0][0] == "conv-a"
+    assert save_history_calls[1][0] == "conv-b"
+    assert save_history_calls[1][1] == save_history_calls[0][1]
+
+
+@pytest.mark.asyncio
+async def test_an_unrecognized_session_id_starts_fresh_rather_than_erroring(
+    monkeypatch, settings, patched, documents
+):
+    # Simulates a sidecar restart mid-conversation: the client keeps sending
+    # the same session_id, but the process-local store no longer knows it.
+    _stub_search(monkeypatch, documents)
+    _use_model(monkeypatch, _scripted_model("Technology is 27% [1]."))
+
+    response = await agent_module.run_research(
+        AskRequest(question="what about last month?", owner="demo", session_id="never-seen-before"),
+        settings,
+    )
+
+    assert response.grounded is True
+    assert "Technology is 27%" in response.answer
+
+
+@pytest.mark.asyncio
+async def test_omitting_session_id_leaves_single_shot_behavior_unchanged(
+    monkeypatch, settings, patched, documents
+):
+    from app import sessions as sessions_module
+
+    _stub_search(monkeypatch, documents)
+    _use_model(monkeypatch, _scripted_model("Technology is 27% [1]."))
+
+    before = len(sessions_module._store)  # noqa: SLF001 - test-only inspection
+    response = await agent_module.run_research(
+        AskRequest(question="what is my tech exposure?", owner="demo"), settings
+    )
+    after = len(sessions_module._store)  # noqa: SLF001 - test-only inspection
+
+    assert response.grounded is True
+    # Nothing is ever written to the session store for a request that didn't
+    # supply a session_id.
+    assert after == before
+
+
+@pytest.mark.asyncio
+async def test_conversation_history_is_capped_per_session(
+    monkeypatch, settings, patched, documents
+):
+    settings = agent_module.Settings(**{**settings.__dict__, "max_conversation_messages": 2})
+    _stub_search(monkeypatch, documents)
+    _use_model(monkeypatch, _scripted_model("Technology is 27% [1]."))
+
+    from app import sessions as sessions_module
+
+    await agent_module.run_research(
+        AskRequest(question="q1", owner="demo", session_id="conv-cap"), settings
+    )
+    await agent_module.run_research(
+        AskRequest(question="q2", owner="demo", session_id="conv-cap"), settings
+    )
+
+    stored = sessions_module._store.get("conv-cap")  # noqa: SLF001 - test-only inspection
+    assert len(stored) <= 2

@@ -400,12 +400,27 @@ Answers a compound natural-language question by retrieving relevant embedded con
       "minimum": 1,
       "maximum": 3650,
       "default": 365
+    },
+    "llm_provider": {
+      "type": "string",
+      "minLength": 1
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
     }
   },
   "required": ["action", "question"],
   "additionalProperties": false
 }
 ```
+
+`session_id` (#548) is optional and holds a multi-turn conversation: reuse the same
+value on a follow-up question to give the agent the prior turns as context, or omit it
+for the original single-shot behavior. History is kept in-memory by the sidecar only —
+capped, evicted, and lost on a sidecar restart. See the "Multi-turn conversations"
+section of [research-agent/README.md](research-agent/README.md#multi-turn-conversations-548)
+for the full behavior and its limitations.
 
 Unlike the tools above, this one is **off by default** and needs two things running alongside the server:
 

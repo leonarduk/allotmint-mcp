@@ -100,7 +100,10 @@ class ToolSession:
             k: v
             for k, v in arguments.items()
             if v is not None
-            and not (isinstance(v, str) and v.strip().lower() in {"null", "none"})
+            and not (
+                isinstance(v, str)
+                and (not v.strip() or v.strip().lower() in {"null", "none"})
+            )
         }
         log.info("agent -> %s(%s)", name, cleaned)
 

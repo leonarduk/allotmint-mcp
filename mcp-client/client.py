@@ -190,19 +190,33 @@ def build_research_arguments(
     return arguments
 
 
-def result_text(result: Any) -> str:
-    """Flattens an MCP CallToolResult's text content blocks into one string.
+def result_text(result: Any, *, strict: bool = False) -> str:
+    """Flattens an MCP CallToolResult's content blocks into one string.
 
     The Java tool layer already renders allotmint_research's answer plus a
     numbered Sources list as text content (see AllotMintResearchTool.render),
     so there is deliberately no client-side re-formatting here - printing this
     verbatim is the whole job.
+
+    Non-text content blocks (e.g. images or embedded resources) are no
+    longer silently dropped: each contributes a visible
+    "[non-text content: <type>]" marker to the output instead, so a caller
+    can tell content was skipped rather than getting incomplete output with
+    no indication anything is missing. Pass `strict=True` to raise a
+    ValueError instead, for callers that need a guarantee of text-only
+    results.
     """
     parts = []
     for item in getattr(result, "content", None) or []:
         text = getattr(item, "text", None)
         if text:
             parts.append(text)
+            continue
+        block_type = getattr(item, "type", None)
+        if block_type is not None and block_type != "text":
+            if strict:
+                raise ValueError(f"non-text content block in tool result: {block_type!r}")
+            parts.append(f"[non-text content: {block_type}]")
     return "\n".join(parts) if parts else "(no content returned)"
 
 

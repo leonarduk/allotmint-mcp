@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -364,6 +365,52 @@ class AllotMintFilesToolTest {
 
     assertThat(result.isError()).isTrue();
     assertThat(text(result)).contains("Path traversal rejected");
+  }
+
+  // -- final-path canonicalization (issue #194 / TOCTOU) ------------------
+
+  @Test
+  void resolveSafelyReturnsTheCanonicalPathForAnExistingSymlinkTarget() throws Exception {
+    // Before this fix, resolveSafely validated the closest existing *ancestor*
+    // via toRealPath() but handed callers back the pre-canonicalization
+    // `resolved` path -- so a symlink swapped into place after validation but
+    // before the file operation would be re-resolved (and could then escape
+    // the root) at use time. Canonicalizing the final path itself and
+    // returning that closes the gap: callers now always operate on exactly
+    // the path that was validated.
+    Path realFile = root.resolve("real-target.txt");
+    Files.writeString(realFile, "canonical content");
+
+    Path link = root.resolve("alias.link");
+    try {
+      Files.createSymbolicLink(link, realFile);
+    } catch (UnsupportedOperationException | IOException e) {
+      assumeTrue(false, "Symlink creation not supported in this environment: " + e.getMessage());
+      return;
+    }
+
+    Path resolved = invokeResolveSafely("alias.link");
+
+    assertThat(resolved).isEqualTo(realFile.toRealPath());
+  }
+
+  @Test
+  void resolveSafelyReturnsTheNonCanonicalPathForANonExistentTarget() throws Exception {
+    // toRealPath() throws for a path that doesn't exist, so a not-yet-created
+    // target must fall back to the pre-canonicalization path -- this is what
+    // preserves the existing "File not found"/"Directory not found" handling
+    // in handleRead/handleList instead of turning every missing file into a
+    // traversal-rejected error.
+    Path resolved = invokeResolveSafely("nonexistent.txt");
+
+    assertThat(resolved).isEqualTo(root.resolve("nonexistent.txt"));
+  }
+
+  private Path invokeResolveSafely(String rawPath) throws Exception {
+    Method resolveSafely =
+        AllotMintFilesTool.class.getDeclaredMethod("resolveSafely", String.class, Path.class);
+    resolveSafely.setAccessible(true);
+    return (Path) resolveSafely.invoke(null, rawPath, root.toRealPath());
   }
 
   // -- root scoping: valid relative paths --------------------------------
