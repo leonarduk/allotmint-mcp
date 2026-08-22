@@ -237,6 +237,13 @@ _INDEX_TEMPLATE = """<!doctype html>
 /* Injected by render_index() via json.dumps — safe for any URL chars */
 const DEFAULTS = __DEFAULTS_JSON__;
 
+function disabledPlaceholderOption(label) {
+  const option = new Option(label, "");
+  option.disabled = true;
+  option.selected = true;
+  return option;
+}
+
 async function loadAccountOwners() {
   const select = document.querySelector('select[name="owner"]');
   const submitButton = document.getElementById("ask-submit");
@@ -246,13 +253,13 @@ async function loadAccountOwners() {
     const {ok, data} = await postJSON("/api/owners", {url: DEFAULTS.url, timeout: 30.0});
     select.replaceChildren();
     if (!ok || !data.owners || data.owners.length === 0) {
-      select.append(new Option("No account owners available", ""));
+      select.append(disabledPlaceholderOption("No account owners available"));
       return;
     }
     data.owners.forEach(owner => select.append(new Option(owner, owner)));
   } catch (err) {
     select.replaceChildren();
-    select.append(new Option("No account owners available", ""));
+    select.append(disabledPlaceholderOption("No account owners available"));
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = "Ask";
