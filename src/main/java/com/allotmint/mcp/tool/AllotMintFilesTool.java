@@ -328,18 +328,35 @@ public final class AllotMintFilesTool {
       existingAncestor = existingAncestor.getParent();
     }
 
-    if (existingAncestor != null) {
-      try {
-        Path realAncestor = existingAncestor.toRealPath();
-        if (!realAncestor.startsWith(resolvedRoot)) {
-          return null;
-        }
-      } catch (IOException e) {
-        return null;
-      }
+    if (existingAncestor == null) {
+      return resolved;
     }
 
-    return resolved;
+    Path realAncestor;
+    try {
+      realAncestor = existingAncestor.toRealPath();
+    } catch (IOException e) {
+      return null;
+    }
+    if (!realAncestor.startsWith(resolvedRoot)) {
+      return null;
+    }
+
+    // 10. When the target itself exists, existingAncestor *is* resolved, so
+    //     realAncestor above is already the canonicalized final path -- reuse
+    //     it instead of calling toRealPath() a second time. Returning this
+    //     real path (rather than the pre-canonicalization `resolved`) closes
+    //     the TOCTOU gap where a symlink could be swapped into place between
+    //     this check and the caller's file operation: callers now always
+    //     operate on the canonical path, not a path that still requires
+    //     symlink resolution at use time.
+    //
+    //     When the target does not yet exist (existingAncestor is some
+    //     ancestor directory instead), fall back to the non-canonical
+    //     `resolved` so the existing "File not found"/"Directory not found"
+    //     handling in handleRead/handleList keeps working -- toRealPath()
+    //     would just throw for a path that doesn't exist.
+    return existingAncestor.equals(resolved) ? realAncestor : resolved;
   }
 
   /**
