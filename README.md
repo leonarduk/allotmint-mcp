@@ -566,4 +566,8 @@ the full command list, e.g. `commit-and-push` and `publish-pr`. `run-ci-checks`
 reads its check list from [`.cicaid-checks.toml`](.cicaid-checks.toml) in this
 repo (Maven build + research-agent/mcp-client pytest, mirroring
 `.github/workflows/build.yml`). `scripts/g_run_tests.ps1` remains as a
-PowerShell wrapper around `./mvnw verify`.
+PowerShell wrapper around `./mvnw verify`, and
+[`mcp-client/run_tests.ps1`](mcp-client/run_tests.ps1) is the equivalent
+wrapper for the `mcp-client` pytest suite — it installs
+`mcp-client/requirements-dev.txt` and then runs `pytest` against
+`mcp-client/tests/`, propagating `$LASTEXITCODE` on failure.

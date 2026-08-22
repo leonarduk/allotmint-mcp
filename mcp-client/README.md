@@ -184,3 +184,9 @@ python -m pytest
 ```
 
 No live server needed: the MCP session is a fake object, so these only cover the argument-building and result-formatting logic that doesn't depend on the transport itself.
+
+On Windows, `run_tests.ps1` wraps the same steps (install `requirements-dev.txt`, then `pytest tests/`) using the repo's standard PowerShell script pattern (resolve the repo root via `git rev-parse --show-toplevel`, run from any working directory, propagate `$LASTEXITCODE`):
+
+```powershell
+mcp-client/run_tests.ps1
+```
