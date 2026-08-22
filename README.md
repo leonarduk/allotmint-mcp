@@ -5,6 +5,55 @@ Standalone MCP server for [AllotMint](https://github.com/leonarduk/allotmint), b
 For the intended users, product boundaries, build-versus-buy decisions, and rough running-cost
 profile, see [Product framing](docs/product-framing.md).
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph clients["MCP clients"]
+        CD["Claude Desktop /\nother MCP clients"]
+        CLI["mcp-client CLI\n(client.py)"]
+        WEBUI["webui.py /\ngradio_ui.py"]
+    end
+
+    subgraph server["allotmint-mcp server (Java, Spring Boot, MCP Java SDK)"]
+        MCP["MCP tools\nallotmint_health / instrument / market /\nportfolio / reconcile / data_quality"]
+        RESEARCH["allotmint_research (opt-in)"]
+    end
+
+    BACKEND[("AllotMint backend\n(REST API)")]
+
+    subgraph sidecar["research-agent sidecar (Python, FastAPI, Pydantic AI)"]
+        AGENT["/research/ask"]
+        RETRIEVAL["retrieval.py"]
+    end
+
+    PGVECTOR[("pgvector\n(Postgres)")]
+    LLM["LLM\n(Ollama local, or DeepSeek/OpenAI-compatible)"]
+
+    CD -- "stdio or HTTP /mcp" --> MCP
+    CLI -- "streamable HTTP /mcp" --> MCP
+    WEBUI -- "streamable HTTP /mcp" --> MCP
+
+    MCP -- "REST" --> BACKEND
+    RESEARCH -- "REST" --> BACKEND
+
+    RESEARCH -- "HTTP POST /research/ask" --> AGENT
+    AGENT -- "MCP client, HTTP /mcp\n(4 v0 tools only)" --> MCP
+    AGENT --> RETRIEVAL
+    RETRIEVAL -- "SQL, cosine search" --> PGVECTOR
+    AGENT -- "chat completion" --> LLM
+```
+
+The Java MCP server is the single entry point for every client (Claude Desktop, the MCP
+Inspector, the `mcp-client` CLI, and its `webui.py`/`gradio_ui.py` front ends) and the only
+component that talks to the AllotMint backend for the four core query tools. The optional
+`allotmint_research` tool calls the Python research-agent sidecar over local HTTP; the sidecar
+is itself an MCP client back into the same Java server's `/mcp` endpoint (allowlisted to the
+four read-only v0 tools, so it cannot recurse into `allotmint_research` or reach any write
+tool), plus pgvector for retrieval and an LLM for synthesis. See the [Tool reference](#tool-reference)
+below for exact endpoints and configuration, and keep this diagram in sync as new components are
+added.
+
 ## Prerequisites
 
 - Java 25 or later on `PATH` (`java -version` should report 25+)
@@ -448,6 +497,30 @@ To exercise this tool without Claude Desktop or the MCP Inspector, use the [mcp-
 ### Multiple checkouts of this repo
 
 When more than one clone of this repo runs on the same machine, `docker-compose.yml` no longer sets hardcoded `container_name` values — Compose derives per-project names automatically (`${COMPOSE_PROJECT_NAME}-pgvector-1`, etc.), so two checkouts can run their own pgvector and research-agent containers without colliding. Use `docker compose ps` to find the actual container names in your checkout. If you have old containers from before this change, remove them first: `docker rm -f allotmint-mcp-pgvector allotmint-mcp-research-agent`.
+
+## Architecture Decision Records
+
+Significant architectural decisions — ones that are expensive to reverse, or
+that a future contributor would otherwise have to reconstruct from scattered
+code comments and issue history — are recorded as Architecture Decision
+Records (ADRs) under [`docs/adr/`](docs/adr/), one Markdown file per decision,
+numbered sequentially.
+
+Start a new one from the template, [`docs/adr/0000-template.md`](docs/adr/0000-template.md)
+(Status / Context / Decision / Consequences), when you make a decision like:
+
+- choosing between two viable technical approaches where the reasoning
+  won't be obvious from the code alone (e.g. [0001](docs/adr/0001-java-mcp-server-with-python-research-agent-sidecar.md),
+  [0002](docs/adr/0002-pgvector-for-retrieval.md));
+- adopting a new runtime dependency or changing the shape of a transport
+  boundary;
+- a constraint that future changes must keep respecting, and that isn't
+  otherwise enforced by a test (e.g. [0003](docs/adr/0003-stdio-transport-logging-constraint.md)).
+
+A quick bug fix, a refactor with no behavior change, or a decision that's
+fully captured by a PR description doesn't need one. This repo has no
+`CONTRIBUTING.md`, so this section is the process doc; if one is added
+later, move this section there instead.
 
 ## Build and quality gates
 
