@@ -498,6 +498,30 @@ To exercise this tool without Claude Desktop or the MCP Inspector, use the [mcp-
 
 When more than one clone of this repo runs on the same machine, `docker-compose.yml` no longer sets hardcoded `container_name` values — Compose derives per-project names automatically (`${COMPOSE_PROJECT_NAME}-pgvector-1`, etc.), so two checkouts can run their own pgvector and research-agent containers without colliding. Use `docker compose ps` to find the actual container names in your checkout. If you have old containers from before this change, remove them first: `docker rm -f allotmint-mcp-pgvector allotmint-mcp-research-agent`.
 
+## Architecture Decision Records
+
+Significant architectural decisions — ones that are expensive to reverse, or
+that a future contributor would otherwise have to reconstruct from scattered
+code comments and issue history — are recorded as Architecture Decision
+Records (ADRs) under [`docs/adr/`](docs/adr/), one Markdown file per decision,
+numbered sequentially.
+
+Start a new one from the template, [`docs/adr/0000-template.md`](docs/adr/0000-template.md)
+(Status / Context / Decision / Consequences), when you make a decision like:
+
+- choosing between two viable technical approaches where the reasoning
+  won't be obvious from the code alone (e.g. [0001](docs/adr/0001-java-mcp-server-with-python-research-agent-sidecar.md),
+  [0002](docs/adr/0002-pgvector-for-retrieval.md));
+- adopting a new runtime dependency or changing the shape of a transport
+  boundary;
+- a constraint that future changes must keep respecting, and that isn't
+  otherwise enforced by a test (e.g. [0003](docs/adr/0003-stdio-transport-logging-constraint.md)).
+
+A quick bug fix, a refactor with no behavior change, or a decision that's
+fully captured by a PR description doesn't need one. This repo has no
+`CONTRIBUTING.md`, so this section is the process doc; if one is added
+later, move this section there instead.
+
 ## Build and quality gates
 
 ```bash
