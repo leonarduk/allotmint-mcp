@@ -333,6 +333,60 @@ class AllotMintResearchToolTest {
   }
 
   @Test
+  void rejectsAnUnknownProperty() {
+    McpSchema.CallToolResult result =
+        call(Map.of("action", "ask", "question", "why?", "foo", "bar"));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(textOf(result)).contains("unknown properties: foo");
+    verify(client, org.mockito.Mockito.never()).ask(any(), any(), anyInt(), any(), any());
+  }
+
+  @Test
+  void reportsMultipleUnknownPropertiesDeterministically() {
+    McpSchema.CallToolResult result =
+        call(Map.of("action", "ask", "question", "why?", "zeta", "1", "alpha", "2"));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(textOf(result)).contains("unknown properties: alpha, zeta");
+  }
+
+  @Test
+  void acceptsAllFiveKnownProperties() {
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(groundedAnswer());
+
+    McpSchema.CallToolResult result =
+        call(
+            Map.of(
+                "action",
+                "ask",
+                "question",
+                "why?",
+                "owner",
+                "demo",
+                "lookback_days",
+                30,
+                "llm_provider",
+                "ollama",
+                "session_id",
+                "conv-1"));
+
+    assertThat(result.isError()).isNotEqualTo(true);
+    verify(client).ask("why?", "demo", 30, "ollama", "conv-1");
+  }
+
+  @Test
+  void llmProviderIsNotRejectedAsUnknown() {
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(groundedAnswer());
+
+    McpSchema.CallToolResult result =
+        call(Map.of("action", "ask", "question", "why?", "llm_provider", "deepseek"));
+
+    assertThat(result.isError()).isNotEqualTo(true);
+    verify(client).ask("why?", null, 365, "deepseek", null);
+  }
+
+  @Test
   void reportsAnUnreachableSidecarWithItsUrl() {
     when(client.ask(eq("why?"), any(), anyInt(), any(), any()))
         .thenThrow(new ResourceAccessException("Connection refused"));
