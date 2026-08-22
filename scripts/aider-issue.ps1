@@ -72,11 +72,22 @@ if (-not $defaultBranch) {
     $defaultBranch = 'main'
 }
 
-# Accept either a full URL or a bare issue number
-if ($Issue -match '(\d+)$') {
-    $number = $Matches[1]
+# Accept either a full URL or a bare issue number. A URL must resolve to this
+# repo's own owner/repo (derived from the git remote above) - a URL for a
+# different repo that happens to end in the same digits must not silently
+# operate on this repo's issue of that number.
+if ($Issue -match '^https://github\.com/([^/]+)/([^/]+)/issues/(\d+)/?(?:[?#].*)?$') {
+    $urlOwner = $Matches[1]
+    $urlRepo  = $Matches[2]
+    $number   = $Matches[3]
+    if ($urlOwner -ne $owner -or $urlRepo -ne $repo) {
+        Write-Error "Issue URL points to $urlOwner/$urlRepo, but this repo's git remote resolves to $owner/$repo. Pass a $owner/$repo issue URL or a bare issue number, e.g. 123 or https://github.com/$owner/$repo/issues/123"
+        exit 1
+    }
+} elseif ($Issue -match '^\d+$') {
+    $number = $Issue
 } else {
-    Write-Error "Expected an issue number or URL, e.g. 123 or https://github.com/leonarduk/allotmint/issues/123"
+    Write-Error "Expected an issue number or URL, e.g. 123 or https://github.com/$owner/$repo/issues/123"
     exit 1
 }
 
