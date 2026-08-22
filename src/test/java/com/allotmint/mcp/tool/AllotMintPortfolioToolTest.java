@@ -9,8 +9,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.math.BigDecimal;
+import java.net.ConnectException;
 import java.util.List;
 import java.util.Map;
 
@@ -280,6 +282,21 @@ class AllotMintPortfolioToolTest {
 
     assertThat(result.isError()).isTrue();
     assertThat(text(result)).contains("404").contains("owner missing");
+  }
+
+  @Test
+  void unreachableBackendSurfacesAsMcpErrorInsteadOfUnhandledException() {
+    // Simulates the AllotMint backend being down / connection refused: RestClient wraps that
+    // as a ResourceAccessException around a ConnectException, not an AllotMintApiException.
+    when(client.portfolio("steve"))
+        .thenThrow(
+            new ResourceAccessException(
+                "I/O error on GET request", new ConnectException("Connection refused")));
+
+    McpSchema.CallToolResult result = call(Map.of("action", "summary", "owner", "steve"));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(text(result)).contains("Unable to reach the AllotMint backend");
   }
 
   private McpSchema.CallToolResult call(Map<String, Object> arguments) {
