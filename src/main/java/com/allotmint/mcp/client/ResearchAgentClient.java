@@ -57,12 +57,11 @@ public class ResearchAgentClient {
   }
 
   /**
-   * Asks the agent one natural-language question, optionally as part of a multi-turn
-   * conversation.
+   * Asks the agent one natural-language question, optionally as part of a multi-turn conversation.
    *
-   * @param sessionId optional client-chosen id (#548); reusing the same value across calls lets
-   *     the sidecar thread prior turns into this one as context, held in-memory only and capped
-   *     on the sidecar side. {@code null} preserves single-shot behavior.
+   * @param sessionId optional client-chosen id (#548); reusing the same value across calls lets the
+   *     sidecar thread prior turns into this one as context, held in-memory only and capped on the
+   *     sidecar side. {@code null} preserves single-shot behavior.
    */
   public ResearchAnswer ask(
       String question, String owner, int lookbackDays, String llmProvider, String sessionId) {

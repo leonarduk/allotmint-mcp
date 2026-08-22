@@ -99,9 +99,7 @@ class AllotMintResearchToolTest {
   void passesTheSessionIdThroughToTheSidecarClient() {
     when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(groundedAnswer());
 
-    call(
-        Map.of(
-            "action", "ask", "question", "what about last month?", "session_id", "conv-42"));
+    call(Map.of("action", "ask", "question", "what about last month?", "session_id", "conv-42"));
 
     verify(client).ask("what about last month?", null, 365, null, "conv-42");
   }
@@ -208,7 +206,13 @@ class AllotMintResearchToolTest {
 
     call(
         Map.of(
-            "action", "ask", "question", "why?", "owner", "demo", "lookback_days",
+            "action",
+            "ask",
+            "question",
+            "why?",
+            "owner",
+            "demo",
+            "lookback_days",
             30.000000000000004));
 
     verify(client).ask("why?", "demo", 30, null, null);

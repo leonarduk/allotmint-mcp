@@ -112,14 +112,16 @@ public final class AllotMintResearchTool {
     properties.put(
         SESSION_ID,
         Map.of(
-            "type", "string",
-            "minLength", 1,
+            "type",
+            "string",
+            "minLength",
+            1,
             "description",
-                "Optional client-chosen id to hold a multi-turn conversation across separate"
-                    + " calls (#548). Reuse the same value on a follow-up question to give the"
-                    + " agent the prior turns as context; omit it for today's single-shot"
-                    + " behavior. Sessions are held in-memory by the sidecar only, are capped,"
-                    + " and do not survive a sidecar restart."));
+            "Optional client-chosen id to hold a multi-turn conversation across separate"
+                + " calls (#548). Reuse the same value on a follow-up question to give the"
+                + " agent the prior turns as context; omit it for today's single-shot"
+                + " behavior. Sessions are held in-memory by the sidecar only, are capped,"
+                + " and do not survive a sidecar restart."));
 
     Map<String, Object> inputSchema =
         Map.of(
