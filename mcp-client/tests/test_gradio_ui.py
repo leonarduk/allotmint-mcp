@@ -135,11 +135,31 @@ async def test_ui_account_owners_populates_dropdown(monkeypatch):
     session = FakeSession(result=result)
     monkeypatch.setattr(client_module, "open_session", _fake_open_session(session))
 
-    update = await gradio_ui.ui_account_owners(client_module.DEFAULT_MCP_URL, 30.0)
+    update, error_update = await gradio_ui.ui_account_owners(client_module.DEFAULT_MCP_URL, 30.0)
 
     assert update["choices"] == ["alice", "bob"]
     assert update["value"] == "alice"
+    assert error_update["visible"] is False
+    assert not error_update["value"]
     assert session.calls == [("allotmint_owners", {})]
+
+
+@pytest.mark.asyncio
+async def test_ui_account_owners_reports_error_on_failure(monkeypatch):
+    @asynccontextmanager
+    async def broken_session(url, timeout_seconds):
+        raise ConnectionRefusedError("[Errno 111] Connection refused")
+        yield  # pragma: no cover - unreachable, keeps this an async generator
+
+    monkeypatch.setattr(client_module, "open_session", broken_session)
+
+    update, error_update = await gradio_ui.ui_account_owners(client_module.DEFAULT_MCP_URL, 30.0)
+
+    assert update["choices"] == []
+    assert update["value"] is None
+    assert error_update["visible"] is True
+    assert "Failed to load account owners" in error_update["value"]
+    assert "ConnectionRefusedError" in error_update["value"]
 
 
 @pytest.mark.asyncio

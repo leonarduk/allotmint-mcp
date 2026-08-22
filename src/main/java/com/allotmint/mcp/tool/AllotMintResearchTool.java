@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import static com.allotmint.mcp.tool.ToolArguments.optionalString;
 
@@ -53,6 +54,14 @@ public final class AllotMintResearchTool {
 
   /** The only supported action. Kept as a list so adding a second one stays a one-line change. */
   private static final List<String> ACTIONS = List.of("ask");
+
+  /**
+   * Every property this tool's schema declares. Mirrors the {@code properties} map built in {@link
+   * #specification}, so an unknown-argument check in {@link #call} can enforce the {@code
+   * additionalProperties: false} the schema already promises (issue #253).
+   */
+  private static final Set<String> KNOWN_ARGUMENT_KEYS =
+      Set.of(ACTION, QUESTION, OWNER, LOOKBACK_DAYS, LLM_PROVIDER, SESSION_ID);
 
   private static final int DEFAULT_LOOKBACK_DAYS = 365;
   private static final int MAX_LOOKBACK_DAYS = 3650;
@@ -152,6 +161,17 @@ public final class AllotMintResearchTool {
 
   private static McpSchema.CallToolResult call(
       ResearchAgentClient client, Map<String, Object> arguments) {
+    if (arguments != null) {
+      List<String> unknown =
+          arguments.keySet().stream()
+              .filter(key -> !KNOWN_ARGUMENT_KEYS.contains(key))
+              .sorted()
+              .toList();
+      if (!unknown.isEmpty()) {
+        return error("unknown properties: " + String.join(", ", unknown));
+      }
+    }
+
     String action = optionalString(arguments, ACTION);
     if (action == null || !ACTIONS.contains(action.toLowerCase(Locale.ROOT))) {
       return error("action must be one of: ask");
@@ -216,7 +236,13 @@ public final class AllotMintResearchTool {
                   : " Agent warnings: " + String.join("; ", answer.warningsOrEmpty())));
     }
 
-    StringBuilder text = new StringBuilder(answer.answer() == null ? "" : answer.answer());
+    if (!StringUtils.hasText(answer.answer())) {
+      return error(
+          "The research agent returned a grounded answer with no text. This is a sidecar"
+              + " protocol violation: a grounded response must carry non-null answer text.");
+    }
+
+    StringBuilder text = new StringBuilder(answer.answer());
     if (!citations.isEmpty()) {
       text.append("\n\nSources:");
       for (ResearchAnswer.Citation citation : citations) {

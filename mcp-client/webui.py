@@ -206,7 +206,7 @@ _INDEX_TEMPLATE = """<!doctype html>
     <label>Timeout (seconds) <input type="number" name="timeout" value="180"></label>
     <label><input type="checkbox" name="skip_preflight" style="width:auto;display:inline"> Skip preflight checks</label>
   </details>
-  <button type="submit">Ask</button>
+  <button type="submit" id="ask-submit">Ask</button>
 </form>
 <pre id="ask-result" hidden></pre>
 </fieldset>
@@ -239,13 +239,21 @@ const DEFAULTS = __DEFAULTS_JSON__;
 
 async function loadAccountOwners() {
   const select = document.querySelector('select[name="owner"]');
-  const {ok, data} = await postJSON("/api/owners", {url: DEFAULTS.url, timeout: 30.0});
-  select.replaceChildren();
-  if (!ok || !data.owners || data.owners.length === 0) {
-    select.append(new Option("No account owners available", ""));
-    return;
+  const submitButton = document.getElementById("ask-submit");
+  submitButton.disabled = true;
+  submitButton.textContent = "Loading owners...";
+  try {
+    const {ok, data} = await postJSON("/api/owners", {url: DEFAULTS.url, timeout: 30.0});
+    select.replaceChildren();
+    if (!ok || !data.owners || data.owners.length === 0) {
+      select.append(new Option("No account owners available", ""));
+      return;
+    }
+    data.owners.forEach(owner => select.append(new Option(owner, owner)));
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "Ask";
   }
-  data.owners.forEach(owner => select.append(new Option(owner, owner)));
 }
 
 async function postJSON(url, body) {
