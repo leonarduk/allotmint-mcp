@@ -110,13 +110,25 @@ async def ui_load_llm_providers(research_url: str, timeout: float):
 
 
 async def ui_account_owners(url: str, timeout: float):
-    """Loads valid account-owner choices when the chat UI opens."""
+    """Loads valid account-owner choices when the chat UI opens.
+
+    Returns a (dropdown_update, error_update) pair: the dropdown always
+    renders (empty on failure, so the rest of the UI stays usable), and the
+    error banner is shown only when discovery fails, so the reason is
+    visible instead of a silently empty dropdown.
+    """
     try:
         async with client.open_session(url.strip() or DEFAULTS["url"], timeout) as session:
             owners = await client.list_account_owners(session)
-        return gr.update(choices=owners, value=owners[0] if owners else None)
-    except Exception:  # noqa: BLE001 - keep the UI usable when discovery is unavailable
-        return gr.update(choices=[], value=None)
+        return (
+            gr.update(choices=owners, value=owners[0] if owners else None),
+            gr.update(value="", visible=False),
+        )
+    except Exception as exc:  # noqa: BLE001 - reported via the error banner, not swallowed
+        return (
+            gr.update(choices=[], value=None),
+            gr.update(value=f"Failed to load account owners: {client.format_exception(exc)}", visible=True),
+        )
 
 
 async def ui_call_tool(tool: str, args_json: str, url: str, timeout: float) -> str:
@@ -156,6 +168,7 @@ def build_app(defaults: dict[str, str] | None = None) -> gr.Blocks:
             with gr.Row():
                 owner = gr.Dropdown(label="Account Owner", choices=[], allow_custom_value=False)
                 lookback_days = gr.Number(label="Lookback days", precision=0)
+            owner_error = gr.Markdown(value="", visible=False)
             with gr.Accordion("Advanced", open=False):
                 ask_url = gr.Textbox(label="allotmint-mcp URL", value=defaults["url"])
                 ask_research_url = gr.Textbox(
@@ -203,7 +216,11 @@ def build_app(defaults: dict[str, str] | None = None) -> gr.Blocks:
                 inputs=[ask_research_url, ask_timeout],
                 outputs=llm_provider,
             )
-            demo.load(ui_account_owners, inputs=[ask_url, ask_timeout], outputs=owner)
+            demo.load(
+                ui_account_owners,
+                inputs=[ask_url, ask_timeout],
+                outputs=[owner, owner_error],
+            )
 
         with gr.Tab("List tools"):
             tools_url = gr.Textbox(label="allotmint-mcp URL", value=defaults["url"])
