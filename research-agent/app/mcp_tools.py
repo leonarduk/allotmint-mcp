@@ -101,7 +101,7 @@ class ToolSession:
         try:
             result = await self.session.call_tool(name, cleaned)
         except Exception as exc:  # noqa: BLE001 - surfaced to the model, not swallowed
-            text, truncated = _cap_text(json.dumps({"error": f"tool call failed: {exc}"}))
+            text, truncated = _json_safe_cap(json.dumps({"error": f"tool call failed: {exc}"}))
             self.calls.append(
                 ToolCallRecord(tool=name, arguments=cleaned, result_excerpt=text[:MAX_EXCERPT_CHARS])
             )
@@ -119,11 +119,64 @@ class ToolSession:
 
 
 def _cap_text(text: str, max_chars: int = MAX_TOOL_RESULT_CHARS) -> tuple[str, bool]:
-    """Blind character-cap fallback with a visible marker, never a silent cut."""
+    """Blind character-cap fallback with a visible marker, never a silent cut.
+
+    Only safe to use on plain (non-JSON) text: the marker is appended as raw
+    text after the cut, so the result is not guaranteed to be valid JSON. For
+    text that must remain parseable JSON, use `_json_safe_cap` instead.
+
+    The marker itself counts against `max_chars` -- the returned string
+    (preview + marker) never exceeds `max_chars`, so the caller's budget is
+    honoured even after the marker is appended.
+    """
     if len(text) <= max_chars:
         return text, False
-    omitted = len(text) - max_chars
-    return text[:max_chars] + f"... [truncated, {omitted} chars omitted]", True
+    # The marker's length depends on `omitted`, which depends on how much of
+    # the preview we keep, which depends on the marker's length -- resolve
+    # that circularity with a couple of fixed-point passes (the digit count
+    # of `omitted` only ever shrinks by one or two chars as the preview
+    # shrinks, so this converges immediately in practice).
+    preview_len = max_chars
+    for _ in range(3):
+        omitted = len(text) - preview_len
+        marker = f"... [truncated, {omitted} chars omitted]"
+        new_preview_len = max(0, max_chars - len(marker))
+        if new_preview_len == preview_len:
+            break
+        preview_len = new_preview_len
+    return text[:preview_len] + marker, True
+
+
+def _json_safe_cap(text: str, max_chars: int = MAX_TOOL_RESULT_CHARS) -> tuple[str, bool]:
+    """Fallback for text that must remain valid JSON (e.g. the serialized
+    structured-content payload, after array elision still doesn't fit).
+
+    `_cap_text` slices raw text and appends a plain-text marker, which is
+    exactly wrong here: slicing JSON text mid-token and appending a non-JSON
+    suffix produces a string that no longer parses as JSON, breaking the
+    model's ability to parse the result (issue #546's acceptance criterion).
+    Instead, this wraps a truncated preview of `text` as a *string value*
+    inside a small JSON envelope, so the envelope itself always parses.
+    """
+    if len(text) <= max_chars:
+        return text, False
+    preview_len = max_chars
+    while True:
+        envelope = json.dumps(
+            {
+                "_truncated": True,
+                "original_length": len(text),
+                "preview": text[:preview_len],
+            },
+            default=str,
+        )
+        if len(envelope) <= max_chars or preview_len <= 0:
+            return envelope, True
+        # Shrink the preview by (at least) the overshoot and retry -- JSON
+        # string escaping means shrinking the preview by N chars doesn't
+        # always shrink the envelope by exactly N, so this can take a few
+        # iterations, but each iteration strictly reduces preview_len.
+        preview_len = max(0, preview_len - (len(envelope) - max_chars))
 
 
 def _elide_long_arrays(value: Any) -> tuple[Any, bool]:
@@ -184,9 +237,12 @@ def _result_to_text(result: Any) -> tuple[str, bool]:
         text = json.dumps(elided, default=str)
         if len(text) <= MAX_TOOL_RESULT_CHARS:
             return text, array_truncated
-        # Still too large (e.g. a single huge scalar field) -- fall back to
-        # a blind character cut with a visible marker as a last resort.
-        text, _ = _cap_text(text)
+        # Still too large (e.g. a single huge scalar field) -- a blind
+        # character cut here would slice the JSON text itself and append a
+        # non-JSON marker, producing a string that no longer parses. Wrap a
+        # truncated preview in a small JSON envelope instead, so the result
+        # is always valid JSON.
+        text, _ = _json_safe_cap(text)
         return text, True
 
     parts = []

@@ -197,6 +197,35 @@ async def test_an_oversized_structured_result_is_truncated_with_a_marker(setting
 
 
 @pytest.mark.asyncio
+async def test_a_huge_scalar_field_falls_back_to_a_json_safe_envelope(settings):
+    # Array elision alone can't help here: the oversized content is one huge
+    # scalar string, not a long array. This is exactly the fallback path
+    # DeepSeek's review flagged -- `_cap_text`'s old blind slice-plus-marker
+    # would cut this JSON text mid-token and append a non-JSON suffix,
+    # producing a string the model could no longer parse (issue #546).
+    oversized = {
+        "action": "news",
+        "ticker": "NVDA",
+        "summary": "x" * (MAX_TOOL_RESULT_CHARS * 3),
+    }
+    trace_logger = _FakeTraceLogger()
+    fake = _FakeSession(_Result(structured=oversized))
+    session = ToolSession(settings=settings, session=fake, trace_logger=trace_logger)
+
+    text = await session.call_tool("allotmint_instrument", {"action": "news", "ticker": "NVDA"})
+
+    # Within budget including whatever marker/envelope overhead was added.
+    assert len(text) <= MAX_TOOL_RESULT_CHARS + 100
+    # Must still be valid, parseable JSON -- the whole point of the fix.
+    parsed = json.loads(text)
+    assert parsed["_truncated"] is True
+    assert parsed["original_length"] > MAX_TOOL_RESULT_CHARS
+    assert isinstance(parsed["preview"], str)
+
+    assert trace_logger.tool_call_end_calls[-1]["truncated"] is True
+
+
+@pytest.mark.asyncio
 async def test_a_small_structured_result_is_not_truncated(settings):
     trace_logger = _FakeTraceLogger()
     fake = _FakeSession(_Result(structured={"action": "exposure", "sectors": []}))
