@@ -151,6 +151,18 @@ class AllotMintResearchToolTest {
   }
 
   @Test
+  void rejectsANonIntegralLookback() {
+    // The Number path must be as strict as the String path: Integer.valueOf("30.5")
+    // already throws, so a Double/Float carrying a fractional value should be
+    // rejected too, instead of being silently truncated to 30.
+    McpSchema.CallToolResult result =
+        call(Map.of("action", "ask", "question", "why?", "lookback_days", 30.5));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(textOf(result)).contains("lookback_days must be an integer");
+  }
+
+  @Test
   void acceptsALookbackSentAsAJsonDouble() {
     // MCP clients are inconsistent about number types; 30 can arrive as 30.0.
     when(client.ask(any(), any(), anyInt())).thenReturn(groundedAnswer());

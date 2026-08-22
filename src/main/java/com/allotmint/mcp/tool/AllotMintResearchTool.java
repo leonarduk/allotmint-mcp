@@ -276,6 +276,12 @@ public final class AllotMintResearchTool {
    */
   private static Integer optionalInteger(Object value) {
     if (value instanceof Number number) {
+      // Reject non-integral values (e.g. 30.5) instead of silently truncating them,
+      // so this matches the String path below, where Integer.valueOf("30.5") throws.
+      double doubleValue = number.doubleValue();
+      if (doubleValue != Math.rint(doubleValue)) {
+        return null;
+      }
       return number.intValue();
     }
     if (value instanceof String text && !text.isBlank()) {
