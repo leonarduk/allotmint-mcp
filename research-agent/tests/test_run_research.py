@@ -388,6 +388,72 @@ async def test_a_second_call_with_the_same_session_id_carries_the_first_turns_hi
 
 
 @pytest.mark.asyncio
+async def test_worker_and_verifier_use_independently_configured_models(
+    monkeypatch, settings, patched, documents
+):
+    """#549: the worker is built from the run's own settings, the verifier
+    from `settings.verifier_settings()` -- when a verifier override is
+    configured, `build_model` must actually be called once per role with
+    each role's own provider/model, and the response must report both.
+    """
+    from dataclasses import replace
+
+    settings = replace(
+        settings,
+        verifier_llm_provider="deepseek",
+        verifier_llm_model="deepseek-verifier",
+    )
+    _stub_search(monkeypatch, documents)
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_build_model(settings_arg, **_kwargs):
+        calls.append((settings_arg.llm_provider, settings_arg.llm_model))
+        if settings_arg.llm_provider == "deepseek":
+            return _scripted_model("APPROVE")
+        return _scripted_model("Technology rose to 27% as of that period [1].")
+
+    monkeypatch.setattr(agent_module, "build_model", fake_build_model)
+
+    response = await agent_module.run_research(
+        AskRequest(question="How did my tech exposure change?", owner="demo"),
+        settings,
+    )
+
+    assert calls == [("ollama", "llama3.2"), ("deepseek", "deepseek-verifier")]
+    assert response.grounded is True
+    assert response.needs_review is False
+    assert response.model == "ollama:llama3.2"
+    assert response.verifier_model == "deepseek:deepseek-verifier"
+
+
+@pytest.mark.asyncio
+async def test_verifier_defaults_to_the_worker_model_when_unconfigured(
+    monkeypatch, settings, patched, documents
+):
+    """Backward compatibility: with no verifier override, `build_model` is
+    called with the identical (worker) provider/model both times, exactly as
+    before #549."""
+    _stub_search(monkeypatch, documents)
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_build_model(settings_arg, **_kwargs):
+        calls.append((settings_arg.llm_provider, settings_arg.llm_model))
+        return _scripted_model("Technology rose to 27% as of that period [1].")
+
+    monkeypatch.setattr(agent_module, "build_model", fake_build_model)
+
+    response = await agent_module.run_research(
+        AskRequest(question="How did my tech exposure change?", owner="demo"),
+        settings,
+    )
+
+    assert calls == [("ollama", "llama3.2"), ("ollama", "llama3.2")]
+    assert response.model == response.verifier_model == "ollama:llama3.2"
+
+
+@pytest.mark.asyncio
 async def test_a_different_session_id_starts_with_no_history(
     monkeypatch, settings, patched, documents
 ):

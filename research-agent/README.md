@@ -154,6 +154,11 @@ Every setting has a working local default; the default configuration costs nothi
 | `ALLOTMINT_RESEARCH_<PROVIDER>_BASE_URL` | provider default | Base URL for an alternative selectable provider |
 | `ALLOTMINT_RESEARCH_<PROVIDER>_API_KEY` | generic API key | Credential for an alternative selectable provider |
 | `ALLOTMINT_RESEARCH_LLM_TEMPERATURE` | `0.0` | Determinism over variety, for a tool quoting real numbers |
+| `ALLOTMINT_RESEARCH_VERIFIER_LLM_PROVIDER` | *(unset — falls back to `ALLOTMINT_RESEARCH_LLM_PROVIDER`)* | Provider for the tool-free verifier role only (#549); optional |
+| `ALLOTMINT_RESEARCH_VERIFIER_LLM_MODEL` | *(unset — falls back to `ALLOTMINT_RESEARCH_LLM_MODEL`)* | Model for the verifier role; optional |
+| `ALLOTMINT_RESEARCH_VERIFIER_LLM_BASE_URL` | *(unset — falls back to `ALLOTMINT_RESEARCH_LLM_BASE_URL`)* | Base URL for the verifier role; optional |
+| `ALLOTMINT_RESEARCH_VERIFIER_LLM_API_KEY` | *(unset — falls back to `ALLOTMINT_RESEARCH_LLM_API_KEY`)* | Credential for the verifier role; optional |
+| `ALLOTMINT_RESEARCH_VERIFIER_LLM_TEMPERATURE` | *(unset — falls back to `ALLOTMINT_RESEARCH_LLM_TEMPERATURE`)* | Temperature for the verifier role; optional |
 | `ALLOTMINT_RESEARCH_MCP_URL` | `http://localhost:8080/mcp` | The allotmint-mcp server's HTTP transport |
 | `ALLOTMINT_RESEARCH_MCP_TIMEOUT_SECONDS` | `30` | Per-tool-call timeout |
 | `ALLOTMINT_RESEARCH_MAX_TOOL_CALLS` | `6` | Bounds a runaway agent loop |
@@ -188,6 +193,30 @@ DeepSeek, advertise both and configure DeepSeek independently:
 export ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS=ollama,deepseek
 export ALLOTMINT_RESEARCH_DEEPSEEK_API_KEY=sk-...
 ```
+
+### Worker/verifier model split (#549)
+
+The worker (tool-calling synthesis) and verifier (tool-free evidence review, see
+"Multi-agent review" above) share one model by default. Each `ALLOTMINT_RESEARCH_VERIFIER_LLM_*`
+variable is an **optional override** for the verifier role only — leave them all unset and
+nothing changes from today's behavior. Set only the ones you need; anything left unset falls
+back to the matching worker `ALLOTMINT_RESEARCH_LLM_*` value. For example, to keep a free
+local worker but check its answers with a stronger hosted model:
+
+```bash
+# worker stays on the default (ollama/llama3.2)
+export ALLOTMINT_RESEARCH_VERIFIER_LLM_PROVIDER=deepseek
+export ALLOTMINT_RESEARCH_VERIFIER_LLM_MODEL=deepseek-chat
+export ALLOTMINT_RESEARCH_VERIFIER_LLM_API_KEY=sk-...
+```
+
+The per-request `provider` selection on `POST /research/ask` (#554/#559) only ever retargets
+the worker — it never overrides a configured verifier model, since the verifier's job is an
+independent quality check on the worker's answer rather than something the caller is asking
+about directly. `GET /health` and the response's new `verifier_model` field report the
+resolved verifier model (equal to `model`/`llm_provider` unless overridden), and when tracing
+is enabled (`ALLOTMINT_RESEARCH_TRACE_FILE` or Langfuse) a separate `verifier.start`/`verifier.end`
+event records which model actually produced the verifier's verdict.
 
 ### Multi-turn conversations (#548)
 

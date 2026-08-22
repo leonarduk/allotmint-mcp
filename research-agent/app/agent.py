@@ -442,15 +442,47 @@ async def run_research(
     from .orchestration import combine_reviews, run_verifier
 
     citations = build_citations(documents, tool_calls)
-    safety = await combine_reviews(
-        deterministic_review,
-        lambda: run_verifier(
+    verifier_settings = settings.verifier_settings()
+
+    async def _run_verifier() -> Any:
+        """Builds and runs the verifier on its own (possibly distinct) model.
+
+        `verifier_settings` falls back to the worker's provider/model/etc.
+        when no `ALLOTMINT_RESEARCH_VERIFIER_LLM_*` override is configured
+        (#549), so this is behavior-identical to the old
+        `build_model(settings)` call until someone deliberately configures a
+        verifier override.
+        """
+        if trace_logger is not None:
+            trace_logger.verifier_start(settings.verifier_model_label)
+        if langfuse_tracer is not None:
+            langfuse_tracer.verifier_start(settings.verifier_model_label)
+        verdict = await run_verifier(
             request,
             answer,
             citations,
-            build_model(settings),
-            settings.llm_temperature,
-        ),
+            build_model(
+                verifier_settings,
+                provider_env_var=(
+                    "ALLOTMINT_RESEARCH_VERIFIER_LLM_PROVIDER "
+                    "(or its ALLOTMINT_RESEARCH_LLM_PROVIDER fallback)"
+                ),
+                api_key_env_var=(
+                    "ALLOTMINT_RESEARCH_VERIFIER_LLM_API_KEY "
+                    "(or its ALLOTMINT_RESEARCH_LLM_API_KEY fallback)"
+                ),
+            ),
+            verifier_settings.llm_temperature,
+        )
+        if trace_logger is not None:
+            trace_logger.verifier_end(verdict.needs_review, verdict.reason)
+        if langfuse_tracer is not None:
+            langfuse_tracer.verifier_end(verdict.needs_review, verdict.reason)
+        return verdict
+
+    safety = await combine_reviews(
+        deterministic_review,
+        _run_verifier,
         settings.verifier_timeout_seconds,
     )
 
@@ -494,5 +526,6 @@ async def run_research(
         review_reasons=safety.reasons,
         warnings=warnings,
         model=settings.model_label,
+        verifier_model=settings.verifier_model_label,
         trace_id=trace_logger.trace_id if trace_logger is not None else None,
     )

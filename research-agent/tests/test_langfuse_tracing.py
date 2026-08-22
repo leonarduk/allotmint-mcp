@@ -16,8 +16,6 @@ import builtins
 import sys
 from unittest.mock import MagicMock
 
-import pytest
-
 from app.config import Settings
 from app.langfuse_tracing import LangfuseTracer, new_langfuse_tracer
 
@@ -202,6 +200,26 @@ def test_retrieval_unavailable_path_does_not_raise():
     tracer.retrieval_end(0, [], unavailable=True)
     tracer.request_end(False, 0, 0, 0, 0, ["retrieval down"])
     tracer.flush()
+
+
+def test_verifier_start_end_does_not_raise():
+    """#549: the verifier gets its own span, separate from the worker's."""
+    tracer = LangfuseTracer("trace-verifier", _settings())
+
+    tracer.request_start("q", None, 30, "ollama:llama3.2")
+    tracer.agent_start("ollama:llama3.2")
+    tracer.agent_end(1, 50, True)
+    tracer.verifier_start("deepseek:deepseek-chat")
+    tracer.verifier_end(False, "")
+    tracer.request_end(False, 50, 0, 1, 0, [])
+    tracer.flush()
+
+
+def test_verifier_end_without_start_does_not_raise():
+    """No active verifier span (e.g. verifier disabled or tracer disabled) is a no-op."""
+    tracer = LangfuseTracer("trace-no-verifier-span", _settings())
+
+    tracer.verifier_end(True, "some reason")
 
 
 def test_agent_end_without_usage_does_not_raise():
