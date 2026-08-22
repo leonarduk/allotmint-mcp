@@ -5,6 +5,55 @@ Standalone MCP server for [AllotMint](https://github.com/leonarduk/allotmint), b
 For the intended users, product boundaries, build-versus-buy decisions, and rough running-cost
 profile, see [Product framing](docs/product-framing.md).
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph clients["MCP clients"]
+        CD["Claude Desktop /\nother MCP clients"]
+        CLI["mcp-client CLI\n(client.py)"]
+        WEBUI["webui.py /\ngradio_ui.py"]
+    end
+
+    subgraph server["allotmint-mcp server (Java, Spring Boot, MCP Java SDK)"]
+        MCP["MCP tools\nallotmint_health / instrument / market /\nportfolio / reconcile / data_quality"]
+        RESEARCH["allotmint_research (opt-in)"]
+    end
+
+    BACKEND[("AllotMint backend\n(REST API)")]
+
+    subgraph sidecar["research-agent sidecar (Python, FastAPI, Pydantic AI)"]
+        AGENT["/research/ask"]
+        RETRIEVAL["retrieval.py"]
+    end
+
+    PGVECTOR[("pgvector\n(Postgres)")]
+    LLM["LLM\n(Ollama local, or DeepSeek/OpenAI-compatible)"]
+
+    CD -- "stdio or HTTP /mcp" --> MCP
+    CLI -- "streamable HTTP /mcp" --> MCP
+    WEBUI -- "streamable HTTP /mcp" --> MCP
+
+    MCP -- "REST" --> BACKEND
+    RESEARCH -- "REST" --> BACKEND
+
+    RESEARCH -- "HTTP POST /research/ask" --> AGENT
+    AGENT -- "MCP client, HTTP /mcp\n(4 v0 tools only)" --> MCP
+    AGENT --> RETRIEVAL
+    RETRIEVAL -- "SQL, cosine search" --> PGVECTOR
+    AGENT -- "chat completion" --> LLM
+```
+
+The Java MCP server is the single entry point for every client (Claude Desktop, the MCP
+Inspector, the `mcp-client` CLI, and its `webui.py`/`gradio_ui.py` front ends) and the only
+component that talks to the AllotMint backend for the four core query tools. The optional
+`allotmint_research` tool calls the Python research-agent sidecar over local HTTP; the sidecar
+is itself an MCP client back into the same Java server's `/mcp` endpoint (allowlisted to the
+four read-only v0 tools, so it cannot recurse into `allotmint_research` or reach any write
+tool), plus pgvector for retrieval and an LLM for synthesis. See the [Tool reference](#tool-reference)
+below for exact endpoints and configuration, and keep this diagram in sync as new components are
+added.
+
 ## Prerequisites
 
 - Java 25 or later on `PATH` (`java -version` should report 25+)
