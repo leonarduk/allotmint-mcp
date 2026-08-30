@@ -53,21 +53,36 @@
 			     critical CVEs; both have patched releases available.
 			     tomcat-embed-el/-websocket weren't individually flagged but are bumped to
 			     match tomcat-embed-core: Tomcat's embed modules are a matched set and
-			     mixing versions across them isn't a supported/tested combination. -->
+			     mixing versions across them isn't a supported/tested combination.
+
+			     11.0.24 -> 11.0.25: CVE-2026-66299 (DoS via the WebSocket chat example),
+			     fixed upstream in 11.0.25/10.1.58/9.0.121 (allotmint-mcp#644). -->
 			<dependency>
 				<groupId>org.apache.tomcat.embed</groupId>
 				<artifactId>tomcat-embed-core</artifactId>
-				<version>11.0.24</version>
+				<version>11.0.25</version>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.tomcat.embed</groupId>
 				<artifactId>tomcat-embed-el</artifactId>
-				<version>11.0.24</version>
+				<version>11.0.25</version>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.tomcat.embed</groupId>
 				<artifactId>tomcat-embed-websocket</artifactId>
-				<version>11.0.24</version>
+				<version>11.0.25</version>
+			</dependency>
+
+			<!-- Override jackson-databind 2.21.4 (managed by spring-boot-starter-parent
+			     4.1.0) for CVE-2026-54515 (per-property @JsonIgnoreProperties bypass via
+			     case-insensitive deserialization), fixed in 2.18.9/2.21.5/3.1.4
+			     (allotmint-mcp#644). Pinned to 2.21.6, the latest 2.21.x patch release,
+			     rather than jumping to 2.22.x: the GHSA advisory's version-range data lists
+			     2.22.0 itself as still affected, and 2.22.1/2.22.2 aren't confirmed fixed. -->
+			<dependency>
+				<groupId>com.fasterxml.jackson.core</groupId>
+				<artifactId>jackson-databind</artifactId>
+				<version>2.21.6</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
