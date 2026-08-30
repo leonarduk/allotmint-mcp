@@ -5,7 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-[Unreleased]: https://github.com/leonarduk/allotmint-mcp/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/leonarduk/allotmint-mcp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/leonarduk/allotmint-mcp/compare/v0.1.0...v0.2.0
 [0.0.1]: https://github.com/leonarduk/allotmint-mcp/releases/tag/v0.0.1
 
 ## [Unreleased]
@@ -43,6 +44,31 @@ changes and required migrations explicitly.
   rejected.
 
 ### Security
+
+## [0.2.0] - 2026-08-16
+
+### Added
+
+- `allotmint_data_quality` MCP tool exposing the read-write data-quality admin API
+  (issues/series/preview/audit/fix/dedupe/undo), mirroring `allotmint_instrument` /
+  `allotmint_portfolio`. Write actions (fix/dedupe/undo) require `confirm=true` and
+  `allotmint.mcp.write.enabled`, matching the existing reconciliation-apply gate
+  (#498, #504).
+- Sequential worker-verifier orchestration for the research agent sidecar, so a
+  research answer is checked by a second pass before being returned (#517).
+- A dedicated `allotmint.api.post-read-timeout-seconds` timeout for POST requests
+  (e.g. large reconciliation payloads), separate from the general read timeout,
+  since those calls legitimately take longer (#475).
+
+### Fixed
+
+- `--start-deps` now detects an unreachable Docker daemon and refuses to serve a
+  broken UI, instead of launching as if the stack were healthy (#496, #497).
+
+### Changed
+
+- Bumped `actions/checkout` (4 → 7), `actions/setup-python` (5 → 7), and
+  `actions/setup-java` (5.6.0 → 5.7.0) in CI workflows.
 
 ## [0.0.1] - 2026-07-19
 
