@@ -107,7 +107,10 @@ One-shot question:
 python client.py "How has my tech exposure changed this year, and why?" --owner demo
 ```
 
-Interactive REPL — one question per line, blank line or Ctrl-D to quit:
+Interactive REPL — one question per line, blank line or Ctrl-D to quit. One REPL run is one
+conversation: a `session_id` (#548) is generated when it starts and reused for every question
+asked in it, so a follow-up like "what about last month?" resolves against earlier turns instead
+of starting fresh each time. Quitting and re-running is the only way to reset it.
 
 ```bash
 python client.py --owner demo
@@ -152,9 +155,10 @@ On startup, the script checks for its Gradio and MCP Python packages and install
 python gradio_ui.py
 ```
 
-Then open [http://localhost:8601](http://localhost:8601). The page has three tabs, one per CLI mode:
+Then open [http://localhost:8601](http://localhost:8601). The page has four tabs:
 
-- **Ask allotmint_research** — question, owner, lookback days, and an LLM provider dropdown populated from the running research agent, plus an *Advanced* section for the allotmint-mcp/research-agent URLs, timeout, and skipping preflight — mirrors `python client.py "..." --owner ...`. Set `ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS` to a comma-separated allowlist (for example `ollama,deepseek`); only advertised providers can be selected per question. Alternative providers can use provider-specific settings such as `ALLOTMINT_RESEARCH_DEEPSEEK_API_KEY`, `ALLOTMINT_RESEARCH_DEEPSEEK_MODEL`, and `ALLOTMINT_RESEARCH_DEEPSEEK_BASE_URL`, leaving the local default's settings unchanged.
+- **Ask allotmint_research** — question, owner, lookback days, and an LLM provider dropdown populated from the running research agent, plus an *Advanced* section for the allotmint-mcp/research-agent URLs, timeout, and skipping preflight — mirrors `python client.py "..." --owner ...`. Each question here is standalone (no `session_id`), which is deliberate: it's the tab for testing one question at a time in isolation, e.g. checking how a specific owner/lookback/provider combination answers without any earlier turns coloring the result. Set `ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS` to a comma-separated allowlist (for example `ollama,deepseek`); only advertised providers can be selected per question. Alternative providers can use provider-specific settings such as `ALLOTMINT_RESEARCH_DEEPSEEK_API_KEY`, `ALLOTMINT_RESEARCH_DEEPSEEK_MODEL`, and `ALLOTMINT_RESEARCH_DEEPSEEK_BASE_URL`, leaving the local default's settings unchanged.
+- **Chat** — a real back-and-forth conversation instead of a single overwritten answer box: a running transcript, threaded through a per-conversation `session_id` (#548) generated the first time you send a message, so a follow-up like "what about last month?" resolves against earlier turns. Owner, lookback days, and LLM provider are pinned settings for the whole conversation rather than per-question fields. **New conversation** clears the transcript and drops the `session_id` — the old one is simply abandoned (not explicitly deleted from the sidecar), so it's eventually LRU-evicted there per `ALLOTMINT_RESEARCH_MAX_CONVERSATION_SESSIONS`. Reloading the page also starts fresh, since the `session_id` isn't persisted anywhere in the browser.
 - **List tools** — connects to the configured allotmint-mcp URL (with its own URL and timeout fields) and lists the tools it exposes — mirrors `--list-tools`.
 - **Call a tool directly** — tool name, JSON arguments, URL, and timeout — mirrors `--call TOOL --args JSON`.
 

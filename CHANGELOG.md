@@ -28,7 +28,20 @@ changes and required migrations explicitly.
   instances -- both are known, documented limitations, not bugs. This is a
   backward-compatible addition; bump the minor version at the next release.
 
+- `mcp-client`'s Gradio UI (`gradio_ui.py`) has a new **Chat** tab: a running conversation
+  transcript threaded through a per-conversation `session_id` (#548), instead of the existing
+  Ask tab's single overwritten answer box. Owner, lookback days, and LLM provider are pinned
+  settings for the whole conversation; a "New conversation" button clears the transcript and
+  starts a fresh `session_id`. The Ask tab is unchanged and stays single-shot by design, for
+  testing one question in isolation.
+
 ### Changed
+
+- `client.py`'s interactive REPL (`python client.py` with no question argument) now generates
+  one `session_id` (#548) per run and reuses it for every question asked before quitting, so a
+  follow-up question resolves against earlier turns instead of starting fresh each time. A
+  one-shot question (`python client.py "..."`) is unaffected and stays single-shot, since there
+  is no follow-up turn to thread it into.
 
 ### Deprecated
 

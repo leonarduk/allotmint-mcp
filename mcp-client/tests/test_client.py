@@ -64,6 +64,22 @@ def test_build_research_arguments_includes_only_provided_fields():
     }
 
 
+def test_build_research_arguments_includes_session_id_when_provided():
+    assert build_research_arguments("why?", None, None, session_id="abc123") == {
+        "action": "ask",
+        "question": "why?",
+        "session_id": "abc123",
+    }
+    assert build_research_arguments("why?", "demo", 30, "deepseek", "abc123") == {
+        "action": "ask",
+        "question": "why?",
+        "owner": "demo",
+        "lookback_days": 30,
+        "llm_provider": "deepseek",
+        "session_id": "abc123",
+    }
+
+
 def test_result_text_joins_text_content_blocks():
     result = SimpleNamespace(content=[_content("line one"), _content("line two")])
     assert result_text(result) == "line one\nline two"
@@ -135,6 +151,29 @@ async def test_ask_calls_the_research_tool_with_built_arguments():
         )
     ]
     assert answer.startswith("Technology rose")
+
+
+@pytest.mark.asyncio
+async def test_ask_forwards_session_id_when_provided():
+    session = FakeSession(_result("answer"))
+
+    await ask(session, "what about last month?", None, None, session_id="conv-1")
+
+    assert session.calls == [
+        (
+            "allotmint_research",
+            {"action": "ask", "question": "what about last month?", "session_id": "conv-1"},
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_ask_omits_session_id_by_default():
+    session = FakeSession(_result("answer"))
+
+    await ask(session, "?", None, None)
+
+    assert session.calls == [("allotmint_research", {"action": "ask", "question": "?"})]
 
 
 @pytest.mark.asyncio
@@ -413,3 +452,50 @@ async def test_preflight_passes_and_prints_the_sidecar_config(monkeypatch, capsy
     output = capsys.readouterr().out
     assert "ollama:llama3.2" in output
     assert "retrieval_enabled=True" in output
+
+
+# --------------------------------------------------------------------- repl
+
+
+@pytest.mark.asyncio
+async def test_repl_reuses_one_session_id_across_all_questions(monkeypatch, capsys):
+    """One REPL run is one conversation (#548): every question asked before
+
+    quitting should carry the same session_id, so a follow-up resolves
+    against earlier turns instead of starting fresh each time.
+    """
+    answers = iter(["first question", "second question", ""])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+
+    session_ids_seen = []
+
+    async def fake_ask(session, question, owner, lookback_days, llm_provider=None, session_id=None):
+        session_ids_seen.append(session_id)
+        return f"answer to: {question}"
+
+    monkeypatch.setattr(client_module, "ask", fake_ask)
+
+    await client_module.repl(object(), None, None)
+
+    assert len(session_ids_seen) == 2
+    assert session_ids_seen[0] == session_ids_seen[1]
+    assert session_ids_seen[0]  # non-empty
+
+
+@pytest.mark.asyncio
+async def test_repl_generates_a_different_session_id_on_each_run(monkeypatch):
+    session_ids_seen = []
+
+    async def fake_ask(session, question, owner, lookback_days, llm_provider=None, session_id=None):
+        session_ids_seen.append(session_id)
+        return "answer"
+
+    monkeypatch.setattr(client_module, "ask", fake_ask)
+
+    for _ in range(2):
+        answers = iter(["a question", ""])
+        monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+        await client_module.repl(object(), None, None)
+
+    assert len(session_ids_seen) == 2
+    assert session_ids_seen[0] != session_ids_seen[1]
