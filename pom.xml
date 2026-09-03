@@ -31,6 +31,17 @@
 		<!-- Keep every Log4j module on the patched release. In particular, Spring Boot
 		     4.1.0 otherwise manages log4j-to-slf4j at vulnerable version 2.25.4. -->
 		<log4j2.version>2.26.1</log4j2.version>
+		<!-- Override spring-framework.version 7.0.8 (managed by spring-boot-starter-parent
+		     4.1.0), which OWASP dependency-check flags against spring-core with three
+		     CVSS >= 9 CVEs: CVE-2026-59313 (9.8, SSE stream corruption in the MVC
+		     functional web framework), CVE-2026-47892 (9.8, WebFlux functional-endpoint
+		     header-predicate bypass via a crafted CORS preflight request), and
+		     CVE-2026-59283 (9.1, SpEL safety-guard bypass when the expression compiler is
+		     active). All three are fixed upstream in Spring Framework 7.0.9, the latest
+		     7.0.x patch release; bumping this single property (rather than pinning
+		     individual spring-* artifacts) keeps the whole Spring Framework family in
+		     sync, since Spring Boot's BOM versions them as one set. -->
+		<spring-framework.version>7.0.9</spring-framework.version>
 		<!-- Excludes @Tag("integration") tests (see AllotMintClientIntegrationTest) from the
 		     default mvn test/verify run, since they require a live AWS-deployed backend and a
 		     real, short-lived auth token. The "integration" profile below clears this property
