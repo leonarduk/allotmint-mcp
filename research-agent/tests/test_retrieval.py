@@ -50,21 +50,19 @@ def test_rows_to_documents_drops_rows_beyond_the_max_distance():
     assert [d.source for d in documents] == ["close.md"]
 
 
-def test_rows_to_documents_raises_on_a_null_distance():
-    """Documents current behavior, not desired behavior.
+def test_rows_to_documents_drops_a_row_with_a_null_distance():
+    """A NULL distance (only possible if a row's embedding column is itself
+    NULL) means Postgres couldn't rank the row, so it's dropped the same way
+    an out-of-threshold distance is - degrading gracefully like every other
+    failure mode in this module, rather than crashing on float(None)."""
+    rows = [
+        ("unranked.md", "content", "key_findings", None, None),
+        ("ranked.md", "content", "key_findings", None, 0.2),
+    ]
 
-    The `distance is not None` guard only skips the max-distance comparison;
-    `float(distance)` below it still runs unconditionally, so a NULL distance
-    (only possible if a row's embedding column is itself NULL) crashes the
-    whole retrieval call with a TypeError instead of degrading gracefully like
-    every other failure mode in this module. Flagging as a real bug found
-    while writing this test, not fixing it here since it's out of scope for
-    adding test coverage.
-    """
-    rows = [("unranked.md", "content", "key_findings", None, None)]
+    documents = _rows_to_documents(rows, max_distance=0.85)
 
-    with pytest.raises(TypeError):
-        _rows_to_documents(rows, max_distance=0.85)
+    assert [d.source for d in documents] == ["ranked.md"]
 
 
 def test_rows_to_documents_defaults_missing_doc_type_and_formats_published_date():

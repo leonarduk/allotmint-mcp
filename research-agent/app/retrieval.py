@@ -110,7 +110,12 @@ def _rows_to_documents(rows, max_distance: float) -> list[RetrievedDocument]:
     """
     documents = []
     for source, content, doc_type, published, distance in rows:
-        if distance is not None and distance > max_distance:
+        # A NULL distance means Postgres couldn't rank the row (only possible if
+        # its embedding column is itself NULL) - skip it rather than crash on
+        # float(None), the same way an out-of-threshold distance is skipped: in
+        # both cases we can't confidently judge relevance, so degrade by
+        # dropping the row.
+        if distance is None or distance > max_distance:
             continue
         documents.append(
             RetrievedDocument(
