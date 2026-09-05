@@ -7,6 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -52,16 +53,20 @@ class AllotMintClientInstrumentAndPortfolioTest {
 
   @Test
   void portfolioSectorsWithLookbackPassesLookbackDaysAsAQueryParameter() {
+    // as_of is the only date parameter the sectors endpoint accepts; lookback_days was
+    // silently discarded by FastAPI, so every "historical" call returned the current snapshot.
     server
-        .expect(requestTo(BASE_URL + "/portfolio/alice/sectors?lookback_days=365"))
+        .expect(requestTo(BASE_URL + "/portfolio/alice/sectors?as_of=2025-09-05"))
         .andExpect(method(HttpMethod.GET))
         .andRespond(
             withSuccess(
-                "[{\"sector\":\"Technology\",\"weight\":0.35}]", MediaType.APPLICATION_JSON));
+                "[{\"sector\":\"Technology\",\"weight_pct\":35.0}]",
+                MediaType.APPLICATION_JSON));
 
-    List<Map<String, Object>> response = client.portfolioSectors("alice", 365);
+    List<Map<String, Object>> response =
+        client.portfolioSectors("alice", LocalDate.of(2025, 9, 5));
 
-    assertThat(response).extracting(s -> s.get("weight")).containsExactly(0.35);
+    assertThat(response).extracting(s -> s.get("weight_pct")).containsExactly(35.0);
     server.verify();
   }
 

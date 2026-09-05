@@ -9,6 +9,8 @@ import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -68,7 +70,10 @@ public final class AllotMintPortfolioTool {
             "Days to look back for historical sector-weight comparison. "
                 + "Set to 0 to skip the historical lookup. "
                 + "When 1–3650, each sector in the exposure response includes a "
-                + "weight_pct_year_ago field with the weight from that many days ago. "
+                + "weight_pct_year_ago field IF the backend can price that far back; "
+                + "when it cannot, the field is omitted entirely and the response carries "
+                + "a historical_comparison note saying so. Never infer a change in weight "
+                + "from a missing field. "
                 + "Defaults to 365 (year-ago comparison) when omitted."));
 
     Map<String, Object> inputSchema =
@@ -207,23 +212,33 @@ public final class AllotMintPortfolioTool {
             : aggregate(filteredHoldings, "sector", "Unknown");
 
     // Enrich with historical comparison when lookback is requested.
+    String historicalNote = null;
     if (lookbackDays > 0) {
+      LocalDate asOf = LocalDate.now(ZoneOffset.UTC).minusDays(lookbackDays);
       try {
-        List<Map<String, Object>> historical = client.portfolioSectors(owner, lookbackDays);
-        sectors = enrichWithHistoricalWeights(sectors, historical);
+        List<Map<String, Object>> historical = client.portfolioSectors(owner, asOf);
+        HistoricalWeights enrichment = enrichWithHistoricalWeights(sectors, historical, asOf);
+        sectors = enrichment.sectors();
+        historicalNote = enrichment.note();
       } catch (AllotMintApiException | RestClientException e) {
         log.warn(
-            "Unable to fetch historical sector weights for owner {} (lookback {} days): {} — "
+            "Unable to fetch historical sector weights for owner {} (as of {}): {} — "
                 + "year-ago enrichment skipped",
             owner,
-            lookbackDays,
+            asOf,
             e.getMessage());
+        historicalNote =
+            "Year-ago sector weights are unavailable: the historical lookup failed. "
+                + "Do not report any change in sector weight.";
       }
     }
 
     Map<String, Object> result = baseResult("exposure", owner, accountType, currency);
     result.put("as_of", portfolio.get("as_of"));
     result.put("sectors", sectors);
+    if (historicalNote != null) {
+      result.put("historical_comparison", historicalNote);
+    }
     result.put("asset_classes", aggregate(filteredHoldings, "asset_class", "Unknown"));
     result.put("currencies", aggregate(filteredHoldings, "currency", "Unknown"));
     return result;
@@ -418,21 +433,46 @@ public final class AllotMintPortfolioTool {
    * matching sector name (case-insensitive). Sectors present only in one snapshot are returned
    * unchanged. Original maps are not mutated: the returned list contains new maps.
    */
-  private static List<Map<String, Object>> enrichWithHistoricalWeights(
-      List<Map<String, Object>> sectors, List<Map<String, Object>> historical) {
+  /**
+   * Result of a year-ago enrichment attempt: the sector rows to return, plus a note explaining why
+   * no {@code weight_pct_year_ago} was attached when the rows came back unenriched.
+   */
+  private record HistoricalWeights(List<Map<String, Object>> sectors, String note) {}
+
+  /**
+   * Attaches {@code weight_pct_year_ago} to each sector, or explains why it could not.
+   *
+   * <p>Reads {@code weight_pct}, an actual share of market value. This previously read {@code
+   * contribution_pct}, which is a gain contribution measured against cost ({@code gain_gbp /
+   * total_cost * 100}) and not a weight at all; on a real portfolio that produced "sector weights"
+   * of ~1e-06 which the research agent then reported as fact.
+   *
+   * <p>The backend prices a past {@code as_of} from current holdings and the latest price
+   * snapshot, so it can legitimately return today's numbers for a historical date. Emitting those
+   * as {@code weight_pct_year_ago} would assert "this sector has not moved", a stronger claim than
+   * the data supports, so an identical snapshot is reported as unavailable instead.
+   */
+  private static HistoricalWeights enrichWithHistoricalWeights(
+      List<Map<String, Object>> sectors, List<Map<String, Object>> historical, LocalDate asOf) {
     Map<String, BigDecimal> historicalWeights = new LinkedHashMap<>();
     for (Map<String, Object> row : historical) {
       String name = optionalString(row, "sector");
-      if (name != null) {
-        BigDecimal weight = decimal(row.get("contribution_pct"));
-        if (BigDecimal.ZERO.compareTo(weight) == 0) {
-          weight = decimal(row.get("weight_pct"));
-        }
-        historicalWeights.put(name.toLowerCase(Locale.ROOT), weight);
+      Object weight = row.get("weight_pct");
+      if (name != null && weight != null) {
+        historicalWeights.put(name.toLowerCase(Locale.ROOT), decimal(weight));
       }
     }
 
+    if (historicalWeights.isEmpty()) {
+      return new HistoricalWeights(
+          sectors,
+          "Year-ago sector weights are unavailable: the backend returned no weight_pct for "
+              + asOf
+              + ". Do not report any change in sector weight.");
+    }
+
     List<Map<String, Object>> enriched = new ArrayList<>();
+    boolean anyWeightMoved = false;
     for (Map<String, Object> row : sectors) {
       Map<String, Object> enrichedRow = new LinkedHashMap<>(row);
       String name = optionalString(row, "sector");
@@ -440,11 +480,23 @@ public final class AllotMintPortfolioTool {
         BigDecimal histWeight = historicalWeights.get(name.toLowerCase(Locale.ROOT));
         if (histWeight != null) {
           enrichedRow.put("weight_pct_year_ago", histWeight);
+          if (histWeight.compareTo(decimal(row.get("weight_pct"))) != 0) {
+            anyWeightMoved = true;
+          }
         }
       }
       enriched.add(enrichedRow);
     }
-    return enriched;
+
+    if (!anyWeightMoved) {
+      return new HistoricalWeights(
+          sectors,
+          "Year-ago sector weights are unavailable: the backend returned an identical snapshot for "
+              + asOf
+              + ", so no historical comparison is possible. Do not report any change in sector "
+              + "weight.");
+    }
+    return new HistoricalWeights(enriched, null);
   }
 
   private static McpSchema.CallToolResult error(String message) {
