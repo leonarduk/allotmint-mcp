@@ -20,8 +20,8 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -194,8 +194,7 @@ class AllotMintPortfolioToolTest {
 
   @Test
   void exposureOmitsYearAgoWhenHistoricalSectorNameDoesNotMatch() {
-    List<Map<String, Object>> current =
-        List.of(Map.of("sector", "Technology", "weight_pct", 27.0));
+    List<Map<String, Object>> current = List.of(Map.of("sector", "Technology", "weight_pct", 27.0));
     List<Map<String, Object>> historical =
         List.of(Map.of("sector", "Healthcare", "weight_pct", 12.0));
     when(client.portfolioSectors("steve")).thenReturn(current);

@@ -447,10 +447,10 @@ public final class AllotMintPortfolioTool {
    * total_cost * 100}) and not a weight at all; on a real portfolio that produced "sector weights"
    * of ~1e-06 which the research agent then reported as fact.
    *
-   * <p>The backend prices a past {@code as_of} from current holdings and the latest price
-   * snapshot, so it can legitimately return today's numbers for a historical date. Emitting those
-   * as {@code weight_pct_year_ago} would assert "this sector has not moved", a stronger claim than
-   * the data supports, so an identical snapshot is reported as unavailable instead.
+   * <p>The backend prices a past {@code as_of} from current holdings and the latest price snapshot,
+   * so it can legitimately return today's numbers for a historical date. Emitting those as {@code
+   * weight_pct_year_ago} would assert "this sector has not moved", a stronger claim than the data
+   * supports, so an identical snapshot is reported as unavailable instead.
    */
   private static HistoricalWeights enrichWithHistoricalWeights(
       List<Map<String, Object>> sectors, List<Map<String, Object>> historical, LocalDate asOf) {

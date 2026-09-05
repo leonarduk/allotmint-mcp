@@ -60,11 +60,9 @@ class AllotMintClientInstrumentAndPortfolioTest {
         .andExpect(method(HttpMethod.GET))
         .andRespond(
             withSuccess(
-                "[{\"sector\":\"Technology\",\"weight_pct\":35.0}]",
-                MediaType.APPLICATION_JSON));
+                "[{\"sector\":\"Technology\",\"weight_pct\":35.0}]", MediaType.APPLICATION_JSON));
 
-    List<Map<String, Object>> response =
-        client.portfolioSectors("alice", LocalDate.of(2025, 9, 5));
+    List<Map<String, Object>> response = client.portfolioSectors("alice", LocalDate.of(2025, 9, 5));
 
     assertThat(response).extracting(s -> s.get("weight_pct")).containsExactly(35.0);
     server.verify();
