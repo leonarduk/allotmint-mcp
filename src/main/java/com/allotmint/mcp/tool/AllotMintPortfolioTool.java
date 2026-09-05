@@ -447,10 +447,12 @@ public final class AllotMintPortfolioTool {
    * total_cost * 100}) and not a weight at all; on a real portfolio that produced "sector weights"
    * of ~1e-06 which the research agent then reported as fact.
    *
-   * <p>The backend prices a past {@code as_of} from current holdings and the latest price snapshot,
-   * so it can legitimately return today's numbers for a historical date. Emitting those as {@code
-   * weight_pct_year_ago} would assert "this sector has not moved", a stronger claim than the data
-   * supports, so an identical snapshot is reported as unavailable instead.
+   * <p>The backend prices a past {@code as_of} from current holdings and the latest price snapshot.
+   * A historical snapshot that is identical to the current one is legitimate data — a portfolio can
+   * genuinely be unchanged over the lookback window — so it is enriched and returned like any other
+   * result. Historical fields are only omitted when the backend gave us nothing usable to compare
+   * against (an empty response, or rows with no {@code weight_pct}), which is the one case where
+   * "unavailable" is the honest answer rather than "unchanged".
    */
   private static HistoricalWeights enrichWithHistoricalWeights(
       List<Map<String, Object>> sectors, List<Map<String, Object>> historical, LocalDate asOf) {
@@ -472,7 +474,6 @@ public final class AllotMintPortfolioTool {
     }
 
     List<Map<String, Object>> enriched = new ArrayList<>();
-    boolean anyWeightMoved = false;
     for (Map<String, Object> row : sectors) {
       Map<String, Object> enrichedRow = new LinkedHashMap<>(row);
       String name = optionalString(row, "sector");
@@ -480,21 +481,9 @@ public final class AllotMintPortfolioTool {
         BigDecimal histWeight = historicalWeights.get(name.toLowerCase(Locale.ROOT));
         if (histWeight != null) {
           enrichedRow.put("weight_pct_year_ago", histWeight);
-          if (histWeight.compareTo(decimal(row.get("weight_pct"))) != 0) {
-            anyWeightMoved = true;
-          }
         }
       }
       enriched.add(enrichedRow);
-    }
-
-    if (!anyWeightMoved) {
-      return new HistoricalWeights(
-          sectors,
-          "Year-ago sector weights are unavailable: the backend returned an identical snapshot for "
-              + asOf
-              + ", so no historical comparison is possible. Do not report any change in sector "
-              + "weight.");
     }
     return new HistoricalWeights(enriched, null);
   }
