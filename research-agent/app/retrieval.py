@@ -97,9 +97,25 @@ def _search_sync(
     except Exception as exc:  # noqa: BLE001 - any driver/DB failure degrades the same way
         raise RetrievalUnavailable(str(exc)) from exc
 
+    return _rows_to_documents(rows, settings.max_distance)
+
+
+def _rows_to_documents(rows, max_distance: float) -> list[RetrievedDocument]:
+    """Maps raw `(source, content, doc_type, published, distance)` rows to models.
+
+    Split out from `_search_sync` so this filtering/formatting logic - the part
+    that's actually worth regression-testing - can run without a real
+    Postgres connection, which the test suite deliberately never has (see
+    `requirements-dev.txt`).
+    """
     documents = []
     for source, content, doc_type, published, distance in rows:
-        if distance is not None and distance > settings.max_distance:
+        # A NULL distance means Postgres couldn't rank the row (only possible if
+        # its embedding column is itself NULL) - skip it rather than crash on
+        # float(None), the same way an out-of-threshold distance is skipped: in
+        # both cases we can't confidently judge relevance, so degrade by
+        # dropping the row.
+        if distance is None or distance > max_distance:
             continue
         documents.append(
             RetrievedDocument(
