@@ -146,7 +146,7 @@
 		<dependency>
 			<groupId>net.logstash.logback</groupId>
 			<artifactId>logstash-logback-encoder</artifactId>
-			<version>8.0</version>
+			<version>9.0</version>
 		</dependency>
 
 		<!-- Required for the <if>/<then>/<else> conditional in logback-spring.xml that
