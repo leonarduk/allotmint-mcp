@@ -30,10 +30,28 @@ jobs:
           key: dependency-check-data-${{ steps.week.outputs.value }}
           restore-keys: dependency-check-data-
 
+      # Dependabot-triggered runs (and fork PRs) get no Actions secrets, so
+      # NVD_API_KEY is empty there. dependency-check-maven 13.0.0 cannot update
+      # anonymously: its bundled dependencycheck.properties defaults
+      # nvd.api.key to "" rather than null, so a keyless run still sends an
+      # empty apiKey header and NVD rejects it ("Invalid API Key, length of 0").
+      # Without a key, scan against the NVD database restored from the cache
+      # above instead of updating it; main's push build always runs the full,
+      # updating scan with the key. Adding NVD_API_KEY as a Dependabot secret
+      # too makes Dependabot PRs take the first branch.
       - name: Build and test
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: ./mvnw -B verify
+        run: |
+          if [ -n "$NVD_API_KEY" ]; then
+            ./mvnw -B verify
+          elif [ -f .dependency-check-data/odc.mv.db ]; then
+            echo "::warning::NVD_API_KEY not available; dependency-check will use the cached NVD database without updating it."
+            ./mvnw -B verify -DautoUpdate=false
+          else
+            echo "::warning::NVD_API_KEY not available and no cached NVD database; skipping dependency-check for this run."
+            ./mvnw -B verify -Ddependency-check.skip=true
+          fi
 
   research-agent:
     # The Python sidecar behind allotmint_research. Its tests stub the LLM, the
