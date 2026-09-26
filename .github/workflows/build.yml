@@ -39,6 +39,11 @@ jobs:
       # above instead of updating it; main's push build always runs the full,
       # updating scan with the key. Adding NVD_API_KEY as a Dependabot secret
       # too makes Dependabot PRs take the first branch.
+      # -DautoUpdate is the mojo's own user property in 13.0.0
+      # (@Parameter(property = "autoUpdate") in BaseDependencyCheckMojo, no
+      # "dependency-check." prefix, unlike dependency-check.skip); with it a
+      # keyless run makes no NVD/CISA requests at all. Without a local DB it
+      # fails with NoDataException instead, hence the odc.mv.db guard.
       - name: Build and test
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
@@ -46,7 +51,7 @@ jobs:
           if [ -n "$NVD_API_KEY" ]; then
             ./mvnw -B verify
           elif [ -f .dependency-check-data/odc.mv.db ]; then
-            echo "::warning::NVD_API_KEY not available; dependency-check will use the cached NVD database without updating it."
+            echo "::warning::NVD_API_KEY not available; dependency-check will use the cached, possibly stale NVD database without updating it."
             ./mvnw -B verify -DautoUpdate=false
           else
             echo "::warning::NVD_API_KEY not available and no cached NVD database; skipping dependency-check for this run."
