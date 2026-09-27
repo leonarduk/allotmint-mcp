@@ -81,7 +81,7 @@
 			<dependency>
 				<groupId>org.apache.tomcat.embed</groupId>
 				<artifactId>tomcat-embed-websocket</artifactId>
-				<version>11.0.25</version>
+				<version>11.0.26</version>
 			</dependency>
 
 			<!-- Override jackson-databind 2.21.4 (managed by spring-boot-starter-parent
