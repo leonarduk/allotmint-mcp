@@ -13,12 +13,15 @@ import org.springframework.web.client.ResourceAccessException;
 
 import java.math.BigDecimal;
 import java.net.ConnectException;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -97,7 +100,7 @@ class AllotMintPortfolioToolTest {
     when(client.portfolioSectors("steve")).thenReturn(sectors);
     when(client.portfolio("steve")).thenReturn(portfolio());
     // Historical endpoint is not available: graceful fallback.
-    when(client.portfolioSectors("steve", 365))
+    when(client.portfolioSectors(eq("steve"), any(LocalDate.class)))
         .thenThrow(new AllotMintApiException(404, "not found"));
 
     Map<String, Object> structured =
@@ -106,8 +109,12 @@ class AllotMintPortfolioToolTest {
     assertThat(structured.get("sectors")).isEqualTo(sectors);
     assertThat((List<?>) structured.get("asset_classes")).hasSize(2);
     assertThat((List<?>) structured.get("currencies")).hasSize(2);
+    // A failed lookup must say so rather than leaving the caller to guess.
+    assertThat((String) structured.get("historical_comparison"))
+        .contains("unavailable")
+        .contains("Do not report any change");
     verify(client).portfolioSectors("steve");
-    verify(client).portfolioSectors("steve", 365);
+    verify(client).portfolioSectors(eq("steve"), any(LocalDate.class));
     verify(client).portfolio("steve");
   }
 
@@ -115,14 +122,14 @@ class AllotMintPortfolioToolTest {
   void exposureEnrichesWithDefaultLookbackWhenOmitted() {
     List<Map<String, Object>> current =
         List.of(
-            Map.of("sector", "Technology", "contribution_pct", 27.0),
-            Map.of("sector", "Financials", "contribution_pct", 15.5));
+            Map.of("sector", "Technology", "weight_pct", 27.0),
+            Map.of("sector", "Financials", "weight_pct", 15.5));
     List<Map<String, Object>> historical =
         List.of(
-            Map.of("sector", "Technology", "contribution_pct", 18.0),
-            Map.of("sector", "Financials", "contribution_pct", 17.0));
+            Map.of("sector", "Technology", "weight_pct", 18.0),
+            Map.of("sector", "Financials", "weight_pct", 17.0));
     when(client.portfolioSectors("steve")).thenReturn(current);
-    when(client.portfolioSectors("steve", 365)).thenReturn(historical);
+    when(client.portfolioSectors(eq("steve"), any(LocalDate.class))).thenReturn(historical);
     when(client.portfolio("steve")).thenReturn(portfolio());
 
     Map<String, Object> structured =
@@ -137,7 +144,8 @@ class AllotMintPortfolioToolTest {
     assertThat(sectors.get(1))
         .containsEntry("sector", "Financials")
         .containsEntry("weight_pct_year_ago", new BigDecimal("17.0"));
-    verify(client).portfolioSectors("steve", 365);
+    assertThat(structured).doesNotContainKey("historical_comparison");
+    verify(client).portfolioSectors(eq("steve"), any(LocalDate.class));
   }
 
   @Test
@@ -152,21 +160,21 @@ class AllotMintPortfolioToolTest {
 
     assertThat(structured.get("sectors")).isEqualTo(sectors);
     // Must not attempt the historical call when lookback_days is 0.
-    verify(client, never()).portfolioSectors(anyString(), anyInt());
+    verify(client, never()).portfolioSectors(anyString(), any(LocalDate.class));
   }
 
   @Test
   void exposureEnrichesSectorsWithYearAgoWeightsWhenLookbackProvided() {
     List<Map<String, Object>> current =
         List.of(
-            Map.of("sector", "Technology", "contribution_pct", 27.0),
-            Map.of("sector", "Financials", "contribution_pct", 15.5));
+            Map.of("sector", "Technology", "weight_pct", 27.0),
+            Map.of("sector", "Financials", "weight_pct", 15.5));
     List<Map<String, Object>> historical =
         List.of(
-            Map.of("sector", "technology", "contribution_pct", 18.0),
-            Map.of("sector", "financials", "contribution_pct", 17.0));
+            Map.of("sector", "technology", "weight_pct", 18.0),
+            Map.of("sector", "financials", "weight_pct", 17.0));
     when(client.portfolioSectors("steve")).thenReturn(current);
-    when(client.portfolioSectors("steve", 90)).thenReturn(historical);
+    when(client.portfolioSectors(eq("steve"), any(LocalDate.class))).thenReturn(historical);
     when(client.portfolio("steve")).thenReturn(portfolio());
 
     Map<String, Object> structured =
@@ -181,17 +189,16 @@ class AllotMintPortfolioToolTest {
     assertThat(sectors.get(1))
         .containsEntry("sector", "Financials")
         .containsEntry("weight_pct_year_ago", new BigDecimal("17.0"));
-    verify(client).portfolioSectors("steve", 90);
+    verify(client).portfolioSectors(eq("steve"), eq(LocalDate.now(ZoneOffset.UTC).minusDays(90)));
   }
 
   @Test
   void exposureOmitsYearAgoWhenHistoricalSectorNameDoesNotMatch() {
-    List<Map<String, Object>> current =
-        List.of(Map.of("sector", "Technology", "contribution_pct", 27.0));
+    List<Map<String, Object>> current = List.of(Map.of("sector", "Technology", "weight_pct", 27.0));
     List<Map<String, Object>> historical =
-        List.of(Map.of("sector", "Healthcare", "contribution_pct", 12.0));
+        List.of(Map.of("sector", "Healthcare", "weight_pct", 12.0));
     when(client.portfolioSectors("steve")).thenReturn(current);
-    when(client.portfolioSectors("steve", 180)).thenReturn(historical);
+    when(client.portfolioSectors(eq("steve"), any(LocalDate.class))).thenReturn(historical);
     when(client.portfolio("steve")).thenReturn(portfolio());
 
     Map<String, Object> structured =
@@ -203,6 +210,114 @@ class AllotMintPortfolioToolTest {
     assertThat(sectors.get(0))
         .containsEntry("sector", "Technology")
         .doesNotContainKey("weight_pct_year_ago");
+  }
+
+  @Test
+  void exposureIgnoresContributionPctWhenDerivingYearAgoWeights() {
+    // Regression guard: contribution_pct is a gain contribution measured against cost, not a
+    // weight. Reading it as one produced sector "weights" of ~1e-06 that the research agent
+    // reported as fact. Only weight_pct may be used.
+    List<Map<String, Object>> current =
+        List.of(Map.of("sector", "Technology", "weight_pct", 27.0, "contribution_pct", 6.4e-06));
+    List<Map<String, Object>> historical =
+        List.of(Map.of("sector", "Technology", "contribution_pct", 6.4e-06));
+    when(client.portfolioSectors("steve")).thenReturn(current);
+    when(client.portfolioSectors(eq("steve"), any(LocalDate.class))).thenReturn(historical);
+    when(client.portfolio("steve")).thenReturn(portfolio());
+
+    Map<String, Object> structured =
+        structured(call(Map.of("action", "exposure", "owner", "steve")));
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> sectors = (List<Map<String, Object>>) structured.get("sectors");
+    assertThat(sectors).hasSize(1);
+    assertThat(sectors.get(0)).doesNotContainKey("weight_pct_year_ago");
+    assertThat((String) structured.get("historical_comparison")).contains("no weight_pct");
+  }
+
+  @Test
+  void exposureEnrichesSectorsWhenBackendReturnsAnIdenticalSnapshot() {
+    // The backend prices a past as_of from current holdings and the latest price snapshot, so it
+    // can legitimately hand back today's numbers when a portfolio genuinely hasn't moved over the
+    // lookback window. That is real data, not something to suppress: it must still be enriched,
+    // not reported as "unavailable".
+    List<Map<String, Object>> current =
+        List.of(
+            Map.of("sector", "Technology", "weight_pct", 27.0),
+            Map.of("sector", "Financials", "weight_pct", 15.5));
+    when(client.portfolioSectors("steve")).thenReturn(current);
+    when(client.portfolioSectors(eq("steve"), any(LocalDate.class))).thenReturn(current);
+    when(client.portfolio("steve")).thenReturn(portfolio());
+
+    Map<String, Object> structured =
+        structured(call(Map.of("action", "exposure", "owner", "steve")));
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> sectors = (List<Map<String, Object>>) structured.get("sectors");
+    assertThat(sectors.get(0))
+        .containsEntry("sector", "Technology")
+        .containsEntry("weight_pct_year_ago", new BigDecimal("27.0"));
+    assertThat(sectors.get(1))
+        .containsEntry("sector", "Financials")
+        .containsEntry("weight_pct_year_ago", new BigDecimal("15.5"));
+    assertThat(structured).doesNotContainKey("historical_comparison");
+  }
+
+  @Test
+  void exposureEnrichesOnlyTheSectorsThatOverlapWithTheHistoricalSnapshot() {
+    // Partial overlap: some current sectors have a historical match, others don't. Only the
+    // matching ones should get weight_pct_year_ago; the rest are returned as-is.
+    List<Map<String, Object>> current =
+        List.of(
+            Map.of("sector", "Technology", "weight_pct", 27.0),
+            Map.of("sector", "Financials", "weight_pct", 15.5),
+            Map.of("sector", "Energy", "weight_pct", 5.0));
+    List<Map<String, Object>> historical =
+        List.of(
+            Map.of("sector", "Technology", "weight_pct", 18.0),
+            Map.of("sector", "Healthcare", "weight_pct", 12.0));
+    when(client.portfolioSectors("steve")).thenReturn(current);
+    when(client.portfolioSectors(eq("steve"), any(LocalDate.class))).thenReturn(historical);
+    when(client.portfolio("steve")).thenReturn(portfolio());
+
+    Map<String, Object> structured =
+        structured(call(Map.of("action", "exposure", "owner", "steve")));
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> sectors = (List<Map<String, Object>>) structured.get("sectors");
+    assertThat(sectors).hasSize(3);
+    assertThat(sectors.get(0))
+        .containsEntry("sector", "Technology")
+        .containsEntry("weight_pct_year_ago", new BigDecimal("18.0"));
+    assertThat(sectors.get(1))
+        .containsEntry("sector", "Financials")
+        .doesNotContainKey("weight_pct_year_ago");
+    assertThat(sectors.get(2))
+        .containsEntry("sector", "Energy")
+        .doesNotContainKey("weight_pct_year_ago");
+    assertThat(structured).doesNotContainKey("historical_comparison");
+  }
+
+  @Test
+  void exposureEnrichmentToleratesACurrentSectorRowMissingWeightPct() {
+    // Regression guard: a current-sectors row missing weight_pct must not throw (NPE/NFE) when
+    // the historical snapshot has a matching sector to enrich it with.
+    List<Map<String, Object>> current =
+        List.of(Map.of("sector", "Technology", "market_value_gbp", 1000.0));
+    List<Map<String, Object>> historical =
+        List.of(Map.of("sector", "Technology", "weight_pct", 18.0));
+    when(client.portfolioSectors("steve")).thenReturn(current);
+    when(client.portfolioSectors(eq("steve"), any(LocalDate.class))).thenReturn(historical);
+    when(client.portfolio("steve")).thenReturn(portfolio());
+
+    Map<String, Object> structured =
+        structured(call(Map.of("action", "exposure", "owner", "steve")));
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> sectors = (List<Map<String, Object>>) structured.get("sectors");
+    assertThat(sectors.get(0))
+        .containsEntry("sector", "Technology")
+        .containsEntry("weight_pct_year_ago", new BigDecimal("18.0"));
   }
 
   @Test

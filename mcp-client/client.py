@@ -40,6 +40,7 @@ import asyncio
 import inspect
 import json
 import sys
+import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -177,7 +178,11 @@ def requested_dependencies(args: argparse.Namespace) -> set[str]:
 
 
 def build_research_arguments(
-    question: str, owner: str | None, lookback_days: int | None, llm_provider: str | None = None
+    question: str,
+    owner: str | None,
+    lookback_days: int | None,
+    llm_provider: str | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Builds the allotmint_research 'ask' arguments the server's schema expects."""
     arguments: dict[str, Any] = {"action": "ask", "question": question}
@@ -187,6 +192,8 @@ def build_research_arguments(
         arguments["lookback_days"] = lookback_days
     if llm_provider:
         arguments["llm_provider"] = llm_provider
+    if session_id:
+        arguments["session_id"] = session_id
     return arguments
 
 
@@ -428,9 +435,9 @@ async def preflight(session, research_url: str, timeout_seconds: float) -> list[
 
 async def ask(
     session, question: str, owner: str | None, lookback_days: int | None,
-    llm_provider: str | None = None,
+    llm_provider: str | None = None, session_id: str | None = None,
 ) -> str:
-    arguments = build_research_arguments(question, owner, lookback_days, llm_provider)
+    arguments = build_research_arguments(question, owner, lookback_days, llm_provider, session_id)
     result = await session.call_tool(RESEARCH_TOOL, arguments)
     text = result_text(result)
     return f"Error: {text}" if result_is_error(result) else text
@@ -468,7 +475,13 @@ async def call_tool(session, name: str, arguments: dict[str, Any]) -> str:
 
 
 async def repl(session, owner: str | None, lookback_days: int | None) -> None:
+    # One REPL run is one conversation: a single session_id (#548) is reused for every
+    # question asked in this loop, so a follow-up like "what about last month?" resolves
+    # against earlier turns instead of starting fresh each time. Quitting and re-running
+    # starts a new session_id, which is the only way to reset it from the REPL.
+    session_id = uuid.uuid4().hex
     print("Type a question for allotmint_research (blank line or Ctrl-D to quit).")
+    print("Follow-up questions remember earlier turns in this conversation (#548).")
     while True:
         try:
             question = input("> ").strip()
@@ -478,7 +491,7 @@ async def repl(session, owner: str | None, lookback_days: int | None) -> None:
         if not question:
             return
         try:
-            print(await ask(session, question, owner, lookback_days))
+            print(await ask(session, question, owner, lookback_days, session_id=session_id))
         except Exception as exc:  # noqa: BLE001 - a REPL should survive one bad turn
             deps.log(f"ask failed: {format_exception(exc)}", level="ERROR")
         print()

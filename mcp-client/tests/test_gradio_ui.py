@@ -110,6 +110,101 @@ async def test_ui_ask_reports_connection_failures(monkeypatch):
     assert "ConnectionRefusedError" in answer
 
 
+# -------------------------------------------------------------------- ui_chat
+
+
+@pytest.mark.asyncio
+async def test_ui_chat_appends_user_and_assistant_turns_and_starts_a_session(monkeypatch):
+    session = FakeSession(
+        result=_result("Technology rose from 18% to 27% [1]."),
+        required_tools=client_module.REQUIRED_TOOLS,
+    )
+    monkeypatch.setattr(client_module, "open_session", _fake_open_session(session))
+
+    history, session_id, cleared = await gradio_ui.ui_chat(
+        "how has my tech exposure changed?", [], None, "demo", None, None,
+        client_module.DEFAULT_MCP_URL, client_module.DEFAULT_RESEARCH_URL, 180.0, True,
+    )
+
+    assert history == [
+        {"role": "user", "content": "how has my tech exposure changed?"},
+        {"role": "assistant", "content": "Technology rose from 18% to 27% [1]."},
+    ]
+    assert session_id  # a fresh id was generated since none was supplied
+    assert cleared == ""
+    assert session.calls == [
+        (
+            "allotmint_research",
+            {
+                "action": "ask",
+                "question": "how has my tech exposure changed?",
+                "owner": "demo",
+                "session_id": session_id,
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_ui_chat_reuses_the_provided_session_id(monkeypatch):
+    session = FakeSession(result=_result("answer"), required_tools=client_module.REQUIRED_TOOLS)
+    monkeypatch.setattr(client_module, "open_session", _fake_open_session(session))
+
+    history, session_id, _ = await gradio_ui.ui_chat(
+        "what about last month?",
+        [{"role": "user", "content": "earlier"}, {"role": "assistant", "content": "earlier answer"}],
+        "existing-session-id", None, None, None,
+        client_module.DEFAULT_MCP_URL, client_module.DEFAULT_RESEARCH_URL, 180.0, True,
+    )
+
+    assert session_id == "existing-session-id"
+    assert history[-2:] == [
+        {"role": "user", "content": "what about last month?"},
+        {"role": "assistant", "content": "answer"},
+    ]
+    assert session.calls == [
+        (
+            "allotmint_research",
+            {"action": "ask", "question": "what about last month?", "session_id": "existing-session-id"},
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_ui_chat_blank_message_is_a_no_op():
+    history, session_id, cleared = await gradio_ui.ui_chat(
+        "   ", [{"role": "user", "content": "x"}], "keep-me", None, None, None,
+        client_module.DEFAULT_MCP_URL, client_module.DEFAULT_RESEARCH_URL, 180.0, True,
+    )
+
+    assert history == [{"role": "user", "content": "x"}]
+    assert session_id == "keep-me"
+    assert cleared == ""
+
+
+@pytest.mark.asyncio
+async def test_ui_chat_reports_connection_failures_as_the_assistant_turn(monkeypatch):
+    @asynccontextmanager
+    async def broken_session(url, timeout_seconds):
+        raise ConnectionRefusedError("[Errno 111] Connection refused")
+        yield  # pragma: no cover - unreachable, keeps this an async generator
+
+    monkeypatch.setattr(client_module, "open_session", broken_session)
+
+    history, session_id, _ = await gradio_ui.ui_chat(
+        "?", [], None, None, None, None,
+        client_module.DEFAULT_MCP_URL, client_module.DEFAULT_RESEARCH_URL, 180.0, True,
+    )
+
+    assert history[0] == {"role": "user", "content": "?"}
+    assert "ConnectionRefusedError" in history[1]["content"]
+    assert session_id  # still gets a session id even though the turn failed
+
+
+def test_ui_new_conversation_clears_history_and_session_id():
+    assert gradio_ui.ui_new_conversation() == ([], None)
+
+
 # ------------------------------------------------------------- ui_list_tools
 
 
@@ -253,15 +348,23 @@ def test_build_app_returns_blocks_with_the_configured_urls():
     url_boxes = [b for b in textboxes if b.label == "allotmint-mcp URL"]
     research_boxes = [b for b in textboxes if b.label == "research-agent URL"]
 
-    # Every "allotmint-mcp URL" field (in Ask / List tools / Call tabs)
+    # Every "allotmint-mcp URL" field (in Ask / Chat / List tools / Call tabs)
     # should hold the configured URL.
     assert len(url_boxes) >= 1
     for box in url_boxes:
         assert box.value == url
 
-    # The "research-agent URL" field in the Ask tab should hold the configured value.
-    assert len(research_boxes) == 1
-    assert research_boxes[0].value == research_url
+    # The "research-agent URL" field in both the Ask and Chat tabs should
+    # hold the configured value.
+    assert len(research_boxes) == 2
+    for box in research_boxes:
+        assert box.value == research_url
+
+
+def test_build_app_includes_a_chat_tab_with_a_chatbot():
+    demo = gradio_ui.build_app()
+
+    assert any(isinstance(b, gr.Chatbot) for b in demo.blocks.values())
 
 
 def test_parse_args_defaults():

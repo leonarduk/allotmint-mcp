@@ -13,6 +13,7 @@ import static org.springframework.http.HttpMethod.POST;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withUnauthorizedRequest;
 
@@ -117,6 +118,24 @@ public class AllotMintClientTest {
         .andRespond(withSuccess("{\"status\":\"applied\"}", MediaType.APPLICATION_JSON));
 
     assertThat(client.applyReconciliation("rec-1")).containsEntry("status", "applied");
+    server.verify();
+  }
+
+  @Test
+  void mapsNonAuthErrorResponseToReadableExceptionWithStatusAndBody() {
+    RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+    MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+    RestClient restClient = builder.build();
+    AllotMintClient client = new AllotMintClient(restClient, restClient, BASE_URL);
+
+    server
+        .expect(requestTo(BASE_URL + "/portfolio/demo"))
+        .andRespond(withServerError().body("backend blew up"));
+
+    assertThatThrownBy(() -> client.portfolio("demo"))
+        .isInstanceOf(AllotMintApiException.class)
+        .hasMessageContaining("AllotMint backend returned 500")
+        .hasMessageContaining("backend blew up");
     server.verify();
   }
 }

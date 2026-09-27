@@ -49,6 +49,36 @@ public class StdioMcpServerConfig {
       @Value("${allotmint.mcp.write.enabled:false}") boolean writeEnabled) {
     StdioServerTransportProvider transportProvider = new StdioServerTransportProvider(jsonMapper);
 
+    List<McpServerFeatures.SyncToolSpecification> tools =
+        selectTools(
+            allotMintClient,
+            researchAgentClient,
+            filesEnabled,
+            filesRoot,
+            researchEnabled,
+            dataQualityEnabled,
+            writeEnabled);
+
+    return McpServer.sync(transportProvider)
+        .serverInfo("allotmint-mcp", "0.0.1")
+        .tools(tools.toArray(McpServerFeatures.SyncToolSpecification[]::new))
+        .build();
+  }
+
+  /**
+   * Picks which tool specifications to register, based on the feature flags. Split out from {@link
+   * #stdioMcpSyncServer} so this branching logic can be unit-tested directly - actually invoking
+   * the {@code @Bean} method attaches a real {@link StdioServerTransportProvider} to stdin (see the
+   * class javadoc), which this method never touches.
+   */
+  static List<McpServerFeatures.SyncToolSpecification> selectTools(
+      AllotMintClient allotMintClient,
+      ResearchAgentClient researchAgentClient,
+      boolean filesEnabled,
+      String filesRoot,
+      boolean researchEnabled,
+      boolean dataQualityEnabled,
+      boolean writeEnabled) {
     List<McpServerFeatures.SyncToolSpecification> tools = new ArrayList<>();
     tools.add(EchoTool.specification());
     tools.add(AllotMintHealthTool.specification(allotMintClient));
@@ -73,9 +103,6 @@ public class StdioMcpServerConfig {
       tools.add(AllotMintResearchTool.specification(researchAgentClient));
     }
 
-    return McpServer.sync(transportProvider)
-        .serverInfo("allotmint-mcp", "0.0.1")
-        .tools(tools.toArray(McpServerFeatures.SyncToolSpecification[]::new))
-        .build();
+    return tools;
   }
 }

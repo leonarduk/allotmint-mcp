@@ -126,6 +126,32 @@ class AllotMintClientDataQualityTest {
   }
 
   @Test
+  void seriesCallsTheTimeseriesEndpoint() {
+    server
+        .expect(requestTo(BASE_URL + "/data-quality/timeseries"))
+        .andExpect(method(HttpMethod.GET))
+        .andRespond(withSuccess("{\"series\":[]}", MediaType.APPLICATION_JSON));
+
+    Map<String, Object> response = client.dataQualitySeries();
+
+    assertThat(response).containsKey("series");
+    server.verify();
+  }
+
+  @Test
+  void auditCallsTheAuditEndpoint() {
+    server
+        .expect(requestTo(BASE_URL + "/data-quality/audit"))
+        .andExpect(method(HttpMethod.GET))
+        .andRespond(withSuccess("{\"entries\":[]}", MediaType.APPLICATION_JSON));
+
+    Map<String, Object> response = client.dataQualityAudit();
+
+    assertThat(response).containsKey("entries");
+    server.verify();
+  }
+
+  @Test
   void fixPostsToTheIssueEndpointWhenConfirmed() {
     server
         .expect(requestTo(BASE_URL + "/data-quality/issues/i1/fix"))

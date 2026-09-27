@@ -17,6 +17,7 @@ import org.springframework.web.client.RestClientException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -107,12 +108,17 @@ public class AllotMintClient {
   }
 
   /**
-   * Returns sector weights as of {@code lookbackDays} ago via {@code GET
-   * /portfolio/{owner}/sectors?lookback_days={days}}. Callers that catch {@link
-   * AllotMintApiException} or {@link RestClientException} can treat a missing historical endpoint
-   * as a no-op: the current snapshot is still valid, just without year-ago enrichment.
+   * Returns sector weights priced as of {@code asOf} via {@code GET
+   * /portfolio/{owner}/sectors?as_of={date}}.
+   *
+   * <p>{@code as_of} is the only date parameter the sectors endpoint accepts. This method
+   * previously sent {@code lookback_days}, which FastAPI silently discards as an unknown query
+   * parameter, so every "historical" call returned the current snapshot.
+   *
+   * <p>Callers that catch {@link AllotMintApiException} or {@link RestClientException} can treat a
+   * failure as a no-op: the current snapshot is still valid, just without year-ago enrichment.
    */
-  public List<Map<String, Object>> portfolioSectors(String owner, int lookbackDays) {
+  public List<Map<String, Object>> portfolioSectors(String owner, LocalDate asOf) {
     List<Map<String, Object>> response =
         restClient
             .get()
@@ -120,7 +126,7 @@ public class AllotMintClient {
                 builder ->
                     builder
                         .pathSegment("portfolio", owner, "sectors")
-                        .queryParam("lookback_days", lookbackDays)
+                        .queryParam("as_of", asOf.toString())
                         .build())
             .retrieve()
             .onStatus(HttpStatusCode::isError, this::mapError)

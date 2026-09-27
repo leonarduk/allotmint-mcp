@@ -2,9 +2,14 @@ package com.allotmint.mcp.config;
 
 import com.allotmint.mcp.client.AllotMintClient;
 import com.allotmint.mcp.client.ResearchAgentClient;
+import io.modelcontextprotocol.server.McpServerFeatures;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.LazyInitializationBeanFactoryPostProcessor;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+
+import java.nio.file.Path;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -99,5 +104,65 @@ class StdioMcpServerConfigTest {
     contextRunner
         .withPropertyValues("allotmint.mcp.files.enabled=true", "allotmint.mcp.files.root=")
         .run(context -> assertThat(context).hasFailed());
+  }
+
+  @Test
+  void selectsOnlyTheAlwaysOnToolsWhenEveryOptionalFeatureIsDisabled() {
+    List<McpServerFeatures.SyncToolSpecification> tools =
+        StdioMcpServerConfig.selectTools(
+            mock(AllotMintClient.class), researchAgentClient(), false, "", false, false, false);
+
+    assertThat(tools)
+        .extracting(t -> t.tool().name())
+        .containsExactly(
+            "echo",
+            "allotmint_health",
+            "allotmint_instrument",
+            "allotmint_market",
+            "allotmint_owners",
+            "allotmint_portfolio",
+            "allotmint_reconcile");
+  }
+
+  @Test
+  void addsTheDataQualityToolWhenDataQualityIsEnabled() {
+    List<McpServerFeatures.SyncToolSpecification> tools =
+        StdioMcpServerConfig.selectTools(
+            mock(AllotMintClient.class), researchAgentClient(), false, "", false, true, false);
+
+    assertThat(tools).extracting(t -> t.tool().name()).contains("allotmint_data_quality");
+  }
+
+  @Test
+  void addsTheApplyReconciliationToolOnlyWhenWriteIsEnabled() {
+    List<McpServerFeatures.SyncToolSpecification> tools =
+        StdioMcpServerConfig.selectTools(
+            mock(AllotMintClient.class), researchAgentClient(), false, "", false, false, true);
+
+    assertThat(tools).extracting(t -> t.tool().name()).contains("allotmint_apply_reconciliation");
+  }
+
+  @Test
+  void addsTheFilesToolWhenFilesAreEnabledWithAValidRoot(@TempDir Path filesRoot) {
+    List<McpServerFeatures.SyncToolSpecification> tools =
+        StdioMcpServerConfig.selectTools(
+            mock(AllotMintClient.class),
+            researchAgentClient(),
+            true,
+            filesRoot.toString(),
+            false,
+            false,
+            false);
+
+    assertThat(tools).extracting(t -> t.tool().name()).contains("allotmint_files");
+  }
+
+  @Test
+  void addsTheResearchToolWhenResearchIsEnabled() {
+    List<McpServerFeatures.SyncToolSpecification> tools =
+        StdioMcpServerConfig.selectTools(
+            mock(AllotMintClient.class), researchAgentClient(), false, "", true, false, false);
+
+    assertThat(tools).extracting(t -> t.tool().name()).contains("allotmint_research");
   }
 }

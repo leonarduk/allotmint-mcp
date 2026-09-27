@@ -43,13 +43,18 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-      # GHCR packages default to private when first published via GITHUB_TOKEN,
-      # regardless of the repository's own visibility. That default matches the
-      # intended visibility here, so this step only asserts it explicitly rather
-      # than leaving it to chance - GITHUB_TOKEN cannot change package visibility
-      # (that requires a PAT with package admin rights), so if this ever fails,
-      # fix it manually under the package's GitHub settings.
-      - name: Assert package visibility is private
+      # This repo is public, and the image has in practice been public since its
+      # first publish regardless of the assumption below - GHCR package visibility
+      # appears to inherit the repository's own visibility rather than defaulting
+      # to private, at least for a public repo publishing via GITHUB_TOKEN. The
+      # image was audited (allotmint-mcp#645) and contains no secrets: every
+      # sensitive config value is externalized via env vars with safe defaults,
+      # and the Dockerfile only COPYs source/build files, never local config or
+      # data. So public is the intended, not accidental, visibility here.
+      # GITHUB_TOKEN cannot change package visibility (that requires a PAT with
+      # package admin rights), so if this ever fails, fix it manually under the
+      # package's GitHub settings.
+      - name: Assert package visibility is public
         run: |
           repo_name="${IMAGE_NAME##*/}"
           if ! visibility=$(gh api "/users/${{ github.repository_owner }}/packages/container/${repo_name}" --jq .visibility 2>/tmp/gh_api_err); then
@@ -57,8 +62,8 @@ jobs:
             exit 0
           fi
           echo "Package visibility: $visibility"
-          if [ "$visibility" != "private" ]; then
-            echo "::error::ghcr.io/${IMAGE_NAME} is '$visibility', expected 'private'. Fix under the package's GitHub settings (Package settings > Danger Zone > Change visibility)."
+          if [ "$visibility" != "public" ]; then
+            echo "::error::ghcr.io/${IMAGE_NAME} is '$visibility', expected 'public'. Fix under the package's GitHub settings (Package settings > Danger Zone > Change visibility)."
             exit 1
           fi
         env:

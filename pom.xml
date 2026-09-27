@@ -31,6 +31,17 @@
 		<!-- Keep every Log4j module on the patched release. In particular, Spring Boot
 		     4.1.0 otherwise manages log4j-to-slf4j at vulnerable version 2.25.4. -->
 		<log4j2.version>2.26.1</log4j2.version>
+		<!-- Override spring-framework.version 7.0.8 (managed by spring-boot-starter-parent
+		     4.1.0), which OWASP dependency-check flags against spring-core with three
+		     CVSS >= 9 CVEs: CVE-2026-59313 (9.8, SSE stream corruption in the MVC
+		     functional web framework), CVE-2026-47892 (9.8, WebFlux functional-endpoint
+		     header-predicate bypass via a crafted CORS preflight request), and
+		     CVE-2026-59283 (9.1, SpEL safety-guard bypass when the expression compiler is
+		     active). All three are fixed upstream in Spring Framework 7.0.9, the latest
+		     7.0.x patch release; bumping this single property (rather than pinning
+		     individual spring-* artifacts) keeps the whole Spring Framework family in
+		     sync, since Spring Boot's BOM versions them as one set. -->
+		<spring-framework.version>7.0.9</spring-framework.version>
 		<!-- Excludes @Tag("integration") tests (see AllotMintClientIntegrationTest) from the
 		     default mvn test/verify run, since they require a live AWS-deployed backend and a
 		     real, short-lived auth token. The "integration" profile below clears this property
@@ -53,21 +64,36 @@
 			     critical CVEs; both have patched releases available.
 			     tomcat-embed-el/-websocket weren't individually flagged but are bumped to
 			     match tomcat-embed-core: Tomcat's embed modules are a matched set and
-			     mixing versions across them isn't a supported/tested combination. -->
+			     mixing versions across them isn't a supported/tested combination.
+
+			     11.0.24 -> 11.0.25: CVE-2026-66299 (DoS via the WebSocket chat example),
+			     fixed upstream in 11.0.25/10.1.58/9.0.121 (allotmint-mcp#644). -->
 			<dependency>
 				<groupId>org.apache.tomcat.embed</groupId>
 				<artifactId>tomcat-embed-core</artifactId>
-				<version>11.0.24</version>
+				<version>11.0.25</version>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.tomcat.embed</groupId>
 				<artifactId>tomcat-embed-el</artifactId>
-				<version>11.0.24</version>
+				<version>11.0.25</version>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.tomcat.embed</groupId>
 				<artifactId>tomcat-embed-websocket</artifactId>
-				<version>11.0.24</version>
+				<version>11.0.25</version>
+			</dependency>
+
+			<!-- Override jackson-databind 2.21.4 (managed by spring-boot-starter-parent
+			     4.1.0) for CVE-2026-54515 (per-property @JsonIgnoreProperties bypass via
+			     case-insensitive deserialization), fixed in 2.18.9/2.21.5/3.1.4
+			     (allotmint-mcp#644). Pinned to 2.21.6, the latest 2.21.x patch release,
+			     rather than jumping to 2.22.x: the GHSA advisory's version-range data lists
+			     2.22.0 itself as still affected, and 2.22.1/2.22.2 aren't confirmed fixed. -->
+			<dependency>
+				<groupId>com.fasterxml.jackson.core</groupId>
+				<artifactId>jackson-databind</artifactId>
+				<version>2.21.6</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>

@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import uuid
 
 import deps
 
@@ -58,8 +59,15 @@ async def ui_ask(
     timeout: float,
     skip_preflight: bool,
     llm_provider: str | None = None,
+    session_id: str | None = None,
 ) -> str:
-    """Same path as the CLI's one-shot/REPL question: preflight, then ask."""
+    """Same path as the CLI's one-shot/REPL question: preflight, then ask.
+
+    `session_id` (#548) is optional and unused by the Ask tab itself (each
+    question there is intentionally standalone); the Chat tab's `ui_chat`
+    calls this same function with its own per-conversation id so the two
+    tabs share one code path instead of duplicating the preflight/ask logic.
+    """
     if not question or not question.strip():
         return "Enter a question first."
     try:
@@ -76,9 +84,57 @@ async def ui_ask(
                 owner.strip() if owner else None,
                 int(lookback_days) if lookback_days else None,
                 llm_provider,
+                session_id,
             )
     except Exception as exc:  # noqa: BLE001 - reported to the caller, not swallowed
         return client.format_exception(exc)
+
+
+def _new_session_id() -> str:
+    return uuid.uuid4().hex
+
+
+async def ui_chat(
+    message: str,
+    chat_history: list[dict] | None,
+    session_id: str | None,
+    owner: str | None,
+    lookback_days: float | None,
+    llm_provider: str | None,
+    url: str,
+    research_url: str,
+    timeout: float,
+    skip_preflight: bool,
+) -> tuple[list[dict], str | None, str]:
+    """Handles one Chat tab turn (#548): a running transcript kept across
+    turns, instead of the Ask tab's single overwritten answer box, threaded
+    through a per-conversation `session_id` so a follow-up like "what about
+    last month?" resolves against earlier turns. A blank message is a no-op.
+    Returns (updated chat_history, session_id, "") - the trailing "" clears
+    the message box after sending.
+    """
+    chat_history = list(chat_history or [])
+    if not message or not message.strip():
+        return chat_history, session_id, ""
+
+    session_id = session_id or _new_session_id()
+    chat_history.append({"role": "user", "content": message})
+    reply = await ui_ask(
+        message, owner, lookback_days, url, research_url, timeout, skip_preflight,
+        llm_provider, session_id,
+    )
+    chat_history.append({"role": "assistant", "content": reply})
+    return chat_history, session_id, ""
+
+
+def ui_new_conversation() -> tuple[list[dict], None]:
+    """Clears the Chat tab's transcript and drops its session_id.
+
+    The old session_id is simply abandoned, not explicitly deleted from the
+    sidecar's store - it will eventually be LRU-evicted there (sessions.py).
+    The next message lazily starts a fresh one via ui_chat.
+    """
+    return [], None
 
 
 async def ui_list_tools(url: str, timeout: float) -> str:
@@ -220,6 +276,67 @@ def build_app(defaults: dict[str, str] | None = None) -> gr.Blocks:
                 ui_account_owners,
                 inputs=[ask_url, ask_timeout],
                 outputs=[owner, owner_error],
+            )
+
+        with gr.Tab("Chat"):
+            chat_session_id = gr.State(None)
+            chatbot = gr.Chatbot(label="allotmint_research", height=480)
+            chat_message = gr.Textbox(
+                label="Message",
+                lines=2,
+                placeholder="How has my tech exposure changed this year, and why?",
+            )
+            with gr.Row():
+                chat_send = gr.Button("Send", variant="primary")
+                chat_new = gr.Button("New conversation")
+            with gr.Row():
+                chat_owner = gr.Dropdown(label="Account Owner", choices=[], allow_custom_value=False)
+                chat_lookback_days = gr.Number(label="Lookback days", precision=0)
+            chat_owner_error = gr.Markdown(value="", visible=False)
+            chat_llm_provider = gr.Dropdown(
+                label="LLM provider",
+                choices=[],
+                value=None,
+                info="Available choices are loaded from the research agent.",
+            )
+            with gr.Accordion("Advanced", open=False):
+                chat_url = gr.Textbox(label="allotmint-mcp URL", value=defaults["url"])
+                chat_research_url = gr.Textbox(
+                    label="research-agent URL", value=defaults["research_url"]
+                )
+                chat_timeout = gr.Number(label="Timeout (seconds)", value=180.0)
+                chat_skip_preflight = gr.Checkbox(label="Skip preflight checks", value=False)
+
+            chat_inputs = [
+                chat_message,
+                chatbot,
+                chat_session_id,
+                chat_owner,
+                chat_lookback_days,
+                chat_llm_provider,
+                chat_url,
+                chat_research_url,
+                chat_timeout,
+                chat_skip_preflight,
+            ]
+            chat_outputs = [chatbot, chat_session_id, chat_message]
+            chat_send.click(ui_chat, inputs=chat_inputs, outputs=chat_outputs)
+            chat_message.submit(ui_chat, inputs=chat_inputs, outputs=chat_outputs)
+            chat_new.click(ui_new_conversation, inputs=[], outputs=[chatbot, chat_session_id])
+            demo.load(
+                ui_load_llm_providers,
+                inputs=[chat_research_url, chat_timeout],
+                outputs=chat_llm_provider,
+            )
+            chat_research_url.change(
+                ui_load_llm_providers,
+                inputs=[chat_research_url, chat_timeout],
+                outputs=chat_llm_provider,
+            )
+            demo.load(
+                ui_account_owners,
+                inputs=[chat_url, chat_timeout],
+                outputs=[chat_owner, chat_owner_error],
             )
 
         with gr.Tab("List tools"):
