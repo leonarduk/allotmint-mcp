@@ -322,12 +322,20 @@ Returns the combined market overview, standalone movers, or index data.
     "action": {
       "type": "string",
       "enum": ["overview", "movers", "indices"]
+    },
+    "tickers": {
+      "type": "string",
+      "minLength": 1
     }
   },
   "required": ["action"],
   "additionalProperties": false
 }
 ```
+
+`tickers` is required for `movers` (comma-separated, e.g. `AZN.L,VOD.L`); the backend has no
+default watchlist, so calling `movers` without it returns a clear MCP tool error instead of a
+raw backend 400.
 
 ### `allotmint_portfolio`
 

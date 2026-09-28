@@ -128,7 +128,7 @@ Sources:
 [5]  document: news:NVDA:2026-05-14 (cosine distance 0.7598)
 [6]  tool_call: allotmint_instrument (action='news', ticker='ASML')
 [7]  tool_call: allotmint_instrument (action='news', ticker='NVDA')
-[8]  tool_call: allotmint_market (action='movers')
+[8]  tool_call: allotmint_market (action='movers', tickers='AZN.L,VOD.L')
 [9]  tool_call: allotmint_instrument (action='news', ticker='MSFT')
 [10] tool_call: allotmint_portfolio (action='exposure', owner='demo')
 ```
