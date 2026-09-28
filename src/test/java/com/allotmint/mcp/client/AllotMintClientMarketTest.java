@@ -44,15 +44,15 @@ class AllotMintClientMarketTest {
   }
 
   @Test
-  void marketMoversCallsTheStandaloneMoversEndpoint() {
+  void marketMoversCallsTheStandaloneMoversEndpointWithTickers() {
     server
-        .expect(requestTo("http://allotmint.test/movers"))
+        .expect(requestTo("http://allotmint.test/movers?tickers=AZN.L,VOD.L"))
         .andExpect(method(HttpMethod.GET))
         .andRespond(
             withSuccess(
                 "{\"gainers\":[{\"ticker\":\"AAA\"}],\"losers\":[]}", MediaType.APPLICATION_JSON));
 
-    Map<String, Object> response = client.marketMovers();
+    Map<String, Object> response = client.marketMovers("AZN.L,VOD.L");
 
     assertThat(response).containsOnlyKeys("gainers", "losers");
     server.verify();

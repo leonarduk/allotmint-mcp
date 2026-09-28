@@ -180,9 +180,20 @@ public class AllotMintClient {
     return getObjectMap("/market/overview");
   }
 
-  /** Returns the standalone gainers and losers response from {@code /movers}. */
-  public Map<String, Object> marketMovers() {
-    return getObjectMap("/movers");
+  /**
+   * Returns the standalone gainers and losers response for the given tickers via {@code GET
+   * /movers?tickers=...}. The backend requires this comma-separated list (see {@code
+   * backend/routes/movers.py}); there is no server-side default watchlist.
+   */
+  public Map<String, Object> marketMovers(String tickers) {
+    Map<String, Object> body =
+        restClient
+            .get()
+            .uri(builder -> builder.path("/movers").queryParam("tickers", tickers).build())
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, this::mapError)
+            .body(OBJECT_MAP);
+    return body == null ? Map.of() : body;
   }
 
   private Map<String, Object> getObjectMap(String path) {

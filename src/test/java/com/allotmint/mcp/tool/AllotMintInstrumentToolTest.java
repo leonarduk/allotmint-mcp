@@ -113,6 +113,43 @@ class AllotMintInstrumentToolTest {
   }
 
   @Test
+  void detailStillReturnsWhenNewsFails() {
+    Map<String, Object> instrument =
+        Map.of(
+            "ticker",
+            "VWRL.L",
+            "name",
+            "Vanguard FTSE All-World",
+            "positions",
+            List.of(Map.of("owner", "steve", "units", 10)));
+    when(client.instrumentDetail("VWRL.L")).thenReturn(instrument);
+    when(client.news("VWRL.L"))
+        .thenThrow(
+            new AllotMintApiException(429, "AllotMint backend returned 429: quota exceeded"));
+
+    Map<String, Object> structured =
+        structured(call(Map.of("action", "detail", "ticker", "VWRL.L")));
+
+    assertThat(structured).containsEntry("action", "detail").containsEntry("ticker", "VWRL.L");
+    assertThat(structured).containsEntry("name", "Vanguard FTSE All-World");
+    assertThat(structured.get("positions")).isEqualTo(instrument.get("positions"));
+    assertThat(structured.get("news")).isEqualTo(List.of());
+  }
+
+  @Test
+  void detailStillReturnsWhenNewsIsUnreachable() {
+    Map<String, Object> instrument = Map.of("ticker", "VWRL.L", "name", "Vanguard FTSE All-World");
+    when(client.instrumentDetail("VWRL.L")).thenReturn(instrument);
+    when(client.news("VWRL.L")).thenThrow(new RestClientException("connection refused"));
+
+    Map<String, Object> structured =
+        structured(call(Map.of("action", "detail", "ticker", "VWRL.L")));
+
+    assertThat(structured).containsEntry("action", "detail");
+    assertThat(structured.get("news")).isEqualTo(List.of());
+  }
+
+  @Test
   void pricesWithoutTickerReturnsError() {
     McpSchema.CallToolResult result = call(Map.of("action", "prices"));
 

@@ -4,6 +4,7 @@ import com.allotmint.mcp.client.AllotMintClient;
 import com.allotmint.mcp.exception.AllotMintApiException;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.client.RestClientException;
 
 import java.util.LinkedHashMap;
@@ -19,6 +20,7 @@ import static com.allotmint.mcp.tool.ToolArguments.optionalString;
  * tickers/names, {@code detail} merges price history + portfolio positions + recent news, {@code
  * prices} returns the latest quote, and {@code news} returns recent headlines alone.
  */
+@Slf4j
 public final class AllotMintInstrumentTool {
 
   static final String ACTION = "action";
@@ -138,7 +140,7 @@ public final class AllotMintInstrumentTool {
 
   private static Map<String, Object> detail(AllotMintClient client, String ticker) {
     Map<String, Object> instrument = client.instrumentDetail(ticker);
-    List<Map<String, Object>> news = client.news(ticker);
+    List<Map<String, Object>> news = fetchNewsOrEmpty(client, ticker);
 
     Map<String, Object> result = new LinkedHashMap<>();
     result.put("action", "detail");
@@ -146,6 +148,24 @@ public final class AllotMintInstrumentTool {
     result.putAll(instrument);
     result.put("news", news);
     return result;
+  }
+
+  /**
+   * News is a soft dependency of the detail action: the price/holdings data from {@link
+   * AllotMintClient#instrumentDetail(String)} is still useful on its own, so a news failure (e.g.
+   * backend news quota exceeded) is logged and swallowed here rather than failing the whole detail
+   * call.
+   */
+  private static List<Map<String, Object>> fetchNewsOrEmpty(AllotMintClient client, String ticker) {
+    try {
+      return client.news(ticker);
+    } catch (AllotMintApiException | RestClientException e) {
+      log.warn(
+          "AllotMint news lookup for {} failed; returning detail without news: {}",
+          ticker,
+          e.getMessage());
+      return List.of();
+    }
   }
 
   private static Map<String, Object> prices(AllotMintClient client, String ticker) {

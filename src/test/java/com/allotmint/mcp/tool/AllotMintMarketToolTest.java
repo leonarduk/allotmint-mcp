@@ -61,22 +61,85 @@ class AllotMintMarketToolTest {
 
     assertThat(result.structuredContent()).isEqualTo(overview);
     verify(client).marketOverview();
-    verify(client, never()).marketMovers();
+    verify(client, never()).marketMovers(org.mockito.ArgumentMatchers.anyString());
   }
 
   @Test
-  void moversReturnsTheStandaloneMoversResponse() {
+  void moversForwardsTickersAndReturnsTheStandaloneMoversResponse() {
     Map<String, Object> movers =
         Map.of(
-            "gainers", List.of(Map.of("ticker", "AAA", "change", 4.2)),
-            "losers", List.of(Map.of("ticker", "BBB", "change", -3.1)));
-    when(client.marketMovers()).thenReturn(movers);
+            "gainers", List.of(Map.of("ticker", "AZN.L", "change", 4.2)),
+            "losers", List.of(Map.of("ticker", "VOD.L", "change", -3.1)));
+    when(client.marketMovers("AZN.L,VOD.L")).thenReturn(movers);
 
-    McpSchema.CallToolResult result = call(AllotMintMarketTool.MOVERS);
+    McpSchema.CallToolResult result =
+        specification
+            .callHandler()
+            .apply(
+                null,
+                new McpSchema.CallToolRequest(
+                    "allotmint_market",
+                    Map.of(
+                        AllotMintMarketTool.ACTION,
+                        AllotMintMarketTool.MOVERS,
+                        AllotMintMarketTool.TICKERS,
+                        "AZN.L,VOD.L")));
 
     assertThat(result.structuredContent()).isEqualTo(movers);
-    verify(client).marketMovers();
+    verify(client).marketMovers("AZN.L,VOD.L");
     verify(client, never()).marketOverview();
+  }
+
+  @Test
+  void moversWithoutTickersReturnsAClearErrorWithoutCallingBackend() {
+    McpSchema.CallToolResult result = call(AllotMintMarketTool.MOVERS);
+
+    assertThat(result.isError()).isTrue();
+    assertThat(((McpSchema.TextContent) result.content().getFirst()).text())
+        .contains("tickers is required for the movers action");
+    verify(client, never()).marketMovers(org.mockito.ArgumentMatchers.anyString());
+  }
+
+  @Test
+  void moversWithBlankTickersReturnsAClearError() {
+    McpSchema.CallToolResult result =
+        specification
+            .callHandler()
+            .apply(
+                null,
+                new McpSchema.CallToolRequest(
+                    "allotmint_market",
+                    Map.of(
+                        AllotMintMarketTool.ACTION,
+                        AllotMintMarketTool.MOVERS,
+                        AllotMintMarketTool.TICKERS,
+                        "   ")));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(((McpSchema.TextContent) result.content().getFirst()).text())
+        .contains("tickers is required for the movers action");
+    verify(client, never()).marketMovers(org.mockito.ArgumentMatchers.anyString());
+  }
+
+  @Test
+  void moversWithEmptyStringTickersReturnsAClearErrorWithoutCallingBackend() {
+    McpSchema.CallToolResult result =
+        specification
+            .callHandler()
+            .apply(
+                null,
+                new McpSchema.CallToolRequest(
+                    "allotmint_market",
+                    Map.of(
+                        AllotMintMarketTool.ACTION,
+                        AllotMintMarketTool.MOVERS,
+                        AllotMintMarketTool.TICKERS,
+                        "")));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(((McpSchema.TextContent) result.content().getFirst()).text())
+        .contains("tickers is required for the movers action");
+    verify(client, never()).marketMovers(org.mockito.ArgumentMatchers.anyString());
   }
 
   @Test
@@ -93,7 +156,7 @@ class AllotMintMarketToolTest {
 
     assertThat(result.structuredContent()).isEqualTo(indexes);
     verify(client).marketOverview();
-    verify(client, never()).marketMovers();
+    verify(client, never()).marketMovers(org.mockito.ArgumentMatchers.anyString());
   }
 
   @Test

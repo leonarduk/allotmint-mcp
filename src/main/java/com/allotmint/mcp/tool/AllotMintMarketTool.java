@@ -4,8 +4,11 @@ import com.allotmint.mcp.client.AllotMintClient;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import static com.allotmint.mcp.tool.ToolArguments.optionalString;
 
 /** Provides market-wide context from the AllotMint backend. */
 public final class AllotMintMarketTool {
@@ -14,17 +17,35 @@ public final class AllotMintMarketTool {
   public static final String OVERVIEW = "overview";
   public static final String MOVERS = "movers";
   public static final String INDICES = "indices";
+  public static final String TICKERS = "tickers";
 
-  private static final Map<String, Object> INPUT_SCHEMA =
-      Map.of(
-          "type",
-          "object",
-          "properties",
-          Map.of(ACTION, Map.of("type", "string", "enum", List.of(OVERVIEW, MOVERS, INDICES))),
-          "required",
-          List.of(ACTION),
-          "additionalProperties",
-          false);
+  private static final Map<String, Object> INPUT_SCHEMA;
+
+  static {
+    Map<String, Object> properties = new LinkedHashMap<>();
+    properties.put(ACTION, Map.of("type", "string", "enum", List.of(OVERVIEW, MOVERS, INDICES)));
+    properties.put(
+        TICKERS,
+        Map.of(
+            "type",
+            "string",
+            "minLength",
+            1,
+            "description",
+            "Comma-separated tickers, e.g. 'AZN.L,VOD.L'. Required for the movers action; "
+                + "ignored otherwise."));
+
+    INPUT_SCHEMA =
+        Map.of(
+            "type",
+            "object",
+            "properties",
+            properties,
+            "required",
+            List.of(ACTION),
+            "additionalProperties",
+            false);
+  }
 
   private static final Map<String, Object> OUTPUT_SCHEMA =
       Map.of("type", "object", "additionalProperties", true);
@@ -35,7 +56,9 @@ public final class AllotMintMarketTool {
     McpSchema.Tool tool =
         McpSchema.Tool.builder("allotmint_market", INPUT_SCHEMA)
             .description(
-                "Returns an AllotMint market overview, movers, or index levels and changes")
+                "Returns an AllotMint market overview, movers, or index levels and changes. "
+                    + "The movers action requires tickers (comma-separated, e.g. 'AZN.L,VOD.L') "
+                    + "since the backend has no default watchlist to fall back to.")
             .outputSchema(OUTPUT_SCHEMA)
             .build();
 
@@ -43,11 +66,22 @@ public final class AllotMintMarketTool {
         .tool(tool)
         .callHandler(
             (exchange, request) -> {
-              String action = requireAction(request.arguments());
+              Map<String, Object> arguments = request.arguments();
+              String action = requireAction(arguments);
+
+              if (MOVERS.equals(action)) {
+                String tickers = optionalString(arguments, TICKERS);
+                if (tickers == null) {
+                  return error(
+                      "tickers is required for the movers action (comma-separated, e.g. "
+                          + "'AZN.L,VOD.L')");
+                }
+                return buildResult(action, client.marketMovers(tickers));
+              }
+
               Map<String, Object> result =
                   switch (action) {
                     case OVERVIEW -> client.marketOverview();
-                    case MOVERS -> client.marketMovers();
                     case INDICES -> extractIndices(client.marketOverview());
                     default ->
                         throw new IllegalArgumentException(
@@ -55,12 +89,20 @@ public final class AllotMintMarketTool {
                                 .formatted(action));
                   };
 
-              return McpSchema.CallToolResult.builder()
-                  .addTextContent("AllotMint market %s returned successfully".formatted(action))
-                  .structuredContent(result)
-                  .build();
+              return buildResult(action, result);
             })
         .build();
+  }
+
+  private static McpSchema.CallToolResult buildResult(String action, Map<String, Object> result) {
+    return McpSchema.CallToolResult.builder()
+        .addTextContent("AllotMint market %s returned successfully".formatted(action))
+        .structuredContent(result)
+        .build();
+  }
+
+  private static McpSchema.CallToolResult error(String message) {
+    return McpSchema.CallToolResult.builder().addTextContent(message).isError(true).build();
   }
 
   private static String requireAction(Map<String, Object> arguments) {
