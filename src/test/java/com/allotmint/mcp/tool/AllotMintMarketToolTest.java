@@ -122,6 +122,27 @@ class AllotMintMarketToolTest {
   }
 
   @Test
+  void moversWithEmptyStringTickersReturnsAClearErrorWithoutCallingBackend() {
+    McpSchema.CallToolResult result =
+        specification
+            .callHandler()
+            .apply(
+                null,
+                new McpSchema.CallToolRequest(
+                    "allotmint_market",
+                    Map.of(
+                        AllotMintMarketTool.ACTION,
+                        AllotMintMarketTool.MOVERS,
+                        AllotMintMarketTool.TICKERS,
+                        "")));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(((McpSchema.TextContent) result.content().getFirst()).text())
+        .contains("tickers is required for the movers action");
+    verify(client, never()).marketMovers(org.mockito.ArgumentMatchers.anyString());
+  }
+
+  @Test
   void indicesSlicesIndexesFromOneOverviewCall() {
     Map<String, Object> indexes = Map.of("S&P 500", Map.of("level", 5500, "change", -0.2));
     when(client.marketOverview())
