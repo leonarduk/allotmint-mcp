@@ -34,7 +34,7 @@ def test_startup_dependency_check_includes_mcp():
 
     requirements = ast.literal_eval(ensure_call.args[0])
 
-    assert requirements["mcp"] == "mcp>=1.9"
+    assert requirements["mcp"] == "mcp>=1.9,<3"
 
 
 @pytest.fixture

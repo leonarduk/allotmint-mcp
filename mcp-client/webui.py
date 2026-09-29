@@ -38,7 +38,7 @@ import deps
 # imports it lazily when a browser request opens a session (issue #449).
 deps.ensure_python_packages(
     {
-        "mcp": "mcp>=1.9",
+        "mcp": "mcp>=1.9,<3",
         "fastapi": "fastapi>=0.115",
         "pydantic": "pydantic",
         "uvicorn": "uvicorn[standard]>=0.32",

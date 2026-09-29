@@ -40,6 +40,10 @@ changes and required migrations explicitly.
 
 ### Changed
 
+- The Python `mcp` SDK is capped below 3 (`mcp>=1.9,<3`) in the mcp-client and research-agent
+  requirements and the UIs' self-install specs, so an unannounced major release can't reach an
+  install through `pip install --upgrade` or the `start-ui` launcher. 2.x is still allowed and is
+  what currently resolves.
 - `client.py`'s interactive REPL (`python client.py` with no question argument) now generates
   one `session_id` (#548) per run and reuses it for every question asked before quitting, so a
   follow-up question resolves against earlier turns instead of starting fresh each time. A
