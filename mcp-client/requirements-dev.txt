@@ -2,7 +2,7 @@
 mcp>=1.9,<3
 fastapi>=0.141.1
 uvicorn[standard]>=0.32
-gradio>=6.15.0,<7.0
+gradio>=6.28.0,<7.0
 huggingface_hub<3.0
 pytest>=8.0
 pytest-asyncio>=1.4.0
