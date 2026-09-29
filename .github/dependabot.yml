@@ -28,3 +28,10 @@ updates:
     schedule:
       interval: "weekly"
     versioning-strategy: "increase"
+    # One PR per directory per week for routine minor/patch bumps. Majors stay
+    # out of the group so a release past a cap (mcp 3.0) gets its own PR, and
+    # groups default to version updates only, so security fixes keep theirs.
+    groups:
+      python-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
