@@ -1,5 +1,5 @@
 # Test dependencies only.
-mcp>=1.9,<3
+mcp>=2.2.0,<3
 fastapi>=0.141.1
 uvicorn[standard]>=0.32
 gradio>=6.15.0,<7.0
