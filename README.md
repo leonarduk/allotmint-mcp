@@ -99,6 +99,24 @@ java -jar target/allotmint-mcp-server.jar
 
 Set `ALLOTMINT_API_BASE` to use a backend other than `http://localhost:8000`.
 
+### One-command UI launcher
+
+To bring up the Gradio UI (`mcp-client/gradio_ui.py`) with everything it needs, updated first:
+
+```powershell
+scripts\start-ui.ps1        # Windows
+```
+
+```bash
+scripts/start-ui.sh         # macOS / Linux
+```
+
+It updates `mcp-client/.venv` from `mcp-client/requirements.txt`, rebuilds the jar if `pom.xml` or
+`src/` changed (restarting a server an earlier `--start-deps` run left on the old jar), refreshes
+the research-agent Docker image, then runs the UI with `--start-deps` on
+[http://127.0.0.1:8601](http://127.0.0.1:8601). The AllotMint backend itself is not started. See
+the [mcp-client README](mcp-client/README.md#one-command-launcher) for the flags.
+
 ### Local environment configuration
 
 For local development, copy the committed template and edit the values you need:

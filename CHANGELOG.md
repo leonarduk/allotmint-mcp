@@ -16,6 +16,9 @@ changes and required migrations explicitly.
 
 ### Added
 
+- `scripts/start-ui.ps1` / `scripts/start-ui.sh`: one-command launcher for the Gradio UI that
+  updates the mcp-client venv, rebuilds a stale jar and the research-agent image, then starts
+  the UI with `--start-deps`.
 - `allotmint_research` accepts an optional `session_id` to hold a multi-turn conversation
   across separate calls (#548): the research-agent sidecar threads the prior turns into
   the agent run via `pydantic_ai`'s `message_history`, keyed by `session_id`, in-memory

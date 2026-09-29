@@ -155,6 +155,38 @@ On startup, the script checks for its Gradio and MCP Python packages and install
 python gradio_ui.py
 ```
 
+### One-command launcher
+
+`scripts/start-ui.ps1` (Windows) and `scripts/start-ui.sh` (macOS/Linux) wrap the whole sequence
+so a stale checkout goes to a working UI in one step. From the repo root:
+
+1. `--pull` / `-Pull` only: `git pull --ff-only`.
+2. Stops a previous `gradio_ui.py` still holding the port (anything else on it is left alone).
+3. Creates `mcp-client/.venv` if missing (preferring Python 3.12, what CI uses) and runs
+   `pip install --upgrade -r requirements.txt`.
+4. Rebuilds `target/allotmint-mcp-server.jar` with the Maven wrapper (needs Java 25+) when it is
+   missing or older than `pom.xml`/`src/`. If it was rebuilt and a server that `--start-deps`
+   started is still up on `:8080`, that server is stopped via `stop_deps.py` so it comes back on the
+   new jar; one you started by hand is left running, with a warning.
+5. With Docker running, `docker compose --profile research build research-agent` (cached no-op
+   unless `research-agent/` changed) and recreates the container if it is already running.
+6. Runs `gradio_ui.py --start-deps` (see [Auto-starting dependencies](#auto-starting-dependencies)).
+   If `ALLOTMINT_RESEARCH_LLM_PROVIDER` (environment or `.env`) names a non-Ollama provider and
+   `ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS` does not offer `ollama`, Ollama is not started.
+
+| `start-ui.sh` | `start-ui.ps1` | Default | Purpose |
+|---|---|---|---|
+| `--host` | `-BindHost` | `127.0.0.1` | Interface to bind |
+| `--port` | `-Port` | `8601` | UI port |
+| `--allow-remote` | `-AllowRemote` | | Required for a non-loopback host; the UI has no login |
+| `--pull` | `-Pull` | | `git pull --ff-only` first |
+| `--python` | `-Python` | | Interpreter for a new venv |
+| `--recreate` | `-Recreate` | | Delete and rebuild the venv |
+| `--skip-install` | `-SkipInstall` | | Skip pip |
+| `--skip-build` | `-SkipBuild` | | Skip the jar and Docker image builds |
+| `--no-start-deps` | `-NoStartDeps` | | Launch the UI only |
+| `--start-timeout` | `-StartTimeout` | `180` | Seconds per started dependency |
+
 Then open [http://localhost:8601](http://localhost:8601). The page has four tabs:
 
 - **Ask allotmint_research** — question, owner, lookback days, and an LLM provider dropdown populated from the running research agent, plus an *Advanced* section for the allotmint-mcp/research-agent URLs, timeout, and skipping preflight — mirrors `python client.py "..." --owner ...`. Each question here is standalone (no `session_id`), which is deliberate: it's the tab for testing one question at a time in isolation, e.g. checking how a specific owner/lookback/provider combination answers without any earlier turns coloring the result. Set `ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS` to a comma-separated allowlist (for example `ollama,deepseek`); only advertised providers can be selected per question. Alternative providers can use provider-specific settings such as `ALLOTMINT_RESEARCH_DEEPSEEK_API_KEY`, `ALLOTMINT_RESEARCH_DEEPSEEK_MODEL`, and `ALLOTMINT_RESEARCH_DEEPSEEK_BASE_URL`, leaving the local default's settings unchanged.
