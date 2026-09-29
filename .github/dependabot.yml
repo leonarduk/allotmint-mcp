@@ -10,19 +10,14 @@ updates:
     schedule:
       interval: "weekly"
 
-  # Python sidecars. Their requirements are open ranges (e.g. `mcp>=1.9,<3`),
-  # so the default strategy would open a PR to raise the floor on every
-  # release. increase-if-necessary only opens one when a release falls outside
-  # the allowed range - i.e. a new major like mcp 3.0 that the cap is holding
-  # back.
-  #
-  # The strategy applies to security updates too, so a fix that the range
-  # already allows (a patched mcp 2.x) raises no PR: there is no lockfile to
-  # bump. Fresh installs, CI, the Docker build and scripts/start-ui.*
-  # (pip install --upgrade) pick the fix up anyway; only a long-lived venv
-  # installed without --upgrade keeps the old version. Switch to "increase"
-  # if in-range security fixes must raise the floor, at the cost of a PR per
-  # upstream release.
+  # Python sidecars. Their requirements are open ranges (e.g. `mcp>=1.9,<3`)
+  # with no lockfile. "increase" raises the lower bound to each new release,
+  # so a security fix the range already allows, e.g. a patched mcp 2.x, still
+  # gets a PR that lifts the floor past the vulnerable versions; a release
+  # outside the cap (mcp 3.0) gets a PR too. The cost is one PR per upstream
+  # release;
+  # "increase-if-necessary" would cut that to out-of-range releases only
+  # (a new major like mcp 3.0) but let in-range security fixes pass silently.
   #
   # scripts/requirements-dev.txt is left out: it is a private git dependency
   # that update-cicaid.yml already bumps.
@@ -32,4 +27,4 @@ updates:
       - "/research-agent"
     schedule:
       interval: "weekly"
-    versioning-strategy: "increase-if-necessary"
+    versioning-strategy: "increase"
