@@ -9,3 +9,17 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  # Python sidecars. Their requirements are open ranges (e.g. `mcp>=1.9,<3`),
+  # so the default strategy would open a PR to raise the floor on every
+  # release. increase-if-necessary only opens one when a release falls outside
+  # the allowed range - i.e. a new major like mcp 3.0 that the cap is holding
+  # back - which is the signal worth a PR. scripts/requirements-dev.txt is left
+  # out: it is a private git dependency that update-cicaid.yml already bumps.
+  - package-ecosystem: "pip"
+    directories:
+      - "/mcp-client"
+      - "/research-agent"
+    schedule:
+      interval: "weekly"
+    versioning-strategy: "increase-if-necessary"
