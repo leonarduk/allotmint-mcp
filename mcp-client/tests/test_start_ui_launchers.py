@@ -214,6 +214,25 @@ def test_the_provider_is_read_from_a_crlf_dotenv_with_quotes_and_a_comment(launc
     assert "--start-deps" not in launch_line(result)
 
 
+def test_a_provider_merely_named_like_ollama_does_not_count_as_ollama(launcher, stub_repo):
+    stub_venv(stub_repo)
+    env = {
+        "ALLOTMINT_RESEARCH_LLM_PROVIDER": "deepseek",
+        "ALLOTMINT_RESEARCH_AVAILABLE_LLM_PROVIDERS": "deepseek,ollama-cloud",
+    }
+    result = run(launcher, stub_repo, env=env, **OFFLINE)
+
+    assert "--start-deps" not in launch_line(result)
+
+
+def test_a_byte_order_mark_does_not_hide_the_first_dotenv_key(launcher, stub_repo):
+    stub_venv(stub_repo)
+    (stub_repo / ".env").write_bytes(b"\xef\xbb\xbfALLOTMINT_RESEARCH_LLM_PROVIDER=deepseek\n")
+    result = run(launcher, stub_repo, **OFFLINE)
+
+    assert "--start-deps" not in launch_line(result)
+
+
 def test_the_environment_wins_over_dotenv(launcher, stub_repo):
     stub_venv(stub_repo)
     (stub_repo / ".env").write_text("ALLOTMINT_RESEARCH_LLM_PROVIDER=deepseek\n", encoding="utf-8")

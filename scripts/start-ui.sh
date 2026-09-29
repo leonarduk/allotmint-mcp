@@ -152,6 +152,7 @@ config_value() {
     [ -f "$repo_root/.env" ] || return 0
     while IFS= read -r line || [ -n "$line" ]; do
         line="${line%$'\r'}"
+        line="${line#$'\xEF\xBB\xBF'}"                # Notepad's UTF-8 BOM
         line="${line#"${line%%[![:space:]]*}"}"
         line="${line#export }"
         case "$line" in "$key="*) value="${line#*=}" ;; esac
@@ -174,19 +175,23 @@ fi
 # --- 2. a previous UI on the port -------------------------------------------
 
 pids="$(listening_pids "$port")"
-if [ -n "$pids" ]; then
-    for pid in $pids; do
-        cmd="$(ps -o command= -p "$pid" 2>/dev/null || true)"
-        case "$cmd" in
-            *gradio_ui*)
-                step "Stopping a previous gradio_ui.py (pid $pid) still on port $port"
-                kill "$pid" 2>/dev/null || true
-                ;;
-            *)
-                note "pid $pid holds port $port but isn't gradio_ui.py ($cmd) - leaving it running."
-                ;;
-        esac
-    done
+stopped=""
+for pid in $pids; do
+    cmd="$(ps -o command= -p "$pid" 2>/dev/null || true)"
+    case "$cmd" in
+        *gradio_ui*)
+            step "Stopping a previous gradio_ui.py (pid $pid) still on port $port"
+            kill "$pid" 2>/dev/null || true
+            stopped="$stopped $pid"
+            ;;
+        *)
+            note "pid $pid holds port $port but isn't gradio_ui.py ($cmd) - leaving it running."
+            ;;
+    esac
+done
+if [ -n "$stopped" ] && ! wait_port_closed "$port"; then
+    # Same end state as the .ps1's Stop-Process -Force.
+    for pid in $stopped; do kill -9 "$pid" 2>/dev/null || true; done
     wait_port_closed "$port" || true
 fi
 
