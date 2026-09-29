@@ -134,7 +134,7 @@
 			<artifactId>lombok</artifactId>
 			<scope>provided</scope>
 			<!-- Version needed for Java 25 -->
-			<version>1.18.46</version>
+			<version>1.18.48</version>
 		</dependency>
 
 		<!-- JSON encoder for logback-spring.xml, toggled at runtime via
@@ -184,7 +184,7 @@
 						<path>
 							<groupId>org.projectlombok</groupId>
 							<artifactId>lombok</artifactId>
-							<version>1.18.46</version>
+							<version>1.18.48</version>
 						</path>
 					</annotationProcessorPaths>
 				</configuration>
