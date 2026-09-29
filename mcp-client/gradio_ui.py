@@ -35,7 +35,7 @@ import deps
 # effect.
 PYTHON_REQUIREMENTS = {
     "gradio": "gradio>=6.15.0,<7.0",
-    "mcp": "mcp>=1.9",
+    "mcp": "mcp>=1.9,<3",
 }
 if __name__ == "__main__":
     deps.ensure_python_packages(PYTHON_REQUIREMENTS)
