@@ -1,6 +1,7 @@
 package com.allotmint.mcp.config;
 
 import com.allotmint.mcp.client.AllotMintClient;
+import com.allotmint.mcp.client.GitHubClient;
 import com.allotmint.mcp.client.ResearchAgentClient;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -23,7 +25,15 @@ class StdioMcpServerConfigTest {
       new ApplicationContextRunner()
           .withUserConfiguration(StdioMcpServerConfig.class, McpJsonConfig.class)
           .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class))
-          .withBean(ResearchAgentClient.class, StdioMcpServerConfigTest::researchAgentClient);
+          .withBean(ResearchAgentClient.class, StdioMcpServerConfigTest::researchAgentClient)
+          .withBean(GitHubClient.class, StdioMcpServerConfigTest::gitHubClient);
+
+  private static GitHubClient gitHubClient() {
+    GitHubClient client = mock(GitHubClient.class);
+    when(client.repo()).thenReturn("octo/tracker");
+    when(client.validRepo()).thenReturn(true);
+    return client;
+  }
 
   private static ResearchAgentClient researchAgentClient() {
     ResearchAgentClient client = mock(ResearchAgentClient.class);
@@ -95,6 +105,7 @@ class StdioMcpServerConfigTest {
         .withUserConfiguration(StdioMcpServerConfig.class, McpJsonConfig.class)
         .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class))
         .withBean(ResearchAgentClient.class, () -> unconfigured)
+        .withBean(GitHubClient.class, StdioMcpServerConfigTest::gitHubClient)
         .withPropertyValues("allotmint.mcp.research.enabled=true")
         .run(context -> assertThat(context).hasFailed());
   }
@@ -110,7 +121,15 @@ class StdioMcpServerConfigTest {
   void selectsOnlyTheAlwaysOnToolsWhenEveryOptionalFeatureIsDisabled() {
     List<McpServerFeatures.SyncToolSpecification> tools =
         StdioMcpServerConfig.selectTools(
-            mock(AllotMintClient.class), researchAgentClient(), false, "", false, false, false);
+            mock(AllotMintClient.class),
+            researchAgentClient(),
+            gitHubClient(),
+            false,
+            "",
+            false,
+            false,
+            false,
+            false);
 
     assertThat(tools)
         .extracting(t -> t.tool().name())
@@ -128,7 +147,15 @@ class StdioMcpServerConfigTest {
   void addsTheDataQualityToolWhenDataQualityIsEnabled() {
     List<McpServerFeatures.SyncToolSpecification> tools =
         StdioMcpServerConfig.selectTools(
-            mock(AllotMintClient.class), researchAgentClient(), false, "", false, true, false);
+            mock(AllotMintClient.class),
+            researchAgentClient(),
+            gitHubClient(),
+            false,
+            "",
+            false,
+            true,
+            false,
+            false);
 
     assertThat(tools).extracting(t -> t.tool().name()).contains("allotmint_data_quality");
   }
@@ -137,7 +164,15 @@ class StdioMcpServerConfigTest {
   void addsTheApplyReconciliationToolOnlyWhenWriteIsEnabled() {
     List<McpServerFeatures.SyncToolSpecification> tools =
         StdioMcpServerConfig.selectTools(
-            mock(AllotMintClient.class), researchAgentClient(), false, "", false, false, true);
+            mock(AllotMintClient.class),
+            researchAgentClient(),
+            gitHubClient(),
+            false,
+            "",
+            false,
+            false,
+            true,
+            false);
 
     assertThat(tools).extracting(t -> t.tool().name()).contains("allotmint_apply_reconciliation");
   }
@@ -148,8 +183,10 @@ class StdioMcpServerConfigTest {
         StdioMcpServerConfig.selectTools(
             mock(AllotMintClient.class),
             researchAgentClient(),
+            gitHubClient(),
             true,
             filesRoot.toString(),
+            false,
             false,
             false,
             false);
@@ -161,8 +198,111 @@ class StdioMcpServerConfigTest {
   void addsTheResearchToolWhenResearchIsEnabled() {
     List<McpServerFeatures.SyncToolSpecification> tools =
         StdioMcpServerConfig.selectTools(
-            mock(AllotMintClient.class), researchAgentClient(), false, "", true, false, false);
+            mock(AllotMintClient.class),
+            researchAgentClient(),
+            gitHubClient(),
+            false,
+            "",
+            true,
+            false,
+            false,
+            false);
 
     assertThat(tools).extracting(t -> t.tool().name()).contains("allotmint_research");
+  }
+
+  @Test
+  void addsTheFreshnessToolAlongsideDataQualityAndOmitsItWhenDataQualityIsDisabled() {
+    List<McpServerFeatures.SyncToolSpecification> enabled =
+        StdioMcpServerConfig.selectTools(
+            mock(AllotMintClient.class),
+            researchAgentClient(),
+            gitHubClient(),
+            false,
+            "",
+            false,
+            true,
+            false,
+            false);
+    List<McpServerFeatures.SyncToolSpecification> disabled =
+        StdioMcpServerConfig.selectTools(
+            mock(AllotMintClient.class),
+            researchAgentClient(),
+            gitHubClient(),
+            false,
+            "",
+            false,
+            false,
+            false,
+            false);
+
+    assertThat(enabled).extracting(t -> t.tool().name()).contains("allotmint_data_freshness");
+    assertThat(disabled)
+        .extracting(t -> t.tool().name())
+        .doesNotContain("allotmint_data_freshness");
+  }
+
+  @Test
+  void addsTheCreateIssueToolOnlyWhenIssuesAreEnabled() {
+    List<McpServerFeatures.SyncToolSpecification> enabled =
+        StdioMcpServerConfig.selectTools(
+            mock(AllotMintClient.class),
+            researchAgentClient(),
+            gitHubClient(),
+            false,
+            "",
+            false,
+            false,
+            false,
+            true);
+    List<McpServerFeatures.SyncToolSpecification> disabled =
+        StdioMcpServerConfig.selectTools(
+            mock(AllotMintClient.class),
+            researchAgentClient(),
+            gitHubClient(),
+            false,
+            "",
+            false,
+            true,
+            true,
+            false);
+
+    assertThat(enabled).extracting(t -> t.tool().name()).contains("allotmint_create_issue");
+    assertThat(disabled).extracting(t -> t.tool().name()).doesNotContain("allotmint_create_issue");
+  }
+
+  @Test
+  void failsToSelectTheCreateIssueToolWhenTheRepositoryIsNotConfigured() {
+    GitHubClient unconfigured = mock(GitHubClient.class);
+    when(unconfigured.validRepo()).thenReturn(false);
+
+    assertThatThrownBy(
+            () ->
+                StdioMcpServerConfig.selectTools(
+                    mock(AllotMintClient.class),
+                    researchAgentClient(),
+                    unconfigured,
+                    false,
+                    "",
+                    false,
+                    false,
+                    false,
+                    true))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("ALLOTMINT_MCP_GITHUB_REPO");
+  }
+
+  @Test
+  void failsToStartWhenIssuesEnabledButRepositoryIsInvalid() {
+    GitHubClient unconfigured = mock(GitHubClient.class);
+    when(unconfigured.validRepo()).thenReturn(false);
+
+    new ApplicationContextRunner()
+        .withUserConfiguration(StdioMcpServerConfig.class, McpJsonConfig.class)
+        .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class))
+        .withBean(ResearchAgentClient.class, StdioMcpServerConfigTest::researchAgentClient)
+        .withBean(GitHubClient.class, () -> unconfigured)
+        .withPropertyValues("allotmint.mcp.issues.enabled=true")
+        .run(context -> assertThat(context).hasFailed());
   }
 }

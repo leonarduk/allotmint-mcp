@@ -71,7 +71,8 @@ class McpHttpTransportIntegrationTest {
             "allotmint_owners",
             "allotmint_portfolio",
             "allotmint_reconcile",
-            "allotmint_data_quality");
+            "allotmint_data_quality",
+            "allotmint_data_freshness");
 
     McpSchema.CallToolResult result =
         client.callTool(
