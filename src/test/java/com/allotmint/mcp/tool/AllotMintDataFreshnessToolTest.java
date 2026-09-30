@@ -97,22 +97,58 @@ class AllotMintDataFreshnessToolTest {
     assertThat(content).containsEntry("min_age_days", 7);
     assertThat(content.get("as_of")).isEqualTo(java.time.LocalDate.now().toString());
     assertThat(rows(content, "stale")).extracting(r -> r.get("ticker")).containsExactly("OLD");
+    assertThat(rows(content, "future_dated"))
+        .extracting(r -> r.get("ticker"))
+        .containsExactly("NEW");
   }
 
   @Test
-  void zeroThresholdIncludesSeriesUpdatedTodayButNotFutureDatedOnes() {
+  void zeroThresholdIncludesSeriesUpdatedTodayAndReportsFutureDatedOnesSeparately() {
     when(client.dataQualitySeries())
         .thenReturn(
             series(
                 position("TODAY", "L", AS_OF),
                 position("FUTURE", "L", "2026-10-05"),
+                position("FARFUT", "N", "2026-11-01"),
                 position("YESTERDAY", "L", "2026-09-29")));
 
     Map<String, Object> content = structured(call(Map.of("min_age_days", 0, "as_of", AS_OF)));
 
+    assertThat(content).containsEntry("count", 2);
     assertThat(rows(content, "stale"))
         .extracting(r -> r.get("ticker"))
         .containsExactly("YESTERDAY", "TODAY");
+    assertThat(rows(content, "no_data")).isEmpty();
+    Map<String, Object> far = new LinkedHashMap<>();
+    far.put("ticker", "FARFUT");
+    far.put("exchange", "N");
+    far.put("last_date", "2026-11-01");
+    far.put("days_ahead", 32L);
+    Map<String, Object> near = new LinkedHashMap<>();
+    near.put("ticker", "FUTURE");
+    near.put("exchange", "L");
+    near.put("last_date", "2026-10-05");
+    near.put("days_ahead", 5L);
+    assertThat(rows(content, "future_dated")).containsExactly(far, near);
+  }
+
+  @Test
+  void everySeriesLandsInExactlyOneBucketOrIsBelowTheThreshold() {
+    when(client.dataQualitySeries())
+        .thenReturn(
+            series(
+                position("STALE", "L", "2026-09-01"),
+                position("FRESH", "L", "2026-09-29"),
+                position("NODATA", "L", null),
+                position("FUTURE", "L", "2027-01-01")));
+
+    Map<String, Object> content = structured(call(Map.of("as_of", AS_OF)));
+
+    assertThat(rows(content, "stale")).extracting(r -> r.get("ticker")).containsExactly("STALE");
+    assertThat(rows(content, "no_data")).extracting(r -> r.get("ticker")).containsExactly("NODATA");
+    assertThat(rows(content, "future_dated"))
+        .extracting(r -> r.get("ticker"))
+        .containsExactly("FUTURE");
   }
 
   @Test

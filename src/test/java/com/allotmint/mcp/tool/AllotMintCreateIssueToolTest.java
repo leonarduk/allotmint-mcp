@@ -208,6 +208,22 @@ class AllotMintCreateIssueToolTest {
   }
 
   @Test
+  void doesNotReportSuccessForAnUnexpectedGitHubResponse() {
+    for (Map<String, Object> response :
+        List.of(
+            Map.<String, Object>of(),
+            Map.<String, Object>of("number", 1),
+            Map.<String, Object>of("html_url", "https://github.com/octo/tracker/issues/1"))) {
+      when(client.createIssue(anyString(), anyString(), anyList())).thenReturn(response);
+
+      McpSchema.CallToolResult result = call(Map.of("title", "t", "confirm", true));
+
+      assertThat(result.isError()).as("%s", response).isEqualTo(Boolean.TRUE);
+      assertThat(text(result)).contains("unexpected response").contains("octo/tracker");
+    }
+  }
+
+  @Test
   void surfacesGitHubApiErrorsAsToolErrors() {
     when(client.createIssue(anyString(), anyString(), anyList()))
         .thenThrow(new AllotMintApiException(404, "GitHub returned 404: repository not found"));

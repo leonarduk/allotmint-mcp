@@ -519,8 +519,10 @@ arithmetic and ordering itself so the calling model does not have to.
 - `as_of` — reference date, `YYYY-MM-DD`; defaults to today.
 
 The result has `as_of`, `min_age_days`, `count`, `truncated`, `stale` (each row: `ticker`,
-`exchange`, `last_date`, `days_since_last_update`, most stale first) and `no_data` (series with a
-missing or unparseable `last_date`, which are reported rather than dropped). If `truncated` is
+`exchange`, `last_date`, `days_since_last_update`, most stale first), `no_data` (series with a
+missing or unparseable `last_date`) and `future_dated` (series whose `last_date` is after `as_of`,
+each with `days_ahead`; usually clock skew or bad data). `count` is the number of `stale` series
+only, not the total across the three lists. Nothing is silently dropped. If `truncated` is
 `true` the backend cut the series list short, so an empty `stale` list is not proof that nothing
 is stale.
 

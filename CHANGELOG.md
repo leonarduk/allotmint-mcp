@@ -18,8 +18,8 @@ changes and required migrations explicitly.
 
 - `allotmint_data_freshness` tool (#763): read-only report of cached series whose latest data
   point is at least `min_age_days` (default 7) calendar days old, most stale first, with
-  `last_date` and `days_since_last_update`. Series with no data are listed under `no_data` and the
-  backend's `truncated` flag is passed through. Registered with `allotmint_data_quality` under
+  `last_date` and `days_since_last_update`. Series with no usable `last_date` are listed under `no_data`, series dated after
+  the reference date under `future_dated`, and the backend's `truncated` flag is passed through. Registered with `allotmint_data_quality` under
   `ALLOTMINT_MCP_DATA_QUALITY_ENABLED` (default on), so existing deployments gain the tool on
   upgrade; no configuration is required. Staleness is calendar-day based, not business-day aware.
 - `allotmint_create_issue` tool (#764): files a GitHub issue from an MCP client. **Opt-in and off

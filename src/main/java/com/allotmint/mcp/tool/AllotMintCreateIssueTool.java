@@ -156,6 +156,14 @@ public final class AllotMintCreateIssueTool {
       Map<String, Object> created =
           client.createIssue(title, body == null ? FOOTER.stripLeading() : body + FOOTER, labels);
 
+      if (created.get("number") == null || !(created.get("html_url") instanceof String)) {
+        return error(
+            "GitHub returned an unexpected response, so it is unclear whether the issue was"
+                + " created. Check "
+                + client.repo()
+                + " before retrying, to avoid a duplicate.");
+      }
+
       Map<String, Object> result = new LinkedHashMap<>();
       result.put("repo", client.repo());
       result.put("number", created.get("number"));

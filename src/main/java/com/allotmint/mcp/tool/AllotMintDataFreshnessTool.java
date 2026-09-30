@@ -23,8 +23,9 @@ import static com.allotmint.mcp.tool.ToolArguments.optionalString;
  * /data-quality/timeseries}), so the age arithmetic and ordering are done here rather than left to
  * the calling model.
  *
- * <p>Staleness is measured in calendar days. A series with no {@code last_date} (empty cache) is
- * reported separately under {@code no_data} rather than dropped.
+ * <p>Staleness is measured in calendar days. Nothing is silently dropped: a series with no usable
+ * {@code last_date} is reported under {@code no_data}, and one whose {@code last_date} is after the
+ * reference date (clock skew or bad data) under {@code future_dated}.
  */
 public final class AllotMintDataFreshnessTool {
 
@@ -65,9 +66,11 @@ public final class AllotMintDataFreshnessTool {
             .description(
                 "AllotMint data freshness. Lists cached price series that have not updated for "
                     + "min_age_days or more (default 7), most stale first, with each series' "
-                    + "last_date and days_since_last_update. Series with no data are listed "
-                    + "separately under no_data. Check truncated: when true the backend cut the "
-                    + "series list short, so the result may be incomplete. Read-only.")
+                    + "last_date and days_since_last_update; count is the number of stale series. "
+                    + "Series with no usable last_date are listed under no_data, and series "
+                    + "dated after the reference date under future_dated. Check truncated: when "
+                    + "true the backend cut the series list short, so the result may be "
+                    + "incomplete. Read-only.")
             .build();
 
     return McpServerFeatures.SyncToolSpecification.builder()
@@ -143,6 +146,7 @@ public final class AllotMintDataFreshnessTool {
       Map<String, Object> series, int minAgeDays, LocalDate asOf) {
     List<Map<String, Object>> stale = new ArrayList<>();
     List<Map<String, Object>> noData = new ArrayList<>();
+    List<Map<String, Object>> futureDated = new ArrayList<>();
 
     if (series.get("positions") instanceof List<?> positions) {
       for (Object position : positions) {
@@ -161,7 +165,11 @@ public final class AllotMintDataFreshnessTool {
           continue;
         }
         long age = ChronoUnit.DAYS.between(lastDate, asOf);
-        if (age >= minAgeDays) {
+        if (age < 0) {
+          entry.put("last_date", lastDate.toString());
+          entry.put("days_ahead", -age);
+          futureDated.add(entry);
+        } else if (age >= minAgeDays) {
           entry.put("last_date", lastDate.toString());
           entry.put("days_since_last_update", age);
           stale.add(entry);
@@ -175,6 +183,12 @@ public final class AllotMintDataFreshnessTool {
             .thenComparing(e -> String.valueOf(e.get("ticker")))
             .thenComparing(e -> String.valueOf(e.get("exchange"))));
 
+    futureDated.sort(
+        Comparator.<Map<String, Object>>comparingLong(e -> (Long) e.get("days_ahead"))
+            .reversed()
+            .thenComparing(e -> String.valueOf(e.get("ticker")))
+            .thenComparing(e -> String.valueOf(e.get("exchange"))));
+
     Map<String, Object> result = new LinkedHashMap<>();
     result.put("as_of", asOf.toString());
     result.put("min_age_days", minAgeDays);
@@ -182,6 +196,7 @@ public final class AllotMintDataFreshnessTool {
     result.put("count", stale.size());
     result.put("stale", stale);
     result.put("no_data", noData);
+    result.put("future_dated", futureDated);
     return result;
   }
 
