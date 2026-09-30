@@ -1,8 +1,11 @@
 package com.allotmint.mcp.config;
 
 import com.allotmint.mcp.client.AllotMintClient;
+import com.allotmint.mcp.client.GitHubClient;
 import com.allotmint.mcp.client.ResearchAgentClient;
 import com.allotmint.mcp.tool.AllotMintApplyReconciliationTool;
+import com.allotmint.mcp.tool.AllotMintCreateIssueTool;
+import com.allotmint.mcp.tool.AllotMintDataFreshnessTool;
 import com.allotmint.mcp.tool.AllotMintDataQualityTool;
 import com.allotmint.mcp.tool.AllotMintFilesTool;
 import com.allotmint.mcp.tool.AllotMintHealthTool;
@@ -61,11 +64,13 @@ public class McpServerConfig {
       WebMvcStreamableServerTransportProvider transportProvider,
       AllotMintClient allotMintClient,
       ResearchAgentClient researchAgentClient,
+      GitHubClient gitHubClient,
       @Value("${allotmint.mcp.files.enabled:false}") boolean filesEnabled,
       @Value("${allotmint.mcp.files.root:}") String filesRoot,
       @Value("${allotmint.mcp.research.enabled:false}") boolean researchEnabled,
       @Value("${allotmint.mcp.data-quality.enabled:true}") boolean dataQualityEnabled,
-      @Value("${allotmint.mcp.write.enabled:false}") boolean writeEnabled) {
+      @Value("${allotmint.mcp.write.enabled:false}") boolean writeEnabled,
+      @Value("${allotmint.mcp.issues.enabled:false}") boolean issuesEnabled) {
     List<McpServerFeatures.SyncToolSpecification> tools = new ArrayList<>();
     tools.add(EchoTool.specification());
     tools.add(AllotMintHealthTool.specification(allotMintClient));
@@ -77,6 +82,7 @@ public class McpServerConfig {
 
     if (dataQualityEnabled) {
       tools.add(AllotMintDataQualityTool.specification(allotMintClient, writeEnabled));
+      tools.add(AllotMintDataFreshnessTool.specification(allotMintClient));
     }
 
     if (writeEnabled) {
@@ -88,6 +94,9 @@ public class McpServerConfig {
     }
     if (researchEnabled) {
       tools.add(AllotMintResearchTool.specification(researchAgentClient));
+    }
+    if (issuesEnabled) {
+      tools.add(AllotMintCreateIssueTool.specification(gitHubClient));
     }
 
     return McpServer.sync(transportProvider)

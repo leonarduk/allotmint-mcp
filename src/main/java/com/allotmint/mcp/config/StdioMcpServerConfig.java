@@ -1,8 +1,11 @@
 package com.allotmint.mcp.config;
 
 import com.allotmint.mcp.client.AllotMintClient;
+import com.allotmint.mcp.client.GitHubClient;
 import com.allotmint.mcp.client.ResearchAgentClient;
 import com.allotmint.mcp.tool.AllotMintApplyReconciliationTool;
+import com.allotmint.mcp.tool.AllotMintCreateIssueTool;
+import com.allotmint.mcp.tool.AllotMintDataFreshnessTool;
 import com.allotmint.mcp.tool.AllotMintDataQualityTool;
 import com.allotmint.mcp.tool.AllotMintFilesTool;
 import com.allotmint.mcp.tool.AllotMintHealthTool;
@@ -42,22 +45,26 @@ public class StdioMcpServerConfig {
       McpJsonMapper jsonMapper,
       AllotMintClient allotMintClient,
       ResearchAgentClient researchAgentClient,
+      GitHubClient gitHubClient,
       @Value("${allotmint.mcp.files.enabled:false}") boolean filesEnabled,
       @Value("${allotmint.mcp.files.root:}") String filesRoot,
       @Value("${allotmint.mcp.research.enabled:false}") boolean researchEnabled,
       @Value("${allotmint.mcp.data-quality.enabled:true}") boolean dataQualityEnabled,
-      @Value("${allotmint.mcp.write.enabled:false}") boolean writeEnabled) {
+      @Value("${allotmint.mcp.write.enabled:false}") boolean writeEnabled,
+      @Value("${allotmint.mcp.issues.enabled:false}") boolean issuesEnabled) {
     StdioServerTransportProvider transportProvider = new StdioServerTransportProvider(jsonMapper);
 
     List<McpServerFeatures.SyncToolSpecification> tools =
         selectTools(
             allotMintClient,
             researchAgentClient,
+            gitHubClient,
             filesEnabled,
             filesRoot,
             researchEnabled,
             dataQualityEnabled,
-            writeEnabled);
+            writeEnabled,
+            issuesEnabled);
 
     return McpServer.sync(transportProvider)
         .serverInfo("allotmint-mcp", "0.0.1")
@@ -74,11 +81,13 @@ public class StdioMcpServerConfig {
   static List<McpServerFeatures.SyncToolSpecification> selectTools(
       AllotMintClient allotMintClient,
       ResearchAgentClient researchAgentClient,
+      GitHubClient gitHubClient,
       boolean filesEnabled,
       String filesRoot,
       boolean researchEnabled,
       boolean dataQualityEnabled,
-      boolean writeEnabled) {
+      boolean writeEnabled,
+      boolean issuesEnabled) {
     List<McpServerFeatures.SyncToolSpecification> tools = new ArrayList<>();
     tools.add(EchoTool.specification());
     tools.add(AllotMintHealthTool.specification(allotMintClient));
@@ -90,6 +99,7 @@ public class StdioMcpServerConfig {
 
     if (dataQualityEnabled) {
       tools.add(AllotMintDataQualityTool.specification(allotMintClient, writeEnabled));
+      tools.add(AllotMintDataFreshnessTool.specification(allotMintClient));
     }
 
     if (writeEnabled) {
@@ -101,6 +111,9 @@ public class StdioMcpServerConfig {
     }
     if (researchEnabled) {
       tools.add(AllotMintResearchTool.specification(researchAgentClient));
+    }
+    if (issuesEnabled) {
+      tools.add(AllotMintCreateIssueTool.specification(gitHubClient));
     }
 
     return tools;

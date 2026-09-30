@@ -16,7 +16,8 @@ flowchart LR
     end
 
     subgraph server["allotmint-mcp server (Java, Spring Boot, MCP Java SDK)"]
-        MCP["MCP tools\nallotmint_health / instrument / market /\nportfolio / reconcile / data_quality"]
+        MCP["MCP tools\nallotmint_health / instrument / market /\nportfolio / reconcile / data_quality /\ndata_freshness"]
+        ISSUES["allotmint_create_issue (opt-in)"]
         RESEARCH["allotmint_research (opt-in)"]
     end
 
@@ -35,6 +36,7 @@ flowchart LR
     WEBUI -- "streamable HTTP /mcp" --> MCP
 
     MCP -- "REST" --> BACKEND
+    ISSUES -- "REST (api.github.com)" --> GITHUB[("GitHub")]
     RESEARCH -- "REST" --> BACKEND
 
     RESEARCH -- "HTTP POST /research/ask" --> AGENT
@@ -494,6 +496,75 @@ java -jar target/allotmint-mcp-server.jar
 
 The backend enforces no-clobber, `.bak` backups, and atomic audit records on every fix. The data-quality
 admin endpoints are tracked in [leonarduk/allotmint#6724](https://github.com/leonarduk/allotmint/issues/6724).
+
+### `allotmint_data_freshness`
+
+Answers "which series have not updated in a number of days?". Read-only: it calls the same
+`GET /data-quality/timeseries` endpoint as `allotmint_data_quality` `series`, but does the age
+arithmetic and ordering itself so the calling model does not have to.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "min_age_days": { "type": "integer", "minimum": 0, "default": 7 },
+    "as_of": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}
+```
+
+- `min_age_days` — report series whose latest data point is at least this many **calendar** days
+  old (default 7). A series exactly at the threshold is included.
+- `as_of` — reference date, `YYYY-MM-DD`; defaults to today.
+
+The result has `as_of`, `min_age_days`, `count`, `truncated`, `stale` (each row: `ticker`,
+`exchange`, `last_date`, `days_since_last_update`, most stale first) and `no_data` (series with a
+missing or unparseable `last_date`, which are reported rather than dropped). If `truncated` is
+`true` the backend cut the series list short, so an empty `stale` list is not proof that nothing
+is stale.
+
+Staleness is not business-day aware: with a threshold of 3, a daily series can be flagged after a
+long weekend. It is registered together with `allotmint_data_quality` and follows the same
+`ALLOTMINT_MCP_DATA_QUALITY_ENABLED` flag.
+
+### `allotmint_create_issue` (opt-in)
+
+Files a GitHub issue — for example a feature request when an assistant finds no tool for a task —
+instead of leaving the user to paste drafted text somewhere. It is an outward-facing write to a
+third party, so it is **off by default** and every call needs `confirm=true`.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "body": { "type": "string", "maxLength": 20000 },
+    "labels": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 50 },
+      "maxItems": 5
+    },
+    "confirm": { "type": "boolean", "default": false }
+  },
+  "required": ["title"],
+  "additionalProperties": false
+}
+```
+
+The result is the new issue's `repo`, `number` and `url`. A short "Filed via allotmint-mcp" footer
+is appended to the body. Duplicate detection is not done; search first if that matters.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ALLOTMINT_MCP_ISSUES_ENABLED` | `false` | Registers the tool |
+| `ALLOTMINT_MCP_GITHUB_REPO` | _(none)_ | Target `owner/repo`; **required** when enabled, startup fails otherwise |
+| `ALLOTMINT_MCP_GITHUB_TOKEN` | _(none)_ | Fine-grained token with Issues write access to that one repository |
+
+The target repository comes only from configuration; it is deliberately not a tool argument, so a
+model cannot redirect issues elsewhere. Without a token the tool is still listed but every call
+returns a "not configured" error. The token is never logged or returned in errors. Enabling the
+tool adds an egress path to `api.github.com`. Never commit the token.
 
 ### `allotmint_research` (opt-in)
 

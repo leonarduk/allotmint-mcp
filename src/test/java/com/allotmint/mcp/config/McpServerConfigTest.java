@@ -1,6 +1,7 @@
 package com.allotmint.mcp.config;
 
 import com.allotmint.mcp.client.AllotMintClient;
+import com.allotmint.mcp.client.GitHubClient;
 import com.allotmint.mcp.client.ResearchAgentClient;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.WebMvcStreamableServerTransportProvider;
@@ -20,7 +21,15 @@ class McpServerConfigTest {
       new WebApplicationContextRunner()
           .withUserConfiguration(McpServerConfig.class, McpJsonConfig.class)
           .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class))
-          .withBean(ResearchAgentClient.class, McpServerConfigTest::researchAgentClient);
+          .withBean(ResearchAgentClient.class, McpServerConfigTest::researchAgentClient)
+          .withBean(GitHubClient.class, McpServerConfigTest::gitHubClient);
+
+  private static GitHubClient gitHubClient() {
+    GitHubClient client = mock(GitHubClient.class);
+    when(client.repo()).thenReturn("octo/tracker");
+    when(client.validRepo()).thenReturn(true);
+    return client;
+  }
 
   private static ResearchAgentClient researchAgentClient() {
     ResearchAgentClient client = mock(ResearchAgentClient.class);
@@ -83,6 +92,7 @@ class McpServerConfigTest {
         .withUserConfiguration(McpServerConfig.class, McpJsonConfig.class)
         .withBean(AllotMintClient.class, () -> mock(AllotMintClient.class))
         .withBean(ResearchAgentClient.class, () -> unconfigured)
+        .withBean(GitHubClient.class, McpServerConfigTest::gitHubClient)
         .withPropertyValues("spring.profiles.active=http", "allotmint.mcp.research.enabled=true")
         .run(context -> assertThat(context).hasFailed());
   }

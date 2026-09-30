@@ -16,6 +16,19 @@ changes and required migrations explicitly.
 
 ### Added
 
+- `allotmint_data_freshness` tool (#763): read-only report of cached series whose latest data
+  point is at least `min_age_days` (default 7) calendar days old, most stale first, with
+  `last_date` and `days_since_last_update`. Series with no data are listed under `no_data` and the
+  backend's `truncated` flag is passed through. Registered with `allotmint_data_quality` under
+  `ALLOTMINT_MCP_DATA_QUALITY_ENABLED` (default on), so existing deployments gain the tool on
+  upgrade; no configuration is required. Staleness is calendar-day based, not business-day aware.
+- `allotmint_create_issue` tool (#764): files a GitHub issue from an MCP client. **Opt-in and off
+  by default**: set `ALLOTMINT_MCP_ISSUES_ENABLED=true`, `ALLOTMINT_MCP_GITHUB_REPO` (`owner/repo`,
+  no default; startup fails if missing or malformed) and `ALLOTMINT_MCP_GITHUB_TOKEN` (fine-grained
+  token with Issues write access to that repository only). Every call needs `confirm=true`, the
+  target repository is fixed by configuration rather than a tool argument, and the tool adds an
+  egress path to `api.github.com`. **Migration**: none for existing deployments.
+
 - `scripts/start-ui.ps1` / `scripts/start-ui.sh`: one-command launcher for the Gradio UI that
   updates the mcp-client venv, rebuilds a stale jar and the research-agent image, then starts
   the UI with `--start-deps`.
