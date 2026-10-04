@@ -4,5 +4,5 @@ fastapi>=0.141.1
 uvicorn[standard]>=0.54.0
 gradio>=6.28.0,<7.0
 huggingface_hub<3.0
-pytest>=8.0
+pytest>=9.1.1
 pytest-asyncio>=1.4.0
