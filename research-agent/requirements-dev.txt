@@ -2,7 +2,7 @@
 # suite never touches Postgres or the embedding model (retrieval is stubbed),
 # and pulling sentence-transformers in would drag PyTorch into every CI run for
 # code the tests don't execute.
-fastapi>=0.141.1
+fastapi>=0.142.2
 pydantic>=2.9
 pydantic-ai-slim[openai]>=1.0
 mcp>=2.2.0,<3
