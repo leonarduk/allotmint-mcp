@@ -6,4 +6,4 @@ mcp>=2.3.0,<3
 psycopg[binary]>=3.2
 pgvector>=0.3
 sentence-transformers>=6.1.0
-langfuse>=2.0
+langfuse>=5.0.1
