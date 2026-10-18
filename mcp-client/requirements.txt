@@ -1,5 +1,5 @@
 mcp>=2.3.0,<3
-fastapi>=0.142.4
+fastapi>=0.143.1
 uvicorn[standard]>=0.54.0
 gradio>=6.29.1,<7.0
 huggingface_hub<3.0
