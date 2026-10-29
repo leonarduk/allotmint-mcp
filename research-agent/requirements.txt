@@ -1,6 +1,6 @@
 fastapi>=0.159.1
 uvicorn[standard]>=0.54.0
-pydantic>=2.13.5
+pydantic>=2.14.1
 pydantic-ai-slim[openai]>=2.59.0
 mcp>=2.3.0,<3
 psycopg[binary]>=3.2
