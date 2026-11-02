@@ -1,8 +1,10 @@
 package com.allotmint.mcp.client;
 
+import com.allotmint.mcp.exception.AllotMintApiException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -12,8 +14,11 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 /**
@@ -121,6 +126,26 @@ class AllotMintClientInstrumentAndPortfolioTest {
     List<Map<String, Object>> response = client.quotes("VOD.L");
 
     assertThat(response).extracting(q -> q.get("price")).containsExactly(75.2);
+    server.verify();
+  }
+
+  @Test
+  void quotesSurfacesA502AsARecoverableErrorWithoutRetrying() {
+    // The backend answers 502 when every quote lookup failed (leonarduk/allotmint#8098). The
+    // client must raise a mapped AllotMintApiException after exactly one request: once() plus
+    // server.verify() fails this test if a retry is ever added for this call.
+    server
+        .expect(once(), requestTo(BASE_URL + "/api/quotes?symbols=VOD.L"))
+        .andExpect(method(HttpMethod.GET))
+        .andRespond(
+            withStatus(HttpStatus.BAD_GATEWAY)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"detail\":\"All quote lookups failed\"}"));
+
+    assertThatThrownBy(() -> client.quotes("VOD.L"))
+        .isInstanceOf(AllotMintApiException.class)
+        .hasMessageContaining("returned 502")
+        .hasMessageContaining("All quote lookups failed");
     server.verify();
   }
 
