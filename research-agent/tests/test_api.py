@@ -181,3 +181,31 @@ def test_a_failed_run_is_a_502_with_the_cause(client, monkeypatch):
 
     assert response.status_code == 502
     assert "MCP server unreachable" in response.json()["detail"]
+
+
+def test_unverified_figures_are_serialized_and_full_tool_text_is_not(client, monkeypatch):
+    # #692 adds `unverified_figures` (additive; the Java record ignores unknown
+    # fields) and keeps the full tool response text internal to the sidecar.
+    async def fake_run(request, settings, trace_logger=None, langfuse_tracer=None):
+        return AskResponse(
+            question=request.question,
+            answer="Technology is £7,403,919 [1].",
+            tool_calls=[
+                ToolCallRecord(
+                    tool="allotmint_portfolio",
+                    result_excerpt='{"total_value_gbp": 10983.67}',
+                    result_text='{"total_value_gbp": 10983.67, "more": "..."}',
+                )
+            ],
+            grounded=False,
+            unverified_figures=["£7,403,919"],
+        )
+
+    monkeypatch.setattr(main_module, "run_research", fake_run)
+
+    body = client.post("/research/ask", json={"question": "tech exposure?"}).json()
+
+    assert body["grounded"] is False
+    assert body["unverified_figures"] == ["£7,403,919"]
+    assert "result_text" not in body["tool_calls"][0]
+    assert body["tool_calls"][0]["result_excerpt"] == '{"total_value_gbp": 10983.67}'

@@ -217,23 +217,35 @@ public final class AllotMintResearchTool {
    * marker points; the same data is repeated verbatim in {@code structuredContent} for clients that
    * consume it programmatically.
    *
-   * <p>An ungrounded run - no retrieved document and no tool call behind it - is returned as an
-   * error rather than as prose. Plausible-sounding text with nothing traceable behind it is exactly
-   * the failure mode this tool exists to avoid.
+   * <p>An ungrounded run - no retrieved document and no tool call behind it, or an answer quoting
+   * figures that appear in none of them - is returned as an error rather than as prose.
+   * Plausible-sounding text with nothing traceable behind it is exactly the failure mode this tool
+   * exists to avoid.
    */
   private static McpSchema.CallToolResult render(
       String question, String owner, int lookbackDays, ResearchAnswer answer) {
     List<ResearchAnswer.Citation> citations = answer.citationsOrEmpty();
 
     if (!answer.grounded()) {
+      String agentWarnings =
+          answer.warningsOrEmpty().isEmpty()
+              ? ""
+              : " Agent warnings: " + String.join("; ", answer.warningsOrEmpty());
+      if (!citations.isEmpty()) {
+        // Sources existed, so the sidecar withheld the answer for quoting figures that appear in
+        // none of them (research-agent/app/provenance.py). The warnings name each figure.
+        return error(
+            "The research agent's answer quotes figures that could not be traced to any retrieved"
+                + " document or tool response, so it is withheld rather than presented as"
+                + " checked."
+                + agentWarnings);
+      }
       return error(
           "The research agent produced an answer with no retrieved context and no tool calls"
               + " behind it, so it cannot be cited. Check that the retrieval store is populated"
               + " (research-agent/ingest.py) and that the v0 MCP tools are reachable from the"
               + " agent."
-              + (answer.warningsOrEmpty().isEmpty()
-                  ? ""
-                  : " Agent warnings: " + String.join("; ", answer.warningsOrEmpty())));
+              + agentWarnings);
     }
 
     if (!StringUtils.hasText(answer.answer())) {

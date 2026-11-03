@@ -61,6 +61,12 @@ class ToolCallRecord(BaseModel):
     tool: str
     arguments: dict[str, Any] = Field(default_factory=dict)
     result_excerpt: str = ""
+    # The full response text the model actually saw (bounded by
+    # MAX_TOOL_RESULT_CHARS in mcp_tools). Kept so the numeric-provenance check
+    # (#692) can trace a figure that sits past the 400-char citation excerpt.
+    # Excluded from serialization: it is internal evidence, not part of the
+    # response contract with the Java side.
+    result_text: str = Field(default="", exclude=True)
 
 
 class RetrievedDocument(BaseModel):
@@ -92,6 +98,10 @@ class AskResponse(BaseModel):
     needs_review: bool = False
     review_reasons: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    # Figures in `answer` that appear in no retrieved document or tool response
+    # (#692). Additive: any entry here also flips `grounded` to false and is
+    # named in `warnings`, so a consumer that ignores this field loses nothing.
+    unverified_figures: list[str] = Field(default_factory=list)
     model: str = ""
     # Worker/verifier can run different models since #549. `model` above is
     # unchanged (worker only, matching the pre-#549 response shape); this is
