@@ -249,6 +249,13 @@ public class AllotMintClient {
   /**
    * Returns the latest quote for one ticker via {@code GET /api/quotes?symbols=...}. The backend
    * endpoint accepts a comma-separated list, but this client only ever requests a single symbol.
+   *
+   * <p>The backend answers {@code 502} when every quote lookup failed (a partial failure is still a
+   * {@code 200} list). This client treats that as a recoverable error rather than an empty list:
+   * the request is sent exactly once (no retry - the {@link RestClient} has no retry interceptor)
+   * and the 502 surfaces as {@link AllotMintApiException}, which {@code AllotMintInstrumentTool}
+   * reports to the MCP caller as an {@code isError} result instead of crashing. Pinned by {@code
+   * AllotMintClientInstrumentAndPortfolioTest} and {@code AllotMintInstrumentToolTest}.
    */
   public List<Map<String, Object>> quotes(String ticker) {
     List<Map<String, Object>> response =

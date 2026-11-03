@@ -17,6 +17,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -182,6 +183,22 @@ class AllotMintInstrumentToolTest {
     assertThat(structured).containsEntry("action", "prices");
     assertThat(structured).containsKey("quote");
     assertThat(structured.get("quote")).isNull();
+  }
+
+  @Test
+  void pricesWhenBackendReturns502ReportsARecoverableErrorWithoutRetrying() {
+    // /api/quotes answers 502 when every quote lookup failed (leonarduk/allotmint#8098). The
+    // prices action must turn that into an isError result - not throw - and must not retry.
+    when(client.quotes("VWRL.L"))
+        .thenThrow(
+            new AllotMintApiException(
+                502, "AllotMint backend returned 502: {\"detail\":\"All quote lookups failed\"}"));
+
+    McpSchema.CallToolResult result = call(Map.of("action", "prices", "ticker", "VWRL.L"));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(text(result)).contains("returned 502").contains("All quote lookups failed");
+    verify(client, times(1)).quotes("VWRL.L");
   }
 
   @Test
