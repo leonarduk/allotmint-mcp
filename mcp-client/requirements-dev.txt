@@ -5,4 +5,4 @@ uvicorn[standard]>=0.54.0
 gradio>=6.31.0,<7.0
 huggingface_hub<3.0
 pytest>=9.2.0
-pytest-asyncio>=1.4.0
+pytest-asyncio>=1.4.1
