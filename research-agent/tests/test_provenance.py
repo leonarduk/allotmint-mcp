@@ -189,6 +189,20 @@ def test_a_bare_integer_of_ten_or_more_is_a_figure():
     assert unverified_figures("You hold 14 positions [1].", ['{"count": 14}']) == []
 
 
+def test_a_bare_currency_figure_below_ten_is_a_figure():
+    # A currency symbol makes "£5" a magnitude claim, so it is not skipped as a
+    # small prose count (#830).
+    assert [f.text for f in extract_figures("The fee is £5 [1].")] == ["£5"]
+    assert unverified_figures("The fee is £5 [1].", ['{"count": 1}']) == ["£5"]
+    assert unverified_figures("The fee is £5 [1].", ['{"fee": 5}']) == []
+
+
+def test_each_part_of_a_comma_grouped_source_literal_is_a_source_value():
+    # In JSON, [1,234] is two numbers. The plain-number pass in source_values
+    # reads the parts as well as the grouped 1234 (#833).
+    assert unverified_figures("Holdings: 234 units [1].", ['{"units": [1,234]}']) == []
+
+
 def test_a_repeated_figure_is_named_once():
     answer = "It is £7,403,919 [1]. Again, £7,403,919 [1]."
 
