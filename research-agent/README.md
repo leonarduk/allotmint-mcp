@@ -56,6 +56,7 @@ Citations are built from what actually happened during a run — the documents r
 - Tool results are cited by name (`[tool:allotmint_portfolio]`), because the model can't know their numbers while writing. Those markers are rewritten to numbers afterwards, from the recorded calls.
 - A marker pointing at something that doesn't exist — a tool that was never called, or `[9]` when there are four sources — becomes a warning, not a citation.
 - `grounded` is `false` when a run produced neither a retrieved document nor a tool call. The Java tool turns that into an MCP error rather than passing the prose along.
+- Sources existing is not enough: every figure the answer quotes must appear in one of them (`app/provenance.py`, #692). The check is deterministic — no extra LLM call — and runs the same for every provider. It extracts each numeric literal from the answer (currency symbols, thousands separators, decimals, `%`, `k`/`m`/`bn` suffixes), skips things that are not magnitudes (citation markers, dates and times, years 1900–2100, list ordinals, index names like FTSE 100, bare integers below 10, spans like "12 months"), and looks for a source value that *rounds* to it at the precision the answer shows — so `£10,983.67`, `£10.98k` and `£11k` all match a tool's `10983.67`, but `£7,403,919` matches nothing. Sources are the retrieved documents, the full text of every tool response the model saw, the question, and earlier turns' prompts and tool returns in the same session. Any unmatched figure is named in `warnings` and `unverified_figures`, and sets `grounded` to `false`. Derived arithmetic (a sum or ratio the model computed itself) does not pass yet, and a real figure quoted against the wrong label is not caught — both are documented limits of this first pass.
 
 The read-only boundary is enforced in code, not in the prompt: `app/mcp_tools.py` refuses to invoke anything outside the four-tool allowlist. `allotmint_research` is deliberately absent from it, so the agent cannot recurse into itself.
 
@@ -285,7 +286,7 @@ A corpus directory holds JSON files (an object or list of objects with `source` 
 
 ## API
 
-`POST /research/ask` → `{question, owner?, lookback_days?}`; returns `{answer, citations, tool_calls, retrieved_documents, grounded, warnings, model}`. These field names are the contract with `ResearchAnswer.java` — changing one changes both.
+`POST /research/ask` → `{question, owner?, lookback_days?}`; returns `{answer, citations, tool_calls, retrieved_documents, grounded, unverified_figures, warnings, model}`. These field names are the contract with `ResearchAnswer.java` — changing one changes both.
 
 `GET /health` reports what this process is configured to talk to. It deliberately does not probe the LLM, the MCP server, or the database: a health check that makes three network calls fails for reasons unrelated to this process being up.
 

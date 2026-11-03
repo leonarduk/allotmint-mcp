@@ -18,8 +18,9 @@ import java.util.Map;
  *     #citations()}
  * @param citations every source the answer could draw on, numbered from 1
  * @param toolCalls the v0 MCP tool calls the agent actually made, in order
- * @param grounded false when the run produced neither a retrieved document nor a tool call, meaning
- *     the answer has nothing traceable behind it
+ * @param grounded false when the run produced neither a retrieved document nor a tool call, or when
+ *     the answer quotes figures that appear in none of them, meaning the answer cannot be traced to
+ *     its sources
  * @param warnings non-fatal problems worth surfacing (retrieval unavailable, no inline citations,
  *     ...)
  * @param model identifier of the LLM the sidecar ran, e.g. {@code ollama:llama3.2}

@@ -114,6 +114,7 @@ def review(
     tool_calls: list[ToolCallRecord],
     grounded: bool,
     warnings: list[str],
+    unverified_figures: list[str] | None = None,
 ) -> ReviewVerdict:
     """Runs the full guardrail check over one research invocation.
 
@@ -132,15 +133,25 @@ def review(
     reasons.extend(_check_tool_args(tool_calls))
 
     # --- Confidence / groundedness checks ---
-    if not grounded:
+    has_sources = bool(documents) or bool(tool_calls)
+    if not grounded and not has_sources:
         reasons.append(
             "answer is not grounded: no retrieved documents and no tool calls to back it"
+        )
+
+    # Numeric provenance (#692): figures the answer quotes that appear in no
+    # retrieved document or tool response. Computed in agent.py, which also
+    # flips `grounded`; surfaced here so a reviewer sees which numbers to check.
+    if unverified_figures:
+        reasons.append(
+            "answer quotes figures not found in any source: "
+            + ", ".join(f'"{figure}"' for figure in unverified_figures)
         )
 
     # An answer that carries no citation markers at all is claiming authority
     # it does not have, unless the model honestly said it could not answer.
     # _marker_count catches both numeric [1],[2] and [tool:x] formats.
-    if _marker_count(answer) == 0 and grounded:
+    if _marker_count(answer) == 0 and has_sources:
         reasons.append("answer contains no citation markers despite having sources available")
 
     # If the model was given documents but called no tools and the question

@@ -16,7 +16,10 @@ Shape of one run:
 The grounding rule is the important part. `grounded` is computed from real
 retrieved documents and real recorded tool calls -- never from the prose. A
 model that writes a confident answer having called nothing gets
-`grounded=False`, and the Java tool turns that into an error.
+`grounded=False`, and the Java tool turns that into an error. Having sources is
+not enough on its own: every figure the answer quotes must also appear in one
+of them (`provenance.py`, #692), or `grounded` is false and the warnings name
+the untraceable figures.
 """
 
 from __future__ import annotations
@@ -30,6 +33,12 @@ from .config import Settings
 from .llm import build_model
 from .mcp_tools import ToolSession, open_session
 from .models import AskRequest, AskResponse, Citation, RetrievedDocument, ToolCallRecord
+from .provenance import (
+    MAX_UNVERIFIED_FIGURES,
+    collect_source_texts,
+    unverified_figures,
+    unverified_warning,
+)
 from .retrieval import RetrievalUnavailable, search
 from .sessions import get_history, save_history
 from .tracing import TraceLogger
@@ -241,6 +250,29 @@ def build_citations(
     return citations
 
 
+def _history_request_texts(messages: list[Any]) -> list[str]:
+    """Text the model was *given* across the conversation, for provenance.
+
+    Covers the user prompts (question, scope, retrieved context) and tool
+    returns of this turn and of earlier turns in the same session, so a
+    follow-up answer may quote a figure an earlier turn's tool returned.
+    Model responses are deliberately excluded: a figure the model invented in
+    an earlier answer must not become its own evidence.
+    """
+    from pydantic_ai.messages import ModelRequest
+
+    texts: list[str] = []
+    for message in messages:
+        if not isinstance(message, ModelRequest):
+            continue
+        for part in message.parts:
+            content = getattr(part, "content", None)
+            if content is None:
+                continue
+            texts.append(content if isinstance(content, str) else str(content))
+    return texts
+
+
 def resolve_markers(
     answer: str, documents: list[RetrievedDocument], tool_calls: list[ToolCallRecord]
 ) -> tuple[str, set[int], list[str]]:
@@ -426,6 +458,23 @@ async def run_research(
 
     grounded = bool(documents) or bool(tool_calls)
 
+    # Numeric provenance (#692): having sources is necessary but not
+    # sufficient. Every magnitude the answer quotes must appear in one of them.
+    unverified: list[str] = []
+    if grounded:
+        unverified = unverified_figures(
+            answer,
+            collect_source_texts(
+                documents,
+                tool_calls,
+                extra=[request.question, *_history_request_texts(result.all_messages())],
+            ),
+        )
+        if unverified:
+            warnings.append(unverified_warning(unverified))
+            if len(unverified) > MAX_UNVERIFIED_FIGURES:
+                grounded = False
+
     from .guardrails import review
 
     deterministic_review = review(
@@ -435,6 +484,7 @@ async def run_research(
         tool_calls=tool_calls,
         grounded=grounded,
         warnings=warnings,
+        unverified_figures=unverified,
     )
 
     # Sequential supervisor/worker pattern: after the tool-calling research
@@ -522,6 +572,7 @@ async def run_research(
         tool_calls=tool_calls,
         retrieved_documents=documents,
         grounded=grounded,
+        unverified_figures=unverified,
         needs_review=safety.needs_review,
         review_reasons=safety.reasons,
         warnings=warnings,

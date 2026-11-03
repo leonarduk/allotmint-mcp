@@ -69,6 +69,12 @@ changes and required migrations explicitly.
 
 ### Fixed
 
+- `allotmint_research` no longer returns `grounded=true` for an answer whose figures appear in no
+  cited source (#692). The research agent now checks every numeric literal in the answer against
+  the retrieved documents and the full recorded tool responses (allowing formatting and rounding
+  differences such as `£10,983.67` / `£10.98k` vs `10983.67`); any untraceable figure is named in
+  `warnings` and a new additive `unverified_figures` response field, and sets `grounded` to
+  `false`, which the Java tool reports as an error. Derived arithmetic is not yet traced.
 - `AllotMintResearchTool`'s `optionalInteger` (the #250 non-integral `lookback_days`
   rejection) now compares against `Math.rint` with a small tolerance instead of exact
   floating-point equality, so a mathematically-integral value with a JSON-parsing

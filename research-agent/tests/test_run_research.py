@@ -221,6 +221,93 @@ async def test_retrieval_failure_still_allows_a_tool_grounded_answer(
 
 
 @pytest.mark.asyncio
+async def test_a_tool_backed_answer_with_invented_figures_is_not_grounded(
+    monkeypatch, settings, patched
+):
+    # #692: the tool call happened, but the figures around it were invented.
+    _stub_search(monkeypatch, unavailable=True)
+    _use_model(
+        monkeypatch,
+        _scripted_model(
+            [("allotmint_portfolio", {"action": "exposure", "owner": "demo"})],
+            "Technology is valued at £7,403,919 and is 27% of the portfolio "
+            "[tool:allotmint_portfolio]; NVIDIA contributed 15.22% "
+            "[tool:allotmint_portfolio].",
+        ),
+    )
+
+    response = await agent_module.run_research(
+        AskRequest(question="what is my tech exposure?", owner="demo"), settings
+    )
+
+    assert response.grounded is False
+    assert response.unverified_figures == ["£7,403,919", "15.22%"]
+    assert any(
+        '"£7,403,919"' in w and '"15.22%"' in w and '"27%"' not in w for w in response.warnings
+    )
+    assert response.needs_review is True
+    assert any("figures not found in any source" in r for r in response.review_reasons)
+    # The tool call is still reported and cited; only the verdict changed.
+    assert [c.ref for c in response.citations] == ["allotmint_portfolio"]
+
+
+@pytest.mark.asyncio
+async def test_a_faithful_tool_backed_answer_stays_grounded_without_new_warnings(
+    monkeypatch, settings, patched
+):
+    _stub_search(monkeypatch, [])
+    _use_model(
+        monkeypatch,
+        _scripted_model(
+            [("allotmint_portfolio", {"action": "exposure", "owner": "demo"})],
+            "As of 2026-08-01, Technology is 27.0% of the portfolio, up from 18% "
+            "[tool:allotmint_portfolio]; Financials fell to 15.5% "
+            "[tool:allotmint_portfolio].",
+        ),
+    )
+
+    response = await agent_module.run_research(
+        AskRequest(question="what is my tech exposure?", owner="demo"), settings
+    )
+
+    assert response.grounded is True
+    assert response.unverified_figures == []
+    assert not any("appear in no retrieved document" in w for w in response.warnings)
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_may_quote_a_figure_from_an_earlier_turns_tool_call(
+    monkeypatch, settings, patched
+):
+    # Turn 1 calls the tool; turn 2 answers from history without calling it
+    # again, quoting a figure (15.5) that only the earlier tool response holds.
+    _use_model(
+        monkeypatch,
+        _scripted_model(
+            [("allotmint_portfolio", {"action": "exposure", "owner": "demo"})],
+            "Technology is 27% [tool:allotmint_portfolio].",
+            "Financials are 15.5% [1].",
+        ),
+    )
+    _stub_search(
+        monkeypatch,
+        [RetrievedDocument(source="key_findings.md", content="Technology is 27%.", distance=0.5)],
+    )
+
+    await agent_module.run_research(
+        AskRequest(question="what is my tech exposure?", owner="demo", session_id="prov"),
+        settings,
+    )
+    second = await agent_module.run_research(
+        AskRequest(question="and financials?", owner="demo", session_id="prov"), settings
+    )
+
+    assert second.tool_calls == []
+    assert second.unverified_figures == []
+    assert second.grounded is True
+
+
+@pytest.mark.asyncio
 async def test_the_tool_call_budget_bounds_a_runaway_agent(
     monkeypatch, settings, patched
 ):

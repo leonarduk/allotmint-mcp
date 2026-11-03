@@ -124,7 +124,12 @@ class ToolSession:
                 json.dumps({"error": f"tool call failed: {exc_text}"})
             )
             self.calls.append(
-                ToolCallRecord(tool=name, arguments=cleaned, result_excerpt=text[:MAX_EXCERPT_CHARS])
+                ToolCallRecord(
+                    tool=name,
+                    arguments=cleaned,
+                    result_excerpt=text[:MAX_EXCERPT_CHARS],
+                    result_text=text,
+                )
             )
             if self.trace_logger is not None:
                 self.trace_logger.tool_call_end(name, len(text), success=False, truncated=truncated)
@@ -132,7 +137,12 @@ class ToolSession:
 
         text, truncated = _result_to_text(result)
         self.calls.append(
-            ToolCallRecord(tool=name, arguments=cleaned, result_excerpt=text[:MAX_EXCERPT_CHARS])
+            ToolCallRecord(
+                tool=name,
+                arguments=cleaned,
+                result_excerpt=text[:MAX_EXCERPT_CHARS],
+                result_text=text,
+            )
         )
         if self.trace_logger is not None:
             self.trace_logger.tool_call_end(name, len(text), success=True, truncated=truncated)

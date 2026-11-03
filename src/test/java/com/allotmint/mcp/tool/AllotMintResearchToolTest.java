@@ -296,6 +296,36 @@ class AllotMintResearchToolTest {
   }
 
   @Test
+  void reportsAnAnswerWithUntraceableFiguresAsAnErrorNamingThem() {
+    // #692: sources existed, but the answer's figures appear in none of them.
+    ResearchAnswer untraceable =
+        new ResearchAnswer(
+            "Technology is valued at £7,403,919 [1].",
+            List.of(
+                new ResearchAnswer.Citation(
+                    1,
+                    "tool_call",
+                    "allotmint_portfolio",
+                    "allotmint_portfolio(action='exposure')",
+                    "{\"total_value_gbp\": 10983.67}")),
+            List.of(),
+            false,
+            List.of(
+                "The answer quotes figures that appear in no retrieved document or tool response:"
+                    + " \"£7,403,919\""),
+            "ollama:llama3.2");
+    when(client.ask(any(), any(), anyInt(), any(), any())).thenReturn(untraceable);
+
+    McpSchema.CallToolResult result = call(Map.of("action", "ask", "question", "why?"));
+
+    assertThat(result.isError()).isTrue();
+    assertThat(textOf(result))
+        .contains("could not be traced to any retrieved document or tool response")
+        .contains("\"£7,403,919\"")
+        .doesNotContain("no retrieved context and no tool calls");
+  }
+
+  @Test
   void reportsASidecarErrorReadably() {
     when(client.ask(any(), any(), anyInt(), any(), any()))
         .thenThrow(new AllotMintApiException(500, "Research agent returned 500: boom"));

@@ -468,3 +468,42 @@ def test_multiple_reasons_accumulate():
     assert verdict.needs_review is True
     # Should have injection, hallucination-bait, tool-arg, grounded, and warning reasons
     assert len(verdict.reasons) >= 4
+
+
+# ---------------------------------------------------------------------------
+# Numeric provenance (#692)
+# ---------------------------------------------------------------------------
+
+
+def test_unverified_figures_trigger_review_naming_each_figure(tool_calls):
+    request = AskRequest(question="What is my tech exposure?", owner="demo")
+    verdict = review(
+        request=request,
+        answer="Technology is worth £7,403,919 [tool:allotmint_portfolio].",
+        documents=[],
+        tool_calls=tool_calls,
+        grounded=False,
+        warnings=[],
+        unverified_figures=["£7,403,919"],
+    )
+    assert verdict.needs_review is True
+    assert any(
+        "figures not found in any source" in r and '"£7,403,919"' in r for r in verdict.reasons
+    )
+    # Sources existed; the "no retrieved documents and no tool calls" reason
+    # would misdescribe why the answer is not grounded.
+    assert not any("no retrieved documents and no tool calls" in r for r in verdict.reasons)
+
+
+def test_ungrounded_by_provenance_still_checks_citation_markers(tool_calls):
+    request = AskRequest(question="What is my tech exposure?", owner="demo")
+    verdict = review(
+        request=request,
+        answer="Technology is worth £7,403,919.",
+        documents=[],
+        tool_calls=tool_calls,
+        grounded=False,
+        warnings=[],
+        unverified_figures=["£7,403,919"],
+    )
+    assert any("no citation markers" in r for r in verdict.reasons)
