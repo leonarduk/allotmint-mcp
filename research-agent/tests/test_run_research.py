@@ -276,6 +276,53 @@ async def test_a_faithful_tool_backed_answer_stays_grounded_without_new_warnings
 
 
 @pytest.mark.asyncio
+async def test_a_percentage_point_change_derived_from_the_tool_stays_grounded(
+    monkeypatch, settings, patched
+):
+    # "up 9.0 points" is 27.0 - 18.0 from the exposure response: an ordinary
+    # derived figure must not turn a correct answer into an MCP error.
+    _stub_search(monkeypatch, [])
+    _use_model(
+        monkeypatch,
+        _scripted_model(
+            [("allotmint_portfolio", {"action": "exposure", "owner": "demo"})],
+            "Technology is up 9.0 points, from 18% to 27% [tool:allotmint_portfolio].",
+        ),
+    )
+
+    response = await agent_module.run_research(
+        AskRequest(question="how has my tech exposure changed?", owner="demo"), settings
+    )
+
+    assert response.grounded is True
+    assert response.unverified_figures == []
+
+
+@pytest.mark.asyncio
+async def test_a_figure_only_the_question_contains_is_not_verified(
+    monkeypatch, settings, patched
+):
+    # The user's own number is not evidence; echoing it back must not ground it.
+    # Also pins the threshold boundary: exactly one unverified figure is enough.
+    _stub_search(monkeypatch, [])
+    _use_model(
+        monkeypatch,
+        _scripted_model(
+            [("allotmint_portfolio", {"action": "exposure", "owner": "demo"})],
+            "Yes, technology is worth £7,403,919 [tool:allotmint_portfolio].",
+        ),
+    )
+
+    response = await agent_module.run_research(
+        AskRequest(question="Is my technology exposure worth £7,403,919?", owner="demo"),
+        settings,
+    )
+
+    assert response.unverified_figures == ["£7,403,919"]
+    assert response.grounded is False
+
+
+@pytest.mark.asyncio
 async def test_a_follow_up_may_quote_a_figure_from_an_earlier_turns_tool_call(
     monkeypatch, settings, patched
 ):

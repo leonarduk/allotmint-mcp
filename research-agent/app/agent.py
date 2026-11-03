@@ -34,7 +34,7 @@ from .llm import build_model
 from .mcp_tools import ToolSession, open_session
 from .models import AskRequest, AskResponse, Citation, RetrievedDocument, ToolCallRecord
 from .provenance import (
-    MAX_UNVERIFIED_FIGURES,
+    UNVERIFIED_FIGURES_TOLERATED,
     collect_source_texts,
     unverified_figures,
     unverified_warning,
@@ -250,27 +250,26 @@ def build_citations(
     return citations
 
 
-def _history_request_texts(messages: list[Any]) -> list[str]:
-    """Text the model was *given* across the conversation, for provenance.
+def _tool_return_texts(messages: list[Any]) -> list[str]:
+    """Tool responses from earlier turns of the conversation, for provenance.
 
-    Covers the user prompts (question, scope, retrieved context) and tool
-    returns of this turn and of earlier turns in the same session, so a
-    follow-up answer may quote a figure an earlier turn's tool returned.
-    Model responses are deliberately excluded: a figure the model invented in
-    an earlier answer must not become its own evidence.
+    A follow-up answer may legitimately quote a figure an earlier turn's tool
+    returned. Only tool returns count: user prompts are excluded because they
+    carry the user's own question (a user asking "is it £7m?" must not make an
+    answer saying £7m look verified), and model responses are excluded because
+    a figure the model invented in an earlier answer must not become its own
+    evidence. This turn's tool returns are also in `tool_calls`; the overlap is
+    harmless.
     """
-    from pydantic_ai.messages import ModelRequest
+    from pydantic_ai.messages import ModelRequest, ToolReturnPart
 
-    texts: list[str] = []
-    for message in messages:
-        if not isinstance(message, ModelRequest):
-            continue
-        for part in message.parts:
-            content = getattr(part, "content", None)
-            if content is None:
-                continue
-            texts.append(content if isinstance(content, str) else str(content))
-    return texts
+    return [
+        part.model_response_str()
+        for message in messages
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if isinstance(part, ToolReturnPart)
+    ]
 
 
 def resolve_markers(
@@ -467,12 +466,12 @@ async def run_research(
             collect_source_texts(
                 documents,
                 tool_calls,
-                extra=[request.question, *_history_request_texts(result.all_messages())],
+                extra=_tool_return_texts(result.all_messages()),
             ),
         )
         if unverified:
             warnings.append(unverified_warning(unverified))
-            if len(unverified) > MAX_UNVERIFIED_FIGURES:
+            if len(unverified) > UNVERIFIED_FIGURES_TOLERATED:
                 grounded = False
 
     from .guardrails import review

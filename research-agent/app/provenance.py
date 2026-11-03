@@ -35,8 +35,10 @@ of ``-2.5`` are the same magnitude.
 
 **When a figure matches a source.** Source text is every retrieved document,
 every recorded tool response (the full text the model saw, not the 400-char
-citation excerpt), the question, and the prompts/tool returns from earlier
-turns of the same conversation. Every numeric literal in that text is parsed
+citation excerpt), and the tool returns from earlier turns of the same
+conversation. The user's question is deliberately *not* a source: a user asking
+"is it £7m?" must not make an answer that says £7m look verified. Neither is
+anything the model itself wrote in an earlier turn. Every numeric literal in that text is parsed
 the same way (thousands separators, decimals, scientific notation, magnitude
 suffixes). An answer figure matches when some source value rounds to it at the
 precision the answer displays: ``|source - answer| <= half a unit of the
@@ -46,11 +48,19 @@ percentage additionally matches the equivalent fraction (``51.93%`` matches a
 source ``0.5193``). An answer that is *more* precise than any source
 (``27.04%`` against ``27.0``) does not match -- that precision was invented.
 
-**Derived arithmetic does not pass.** A sum, difference or ratio the model
-computed (e.g. "up 9 points" from 18 -> 27, or two sector weights added
-together) is reported as unverified unless the result happens to appear in a
-source verbatim. Recognising stated arithmetic is a deliberate follow-up; the
-safe first pass is literals only.
+**Sums and differences of two source values pass.** A figure that is not a
+literal in any source still matches when it equals ``a + b`` or ``|a - b|``
+for two source values, within the same rounding tolerance -- so "up 9.0
+points" from a weight of 18.0 to 27.0, or two sector weights added together,
+stay grounded. These are bounded, additive derivations, so they cannot turn
+small source numbers into a fabricated large one (the #692 £7,403,919 against
+a £10,983.67 portfolio still fails).
+
+**Ratios and relative changes do not pass yet.** "Technology grew 22.7%" from
+a weight of 5.5 to 6.75 is a ratio. Ratios over a few hundred source numbers
+are dense enough that almost any percentage would find a matching pair, which
+would wave fabrications through, so they are reported as unverified. Tracing
+the arithmetic the answer actually states is the follow-up.
 
 **Known limit.** A real number attached to the wrong label (a Global Equity
 weight quoted as the technology weight) passes, because the literal does exist
@@ -67,10 +77,11 @@ from decimal import Decimal, InvalidOperation
 
 from .models import RetrievedDocument, ToolCallRecord
 
-# How many unverified figures an answer may carry and still be `grounded`.
-# Zero: any invented magnitude about someone's own money is enough to stop the
-# answer being presented as checked.
-MAX_UNVERIFIED_FIGURES = 0
+# How many unverified figures an answer may carry and still be `grounded`:
+# grounded is false when `len(unverified) > UNVERIFIED_FIGURES_TOLERATED`.
+# Zero tolerated: any invented magnitude about someone's own money is enough to
+# stop the answer being presented as checked.
+UNVERIFIED_FIGURES_TOLERATED = 0
 
 _MULTIPLIERS: dict[str, Decimal] = {
     "k": Decimal(10) ** 3,
@@ -222,20 +233,42 @@ def _decimal(raw: str) -> Decimal | None:
     return value if value.is_finite() else None
 
 
+def _any_within(values: list[Decimal], low: Decimal, high: Decimal) -> bool:
+    index = bisect.bisect_left(values, low)
+    return index < len(values) and values[index] <= high
+
+
+def _is_sum_or_difference(value: Decimal, tolerance: Decimal, values: list[Decimal]) -> bool:
+    """True when `value` is ``a + b`` or ``|a - b|`` for two source values.
+
+    For each source value ``a`` this looks up a partner ``b`` near ``value - a``
+    (a sum) or ``a - value`` (a difference), so it costs O(n log n), not O(n^2).
+    """
+    for a in values:
+        if a == 0:
+            continue
+        for target in (value - a, a - value):
+            if target > 0 and _any_within(values, target - tolerance, target + tolerance):
+                return True
+    return False
+
+
 def _matches(figure: Figure, values: list[Decimal]) -> bool:
     candidates = [(figure.value, figure.unit)]
     if figure.percent:
         candidates.append((figure.value / 100, figure.unit / 100))
     for value, unit in candidates:
         tolerance = unit / 2
-        index = bisect.bisect_left(values, value - tolerance)
-        if index < len(values) and values[index] <= value + tolerance:
+        if _any_within(values, value - tolerance, value + tolerance):
             return True
-    return False
+    # Sums/differences are taken on the figure as written only, not on its
+    # fraction form, to keep the derived search as narrow as possible.
+    return _is_sum_or_difference(figure.value, figure.unit / 2, values)
 
 
 def unverified_figures(answer: str, source_texts: Iterable[str]) -> list[str]:
-    """Names each figure in `answer` that no source value rounds to.
+    """Names each figure in `answer` that no source value (or sum/difference of
+    two) rounds to.
 
     Returned in answer order, de-duplicated, as the answer wrote them.
     """

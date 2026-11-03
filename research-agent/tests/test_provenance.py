@@ -135,11 +135,12 @@ def test_equivalent_representations_match(answer, source):
         # Rounding tolerance is half a unit of the answer's last digit, no more.
         ("Global Equity is 51.94% [1].", '{"weight_pct": 51.9312}', "51.94%"),
         ("The total is £10.97k [1].", '{"total": 10983.67}', "£10.97k"),
-        # Derived arithmetic is not traced (documented follow-up).
-        ("Technology and Fixed Income together are 19.15% [1].", PORTFOLIO, "19.15%"),
+        # Ratios / relative changes are not traced (documented follow-up):
+        # 5.5 -> 6.75 is +22.7%, which no source literal, sum or difference gives.
+        ("Technology weight grew 22.7% in a year [1].", PORTFOLIO, "22.7%"),
     ],
 )
-def test_near_misses_and_derived_figures_are_flagged(answer, source, flagged):
+def test_near_misses_and_ratios_are_flagged(answer, source, flagged):
     assert unverified_figures(answer, [source]) == [flagged]
 
 
@@ -160,9 +161,32 @@ def test_dates_markers_ordinals_and_labels_are_not_figures(answer):
     assert extract_figures(answer) == []
 
 
+@pytest.mark.parametrize(
+    ("answer", "source"),
+    [
+        # Percentage-point change: 27.0 - 18.0
+        ("Technology rose 9.0 points, from 18% to 27% [1].", '{"now": 27.0, "was": 18.0}'),
+        # Two cited weights added together: 6.75 + 12.4
+        ("Technology and Fixed Income together are 19.15% [1].", PORTFOLIO),
+        # Difference of two currency values: 5283.47 - 1361.98
+        ("Global Equity exceeds Fixed Income by £3,921.49 [1].", PORTFOLIO),
+    ],
+)
+def test_sums_and_differences_of_two_source_values_pass(answer, source):
+    assert unverified_figures(answer, [source]) == []
+
+
+def test_the_question_is_not_a_source():
+    # A user asking "is it £7m?" must not make an answer of £7m look verified.
+    sources = collect_source_texts([], [_portfolio_call()])
+
+    assert unverified_figures("Yes, it is £7,403,919 [1].", sources) == ["£7,403,919"]
+
+
 def test_a_bare_integer_of_ten_or_more_is_a_figure():
     assert [f.text for f in extract_figures("You hold 14 positions [1].")] == ["14"]
     assert unverified_figures("You hold 14 positions [1].", ['{"count": 3}']) == ["14"]
+    assert unverified_figures("You hold 14 positions [1].", ['{"count": 14}']) == []
 
 
 def test_a_repeated_figure_is_named_once():
@@ -189,9 +213,9 @@ def test_document_text_and_extra_texts_are_sources():
         source="key_findings.md", content="Technology rose to 27%.", distance=0.5
     )
 
-    sources = collect_source_texts([document], [], extra=["What if I add £5,000?"])
+    sources = collect_source_texts([document], [], extra=['{"cash_gbp": 5000}'])
 
-    assert unverified_figures("Technology is 27% [1]; adding £5,000 [1].", sources) == []
+    assert unverified_figures("Technology is 27% [1]; cash is £5,000 [1].", sources) == []
 
 
 def test_the_warning_names_each_figure():

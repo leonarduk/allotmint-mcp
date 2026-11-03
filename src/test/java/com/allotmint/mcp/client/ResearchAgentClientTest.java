@@ -80,6 +80,39 @@ class ResearchAgentClientTest {
   }
 
   @Test
+  void toleratesTheAdditiveUnverifiedFiguresField() {
+    // #692 added `unverified_figures` to the sidecar response. ResearchAnswer does not map it; the
+    // record must still deserialize, keeping grounded=false and the warning that names the figure.
+    server
+        .expect(requestTo(BASE_URL + "/research/ask"))
+        .andRespond(
+            withSuccess(
+                """
+                {
+                  "question": "what is my tech exposure?",
+                  "answer": "Technology is valued at £7,403,919 [1].",
+                  "citations": [
+                    {"id": 1, "kind": "tool_call", "ref": "allotmint_portfolio",
+                     "detail": "allotmint_portfolio(action='exposure')", "excerpt": "{}"}
+                  ],
+                  "tool_calls": [],
+                  "retrieved_documents": [],
+                  "grounded": false,
+                  "unverified_figures": ["£7,403,919"],
+                  "warnings": ["The answer quotes figures that appear in no source: \\"£7,403,919\\""],
+                  "model": "ollama:llama3.2"
+                }
+                """,
+                MediaType.APPLICATION_JSON));
+
+    ResearchAnswer answer = client.ask("what is my tech exposure?", "demo", 365);
+
+    assertThat(answer.grounded()).isFalse();
+    assertThat(answer.warningsOrEmpty()).singleElement().asString().contains("£7,403,919");
+    server.verify();
+  }
+
+  @Test
   void omitsOwnerFromThePayloadWhenAbsent() {
     server
         .expect(requestTo(BASE_URL + "/research/ask"))

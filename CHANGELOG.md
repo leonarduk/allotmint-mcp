@@ -74,7 +74,9 @@ changes and required migrations explicitly.
   the retrieved documents and the full recorded tool responses (allowing formatting and rounding
   differences such as `£10,983.67` / `£10.98k` vs `10983.67`); any untraceable figure is named in
   `warnings` and a new additive `unverified_figures` response field, and sets `grounded` to
-  `false`, which the Java tool reports as an error. Derived arithmetic is not yet traced.
+  `false`, which the Java tool reports as an error. A sum or difference of two source values
+  passes (e.g. "up 9.0 points" from 18.0 to 27.0); ratios and relative changes are not yet traced.
+  The user's question is not treated as a source.
 - `AllotMintResearchTool`'s `optionalInteger` (the #250 non-integral `lookback_days`
   rejection) now compares against `Math.rint` with a small tolerance instead of exact
   floating-point equality, so a mathematically-integral value with a JSON-parsing

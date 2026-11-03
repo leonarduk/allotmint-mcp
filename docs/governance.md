@@ -77,7 +77,8 @@ The current controls reduce, but do not eliminate, these risks:
 - an answer with neither retrieved context nor tool calls is marked ungrounded
   and rejected by the Java-facing tool, and so is an answer quoting figures
   that appear in no retrieved document or tool response (a deterministic
-  numeric-provenance check; derived arithmetic is not yet traced); and
+  numeric-provenance check; sums and differences of two source values pass,
+  ratios are not yet traced); and
 - deterministic review checks flag recognised prompt-injection phrases,
   requests to invent information, suspicious tool arguments, missing or invalid
   citation markers, and likely missing tool calls.
