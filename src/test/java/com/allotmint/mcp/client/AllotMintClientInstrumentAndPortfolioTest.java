@@ -130,6 +130,25 @@ class AllotMintClientInstrumentAndPortfolioTest {
   }
 
   @Test
+  void quotesReturnsAPartial200ListAsDataNotAnError() {
+    // Only an all-failed lookup is a 502; a partial failure is still a 200 list (see the
+    // AllotMintClient#quotes Javadoc). A row without a price must come back as data, once.
+    server
+        .expect(once(), requestTo(BASE_URL + "/api/quotes?symbols=VOD.L"))
+        .andExpect(method(HttpMethod.GET))
+        .andRespond(
+            withSuccess(
+                "[{\"symbol\":\"VOD.L\",\"price\":null,\"currency\":\"GBX\"}]",
+                MediaType.APPLICATION_JSON));
+
+    List<Map<String, Object>> response = client.quotes("VOD.L");
+
+    assertThat(response).hasSize(1);
+    assertThat(response.get(0)).containsEntry("symbol", "VOD.L").containsEntry("price", null);
+    server.verify();
+  }
+
+  @Test
   void quotesSurfacesA502AsARecoverableErrorWithoutRetrying() {
     // The backend answers 502 when every quote lookup failed (leonarduk/allotmint#8098). The
     // client must raise a mapped AllotMintApiException after exactly one request: once() plus
